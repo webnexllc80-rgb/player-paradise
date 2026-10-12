@@ -1,0 +1,98 @@
+'use client';
+
+import React from 'react';
+import Image from 'next/image';
+import {
+  Play,
+  KeyRound,
+  Sparkles,
+  Flame,
+  Star,
+  ExternalLink,
+  ShieldCheck
+} from 'lucide-react';
+
+export default function GameCard({
+  game,
+  onPlay,
+  onRequestAccount,
+}) {
+  return (
+    <div className="group relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-900/80 hover:border-[var(--neon-cyan)]/70 hover:shadow-[0_10px_30px_rgba(0,240,255,0.2)] transition-all duration-300 flex flex-col">
+      {/* Thumbnail Aspect Box */}
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-950">
+        <Image
+          src={game.image || game.fallbackImage || '/images/vegas-777.svg'}
+          alt={game.title}
+          fill
+          className="object-cover group-hover:scale-108 transition-transform duration-500"
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        />
+
+        {/* Gradient dark overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+
+        {/* Top Badges */}
+        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+          {game.badge ? (
+            <span className="text-[10px] font-heading font-black px-2 py-0.5 rounded-md bg-[var(--neon-cyan)] text-black shadow-[0_0_10px_rgba(0,240,255,0.6)]">
+              {game.badge}
+            </span>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md border border-slate-700 text-[10px] font-bold text-amber-400">
+            <Star size={11} fill="currentColor" />
+            <span>{game.rating || 4.9}</span>
+          </div>
+        </div>
+
+        {/* In-House or Platform indicator */}
+        <div className="absolute bottom-2.5 left-2.5">
+          <span className="text-[10px] font-sub font-bold px-2 py-0.5 rounded-md bg-slate-900/90 border border-slate-700 text-slate-300 uppercase tracking-wider">
+            {game.isInternal ? '⚡ IN-HOUSE PLAYABLE' : game.platform || 'EXTERNAL PLATFORM'}
+          </span>
+        </div>
+      </div>
+
+      {/* Card Info Body */}
+      <div className="p-4 flex flex-col flex-1 justify-between gap-3 bg-slate-950/60">
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-heading font-bold text-sm text-white group-hover:text-[var(--neon-cyan)] transition-colors truncate">
+              {game.title}
+            </h3>
+            {game.rtp && (
+              <span className="text-[10px] font-mono text-emerald-400 font-bold shrink-0">
+                {game.rtp}% RTP
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+            {game.description}
+          </p>
+        </div>
+
+        {/* Dual Actions */}
+        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+          <button
+            onClick={() => onPlay(game)}
+            className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 hover:from-[var(--neon-cyan)] hover:to-cyan-400 text-black font-heading font-bold text-xs shadow-[0_0_12px_rgba(0,240,255,0.3)] hover:scale-102 transition-all"
+          >
+            <Play size={13} fill="currentColor" />
+            <span>PLAY NOW</span>
+          </button>
+
+          <button
+            onClick={() => onRequestAccount(game)}
+            className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200 font-heading font-bold text-xs transition-colors"
+          >
+            <KeyRound size={13} className="text-amber-400" />
+            <span>GET ID</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

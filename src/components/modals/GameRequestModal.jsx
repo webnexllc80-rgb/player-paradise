@@ -1,0 +1,191 @@
+'use client';
+
+import React, { useState } from 'react';
+import {
+  X,
+  KeyRound,
+  Gamepad2,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight
+} from 'lucide-react';
+
+export default function GameRequestModal({
+  isOpen,
+  onClose,
+  initialGame = null,
+  user,
+  onRequestCreated,
+  onOpenAuth,
+}) {
+  const platforms = [
+    { title: 'Ultra Panda', category: 'Fish & Slots', badge: 'TOP CHOICE' },
+    { title: 'Fire Kirin', category: 'Fish Arcade King', badge: 'POPULAR' },
+    { title: 'Orion Stars', category: 'Sweeps & Reels', badge: 'CLASSIC' },
+    { title: 'Game Vault 999', category: 'High Payouts', badge: 'TRENDING' },
+    { title: 'Milky Way', category: 'Cosmic Reels', badge: 'HOT' },
+    { title: 'Juwa 777', category: 'Speed Slots', badge: 'FAST' },
+    { title: 'Golden Treasure', category: 'Fish Hunter', badge: 'CLASSIC' },
+  ];
+
+  const [selectedGame, setSelectedGame] = useState(initialGame?.title || platforms[0].title);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState({ error: '', success: '' });
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) {
+      onClose();
+      onOpenAuth('login');
+      return;
+    }
+
+    setStatus({ error: '', success: '' });
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/account-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameTitle: selectedGame,
+          userEmail: user.email,
+          userName: user.username,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to submit account request.');
+      }
+
+      setStatus({
+        error: '',
+        success: data.message || 'Game account request submitted! Your credentials will appear shortly.',
+      });
+
+      if (onRequestCreated) onRequestCreated();
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (err) {
+      setStatus({ error: err.message, success: '' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="cyber-modal-overlay">
+      <div className="relative w-full max-w-md rounded-3xl border border-[var(--chrome-border)] bg-[var(--bg-deep)] p-6 md:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden">
+        {/* Glow ambient */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-[var(--neon-purple)]/15 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors z-20"
+        >
+          <X size={18} />
+        </button>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[var(--neon-purple)] to-pink-500 flex items-center justify-center text-white font-black shadow-[0_0_15px_rgba(192,38,211,0.4)]">
+            <KeyRound size={22} />
+          </div>
+          <div>
+            <h2 className="font-heading font-black text-xl text-white">
+              REQUEST GAME ID
+            </h2>
+            <p className="text-xs text-slate-400">
+              Get official login credentials for your favorite platform
+            </p>
+          </div>
+        </div>
+
+        {/* Status alert */}
+        {status.error && (
+          <div className="mb-4 p-3 rounded-xl bg-red-950/60 border border-red-500/50 flex items-center gap-2 text-xs text-red-200">
+            <AlertCircle size={16} className="text-red-400 shrink-0" />
+            <span>{status.error}</span>
+          </div>
+        )}
+        {status.success && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/50 flex items-center gap-2 text-xs text-emerald-200">
+            <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+            <span>{status.success}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[11px] font-sub font-bold text-slate-300 mb-2">
+              SELECT GAME PLATFORM
+            </label>
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {platforms.map((p) => {
+                const isSelected = selectedGame === p.title;
+                return (
+                  <div
+                    key={p.title}
+                    onClick={() => setSelectedGame(p.title)}
+                    className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-[var(--neon-purple)]/20 border-[var(--neon-purple)] shadow-[0_0_15px_rgba(192,38,211,0.3)]'
+                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Gamepad2
+                        size={18}
+                        className={isSelected ? 'text-[var(--neon-cyan)]' : 'text-slate-500'}
+                      />
+                      <div>
+                        <div className="font-heading font-bold text-xs text-white">
+                          {p.title}
+                        </div>
+                        <div className="text-[10px] text-slate-400">{p.category}</div>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                        isSelected
+                          ? 'bg-[var(--neon-purple)] text-white'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {p.badge}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 space-y-1">
+            <div className="flex items-center gap-1.5 text-white font-semibold">
+              <Sparkles size={14} className="text-amber-400" />
+              <span>Instant Staff Processing</span>
+            </div>
+            <p className="text-[11px]">
+              Upon request, staff will generate your exclusive username and password. You can access it anytime under <strong className="text-slate-200">My Game IDs</strong>.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full cyber-btn-cyan py-3 rounded-xl font-heading font-black text-sm tracking-wider"
+          >
+            {loading ? 'SUBMITTING REQUEST...' : 'SUBMIT ID REQUEST'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

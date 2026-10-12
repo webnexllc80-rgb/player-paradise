@@ -1,0 +1,255 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  Wallet,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Clock,
+  ShieldCheck,
+  CheckCircle2,
+  DollarSign,
+  AlertCircle
+} from 'lucide-react';
+import CyberNavbar from '@/components/navigation/CyberNavbar';
+import CyberSidebar from '@/components/navigation/CyberSidebar';
+import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
+import CyberFooter from '@/components/common/CyberFooter';
+import WalletModal from '@/components/modals/WalletModal';
+import AuthModal from '@/components/modals/AuthModal';
+
+export default function WalletPage() {
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+  const [walletModal, setWalletModal] = useState({ open: false, tab: 'deposit' });
+  const [authModal, setAuthModal] = useState({ open: false, tab: 'login' });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [deposits, setDeposits] = useState([]);
+  const [redemptions, setRedemptions] = useState([]);
+
+  const loadData = async () => {
+    try {
+      const meRes = await fetch('/api/auth/me');
+      const meData = await meRes.json();
+      if (meData.authenticated && meData.user) {
+        setUser(meData.user);
+        const [depRes, withRes] = await Promise.all([
+          fetch('/api/payments/deposit'),
+          fetch('/api/payments/withdraw'),
+        ]);
+        const depData = await depRes.json();
+        const withData = await withRes.json();
+        if (depData.success) setDeposits(depData.deposits || []);
+        if (withData.success) setRedemptions(withData.redemptions || []);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-[var(--bg-deep)] text-white flex flex-col">
+      <CyberSidebar
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
+        mobileOpen={mobileSidebarOpen}
+        setMobileOpen={setMobileSidebarOpen}
+        user={user}
+        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenGameRequest={() => router.push('/')}
+        onOpenChat={() => {}}
+        onOpenDailyBonus={() => {}}
+      />
+
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+        <CyberNavbar
+          onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+          user={user}
+          onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+          onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+          onOpenDailyBonus={() => {}}
+          onOpenNotifications={() => {}}
+          onLogout={() => {
+            fetch('/api/auth/logout', { method: 'POST' });
+            setUser(null);
+          }}
+        />
+
+        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8">
+          {/* Header Card */}
+          <div className="p-6 md:p-8 rounded-3xl border border-[var(--chrome-border)] bg-gradient-to-br from-[#0c1333] via-[#090d24] to-[#050711] flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-2 text-center md:text-left">
+              <span className="text-xs font-sub font-bold text-[var(--neon-cyan)] tracking-wider">
+                OFFICIAL CASHIER
+              </span>
+              <h1 className="text-2xl md:text-3xl font-black font-heading text-white">
+                WALLET & BALANCE MANAGER
+              </h1>
+              <p className="text-xs text-slate-300">
+                Instant deposits via Cash App, Zelle, Chime & Crypto. Payouts processed 24/7 in under 5 minutes.
+              </p>
+            </div>
+
+            {/* Balances Display */}
+            <div className="flex items-center gap-4 bg-slate-950/80 p-4 rounded-2xl border border-slate-800 shrink-0">
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold">REDEEMABLE CASH (SC)</span>
+                <div className="font-mono font-black text-2xl text-emerald-400">
+                  ${Number(user?.balanceSC || 0).toFixed(2)}
+                </div>
+              </div>
+              <div className="h-8 w-px bg-slate-800" />
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold">GAME COINS (GC)</span>
+                <div className="font-mono font-black text-xl text-purple-300">
+                  {Number(user?.balanceGC || 0).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Action Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button
+              onClick={() => {
+                if (user) setWalletModal({ open: true, tab: 'deposit' });
+                else setAuthModal({ open: true, tab: 'login' });
+              }}
+              className="p-5 rounded-2xl bg-gradient-to-r from-blue-950/60 to-cyan-950/40 border border-[var(--neon-cyan)]/40 hover:border-[var(--neon-cyan)] flex items-center justify-between transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-[var(--neon-cyan)] text-black flex items-center justify-center font-black shadow-md">
+                  <ArrowDownLeft size={24} />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-heading font-black text-base text-white group-hover:text-[var(--neon-cyan)]">
+                    DEPOSIT CREDITS
+                  </h3>
+                  <p className="text-xs text-slate-400">Cash App • Zelle • Chime • Crypto</p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-[var(--neon-cyan)]">START →</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (user) setWalletModal({ open: true, tab: 'withdraw' });
+                else setAuthModal({ open: true, tab: 'login' });
+              }}
+              className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-teal-950/40 border border-emerald-500/40 hover:border-emerald-500 flex items-center justify-between transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-emerald-500 text-black flex items-center justify-center font-black shadow-md">
+                  <ArrowUpRight size={24} />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-heading font-black text-base text-white group-hover:text-emerald-300">
+                    REDEEM CASHOUT
+                  </h3>
+                  <p className="text-xs text-slate-400">Min $25 • Instant Cash App payout</p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-emerald-400">START →</span>
+            </button>
+          </div>
+
+          {/* Recent Deposits & Cashouts History */}
+          <div className="space-y-4">
+            <h2 className="font-heading font-black text-lg text-white">
+              MY RECENT TRANSACTIONS
+            </h2>
+
+            {!user ? (
+              <p className="text-xs text-slate-400 py-6 text-center">
+                Please sign in to view your personal deposit and cashout history.
+              </p>
+            ) : deposits.length === 0 && redemptions.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">
+                No transactions recorded yet. Use the buttons above to load credits or redeem winnings!
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {[...deposits.map((d) => ({ ...d, isDeposit: true })), ...redemptions.map((r) => ({ ...r, isDeposit: false }))]
+                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                  .slice(0, 15)
+                  .map((tx, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                            tx.isDeposit
+                              ? 'bg-cyan-500/20 text-[var(--neon-cyan)]'
+                              : 'bg-emerald-500/20 text-emerald-400'
+                          }`}
+                        >
+                          {tx.isDeposit ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
+                        </div>
+                        <div>
+                          <div className="font-heading font-bold text-white">
+                            {tx.isDeposit ? `Deposit via ${tx.method}` : `Cashout to ${tx.destinationTag}`}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            {new Date(tx.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div
+                          className={`font-mono font-bold text-sm ${
+                            tx.isDeposit ? 'text-[var(--neon-cyan)]' : 'text-emerald-400'
+                          }`}
+                        >
+                          {tx.isDeposit ? `+$${parseFloat(tx.amount).toFixed(2)}` : `-$${parseFloat(tx.amount).toFixed(2)}`}
+                        </div>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                            tx.status === 'COMPLETED' || tx.status === 'PAID'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-amber-500/20 text-amber-300'
+                          }`}
+                        >
+                          {tx.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </main>
+
+        <CyberFooter />
+      </div>
+
+      <CyberMobileBottomNav
+        user={user}
+        onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenGameRequest={() => router.push('/')}
+      />
+
+      <WalletModal
+        isOpen={walletModal.open}
+        onClose={() => setWalletModal({ open: false, tab: 'deposit' })}
+        initialTab={walletModal.tab}
+        user={user}
+        onBalanceUpdated={loadData}
+      />
+
+      <AuthModal
+        isOpen={authModal.open}
+        onClose={() => setAuthModal({ open: false, tab: 'login' })}
+        onSuccess={() => loadData()}
+      />
+    </div>
+  );
+}

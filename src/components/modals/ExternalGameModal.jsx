@@ -1,0 +1,158 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import {
+  X,
+  ExternalLink,
+  Copy,
+  Check,
+  KeyRound,
+  Download,
+  ShieldCheck,
+  Play
+} from 'lucide-react';
+
+export default function ExternalGameModal({
+  isOpen,
+  onClose,
+  game,
+  user,
+  onRequestAccount,
+  onOpenAuth,
+}) {
+  const [credentials, setCredentials] = useState(null);
+  const [copiedUser, setCopiedUser] = useState(false);
+  const [copiedPass, setCopiedPass] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && user && game) {
+      fetch('/api/game-accounts')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.gameAccounts) {
+            const found = data.gameAccounts.find(
+              (a) => a.gameTitle?.toLowerCase() === game.title?.toLowerCase()
+            );
+            setCredentials(found || null);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, user, game]);
+
+  if (!isOpen || !game) return null;
+
+  const copyText = (txt, type) => {
+    navigator.clipboard.writeText(txt);
+    if (type === 'user') {
+      setCopiedUser(true);
+      setTimeout(() => setCopiedUser(false), 2000);
+    } else {
+      setCopiedPass(true);
+      setTimeout(() => setCopiedPass(false), 2000);
+    }
+  };
+
+  const launchGame = () => {
+    const url = game.playUrl || 'https://ultrapanda.mobi';
+    window.open(url, '_blank');
+  };
+
+  return (
+    <div className="cyber-modal-overlay">
+      <div className="relative w-full max-w-md rounded-3xl border border-[var(--chrome-border)] bg-[var(--bg-deep)] p-6 md:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors z-20"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="text-center space-y-3 mb-6">
+          <div className="relative w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)] bg-slate-950">
+            <Image
+              src={game.image || game.fallbackImage || '/images/vegas-777.svg'}
+              alt={game.title}
+              fill
+              className="object-cover"
+            />
+          </div>
+          <div>
+            <h2 className="font-heading font-black text-xl text-white">
+              {game.title}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Official {game.platform || 'Online Sweeps'} Platform
+            </p>
+          </div>
+        </div>
+
+        {/* Credentials Box */}
+        {credentials ? (
+          <div className="p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/40 space-y-3 mb-5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-sub font-bold text-slate-400">YOUR LOGIN CREDENTIALS</span>
+              <span className="text-[10px] font-bold text-emerald-400">READY</span>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                <span className="text-slate-400">Username:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-white">{credentials.username}</span>
+                  <button
+                    onClick={() => copyText(credentials.username, 'user')}
+                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-[var(--neon-cyan)]"
+                  >
+                    {copiedUser ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                <span className="text-slate-400">Password:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-amber-300">{credentials.password}</span>
+                  <button
+                    onClick={() => copyText(credentials.password, 'pass')}
+                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400"
+                  >
+                    {copiedPass ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-3 mb-5 text-center">
+            <KeyRound size={24} className="mx-auto text-amber-400" />
+            <p className="text-xs text-slate-300">
+              Need login credentials for {game.title}? Submit a 1-click request to our coin manager!
+            </p>
+            <button
+              onClick={() => {
+                onClose();
+                onRequestAccount(game);
+              }}
+              className="cyber-btn-cyan py-2 px-4 text-xs font-bold"
+            >
+              <KeyRound size={14} />
+              <span>REQUEST LOGIN ID</span>
+            </button>
+          </div>
+        )}
+
+        {/* Action button */}
+        <button
+          onClick={launchGame}
+          className="w-full py-3.5 rounded-xl font-heading font-black text-sm tracking-wider bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 text-black shadow-[0_0_20px_rgba(0,240,255,0.4)] flex items-center justify-center gap-2 hover:scale-101 transition-transform"
+        >
+          <Play size={16} fill="currentColor" />
+          <span>LAUNCH WEB PLATFORM</span>
+          <ExternalLink size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}

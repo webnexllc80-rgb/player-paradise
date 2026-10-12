@@ -1,0 +1,22 @@
+{
+  "name": "Players Paradise Hub",
+  "short_name": "PlayersParadise",
+  "description": "The Ultimate Cyber Gaming Paradise. Ultra Panda, Fire Kirin, Orion Stars & Instant Payouts.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070913",
+  "theme_color": "#00f0ff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

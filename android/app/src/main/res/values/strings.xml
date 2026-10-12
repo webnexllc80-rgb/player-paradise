@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Players Paradise Hub</string>
+    <string name="title_activity_main">Players Paradise Hub</string>
+    <string name="package_name">com.playersparadise.app</string>
+    <string name="custom_url_scheme">com.playersparadise.app</string>
+</resources>
