@@ -77,7 +77,10 @@ export default function CyberSidebar({
             }}
             className="flex items-center gap-3 cursor-pointer overflow-hidden"
           >
-            <div className="relative w-11 h-11 shrink-0 rounded-xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_15px_rgba(0,240,255,0.5)]">
+            <div
+              className="relative w-11 h-11 shrink-0 rounded-xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_15px_rgba(0,240,255,0.5)]"
+              style={{ position: 'relative', width: '44px', height: '44px', minWidth: '44px', flexShrink: 0 }}
+            >
               <Image
                 src="/logo.png"
                 alt="Players Paradise Hub"

@@ -53,7 +53,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md p-8 rounded-3xl border border-[var(--chrome-border)] bg-[#070919] shadow-2xl space-y-6 relative overflow-hidden">
         <div className="text-center space-y-3">
           <Link href="/">
-            <div className="relative w-16 h-16 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)]">
+            <div
+              className="relative w-16 h-16 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)]"
+              style={{ position: 'relative', width: '64px', height: '64px', minWidth: '64px', margin: '0 auto' }}
+            >
               <Image src="/logo.png" alt="Logo" fill className="object-cover" />
             </div>
           </Link>

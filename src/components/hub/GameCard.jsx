@@ -20,7 +20,10 @@ export default function GameCard({
   return (
     <div className="group relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-900/80 hover:border-[var(--neon-cyan)]/70 hover:shadow-[0_10px_30px_rgba(0,240,255,0.2)] transition-all duration-300 flex flex-col">
       {/* Thumbnail Aspect Box */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-950">
+      <div
+        className="relative aspect-[4/3] w-full overflow-hidden bg-slate-950"
+        style={{ position: 'relative', width: '100%', aspectRatio: '4/3', overflow: 'hidden' }}
+      >
         <Image
           src={game.image || game.fallbackImage || '/images/vegas-777.svg'}
           alt={game.title}

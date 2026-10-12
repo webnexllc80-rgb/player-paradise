@@ -14,7 +14,10 @@ export default function CyberFooter() {
           {/* Col 1 & 2: Brand Info */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="relative w-12 h-12 rounded-xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_15px_rgba(0,240,255,0.4)]">
+              <div
+                className="relative w-12 h-12 rounded-xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_15px_rgba(0,240,255,0.4)]"
+                style={{ position: 'relative', width: '48px', height: '48px', minWidth: '48px', flexShrink: 0 }}
+              >
                 <Image src="/logo.png" alt="Players Paradise Hub" fill className="object-cover" />
               </div>
               <div>

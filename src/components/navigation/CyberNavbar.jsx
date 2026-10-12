@@ -70,7 +70,10 @@ export default function CyberNavbar({
           onClick={() => router.push('/')}
           className="flex items-center gap-2 cursor-pointer lg:hidden"
         >
-          <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-[var(--neon-cyan)]">
+          <div
+            className="relative w-8 h-8 rounded-lg overflow-hidden border border-[var(--neon-cyan)]"
+            style={{ position: 'relative', width: '32px', height: '32px', minWidth: '32px', flexShrink: 0 }}
+          >
             <Image src="/logo.png" alt="Logo" fill className="object-cover" />
           </div>
           <span className="font-heading font-black text-xs tracking-wider text-white">

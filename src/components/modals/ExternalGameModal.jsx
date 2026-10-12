@@ -70,7 +70,10 @@ export default function ExternalGameModal({
         </button>
 
         <div className="text-center space-y-3 mb-6">
-          <div className="relative w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)] bg-slate-950">
+          <div
+            className="relative w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)] bg-slate-950"
+            style={{ position: 'relative', width: '80px', height: '80px', minWidth: '80px', margin: '0 auto' }}
+          >
             <Image
               src={game.image || game.fallbackImage || '/images/vegas-777.svg'}
               alt={game.title}

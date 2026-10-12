@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   --font-heading: 'Orbitron', -apple-system, sans-serif;
   --font-sub: 'Rajdhani', -apple-system, sans-serif;
@@ -277,6 +281,16 @@ h1, h2, h3, h4, .font-heading {
   color: #64748b;
 }
 
+/* Mascot Wrapper Class */
+.hero-mascot-box {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  max-width: 90vw;
+  max-height: 90vw;
+  margin: 0 auto;
+}
+
 /* Neon Badge */
 .cyber-badge {
   display: inline-flex;
@@ -303,15 +317,4 @@ h1, h2, h3, h4, .font-heading {
   background: rgba(245, 158, 11, 0.18);
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.45);
-}
-
-/* Responsive Hide Utilities */
-@media (max-width: 1024px) {
-  .hide-on-tablet { display: none !important; }
-}
-@media (max-width: 768px) {
-  .hide-on-mobile { display: none !important; }
-}
-@media (min-width: 769px) {
-  .show-on-mobile { display: none !important; }
 }

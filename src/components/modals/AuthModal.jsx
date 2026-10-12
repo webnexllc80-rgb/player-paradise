@@ -97,7 +97,10 @@ export default function AuthModal({
 
         {/* Modal Brand Logo Header */}
         <div className="text-center space-y-2 mb-6 relative z-10">
-          <div className="relative w-16 h-16 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)]">
+          <div
+            className="relative w-16 h-16 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)]"
+            style={{ position: 'relative', width: '64px', height: '64px', minWidth: '64px', margin: '0 auto' }}
+          >
             <Image src="/logo.png" alt="Players Paradise Hub" fill className="object-cover" />
           </div>
           <h2 className="font-heading font-black text-xl text-white">

@@ -138,14 +138,39 @@ export default function CyberHeroBanner({
         </div>
 
         {/* Right Column: 3D Mascot Graphic Display */}
-        <div className="lg:col-span-5 flex justify-center relative">
-          <div className="relative w-72 sm:w-80 md:w-96 aspect-square group">
+        <div className="lg:col-span-5 flex justify-center relative" style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
+          <div
+            className="hero-mascot-box relative group"
+            style={{
+              position: 'relative',
+              width: '320px',
+              height: '320px',
+              maxWidth: '100%',
+              aspectRatio: '1/1',
+              flexShrink: 0
+            }}
+          >
             {/* Ambient Circular Neon Rings */}
-            <div className="absolute inset-0 rounded-full border-2 border-dashed border-[var(--neon-cyan)]/30 animate-spin" style={{ animationDuration: '30s' }} />
-            <div className="absolute inset-4 rounded-full border border-[var(--neon-purple)]/40 shadow-[0_0_30px_rgba(192,38,211,0.3)]" />
+            <div
+              className="absolute inset-0 rounded-full border-2 border-dashed border-[var(--neon-cyan)]/30 animate-spin"
+              style={{ position: 'absolute', inset: 0, borderRadius: '9999px', animationDuration: '30s' }}
+            />
+            <div
+              className="absolute inset-4 rounded-full border border-[var(--neon-purple)]/40 shadow-[0_0_30px_rgba(192,38,211,0.3)]"
+              style={{ position: 'absolute', inset: '16px', borderRadius: '9999px' }}
+            />
 
             {/* Mascot Image Card */}
-            <div className="relative w-full h-full rounded-3xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_35px_rgba(0,240,255,0.5)] bg-slate-950">
+            <div
+              className="relative w-full h-full rounded-3xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_35px_rgba(0,240,255,0.5)] bg-slate-950"
+              style={{
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                borderRadius: '24px',
+                overflow: 'hidden'
+              }}
+            >
               <Image
                 src="/logo.png"
                 alt="Cyber Gamer Panda - Players Paradise Hub"
