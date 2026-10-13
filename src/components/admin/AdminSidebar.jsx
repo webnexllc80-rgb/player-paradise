@@ -1,0 +1,191 @@
+'use client';
+
+import React from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import {
+  LayoutDashboard,
+  KeyRound,
+  Wallet,
+  Users,
+  Coins,
+  CreditCard,
+  Gamepad2,
+  ShieldCheck,
+  MessageSquare,
+  Settings,
+  LogOut,
+  ExternalLink,
+  Smartphone,
+  X,
+  ShieldAlert
+} from 'lucide-react';
+
+export default function AdminSidebar({
+  activeTab,
+  setActiveTab,
+  sidebarOpen,
+  setSidebarOpen,
+  pendingCounts = {},
+  adminUser,
+  onLogout,
+}) {
+  const menuItems = [
+    { id: 'overview', label: 'Overview Analytics', icon: LayoutDashboard },
+    {
+      id: 'requests',
+      label: 'Game Requests',
+      icon: KeyRound,
+      badge: pendingCounts.requests || 0,
+    },
+    {
+      id: 'ledger',
+      label: 'Financial Ledger',
+      icon: Wallet,
+      badge: pendingCounts.ledger || 0,
+    },
+    { id: 'users', label: 'Player Accounts', icon: Users },
+    { id: 'coins', label: 'Balance Adjuster', icon: Coins },
+    { id: 'gateways', label: 'Payment Gateways', icon: CreditCard },
+    { id: 'games', label: 'Games Library', icon: Gamepad2 },
+    { id: 'staff', label: 'Staff Management', icon: ShieldCheck },
+    {
+      id: 'support',
+      label: 'Live Support Chat',
+      icon: MessageSquare,
+      badge: pendingCounts.chats || 0,
+    },
+    { id: 'settings', label: 'System Settings', icon: Settings },
+  ];
+
+  return (
+    <>
+      {/* Mobile Drawer Backdrop Overlay */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+        />
+      )}
+
+      {/* Main Sidebar Aside */}
+      <aside
+        className={`fixed lg:sticky top-0 left-0 h-screen w-[270px] min-w-[270px] bg-[#070a1a]/95 border-r border-cyan-500/20 backdrop-blur-2xl flex flex-col z-50 transition-transform duration-300 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        {/* Brand Header */}
+        <div className="h-16 px-4 border-b border-cyan-500/15 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="relative w-9 h-9 rounded-xl overflow-hidden border border-cyan-400/50 shadow-[0_0_12px_rgba(0,240,255,0.4)] bg-black shrink-0">
+              <Image
+                src="/playerparadisehub.jpeg"
+                alt="Players Paradise Logo"
+                fill
+                className="object-cover"
+                priority
+              />
+            </div>
+            <div>
+              <div className="font-heading font-black text-xs tracking-wider text-white flex items-center gap-1">
+                PLAYERS <span className="text-cyan-400">PARADISE</span>
+              </div>
+              <div className="text-[9px] text-purple-400 font-mono tracking-widest uppercase">
+                ADMIN CONSOLE
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-400 hover:text-white"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Navigation Tabs List */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto no-scrollbar">
+          <div className="text-[10px] font-heading font-bold text-slate-500 uppercase tracking-widest px-3 mb-2">
+            Operations & Queues
+          </div>
+
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  setSidebarOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-heading font-semibold transition-all group cursor-pointer ${
+                  isActive
+                    ? 'bg-gradient-to-r from-cyan-500/20 via-purple-500/15 to-transparent border border-cyan-400/50 text-white shadow-[0_0_18px_rgba(0,240,255,0.15)] font-bold'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-900/60 border border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                      isActive
+                        ? 'bg-cyan-500 text-slate-950 shadow-[0_0_10px_rgba(0,240,255,0.5)]'
+                        : 'bg-slate-900/80 text-slate-400 group-hover:text-cyan-400 group-hover:bg-slate-800'
+                    }`}
+                  >
+                    <Icon size={14} />
+                  </div>
+                  <span>{item.label}</span>
+                </div>
+
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-600 text-white shadow-[0_0_10px_rgba(244,63,94,0.6)] animate-pulse">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Profile Card & App Download Footer */}
+        <div className="p-3 border-t border-cyan-500/15 space-y-2 shrink-0 bg-[#050814]/90">
+          <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 flex items-center justify-center font-bold text-xs shrink-0">
+                <ShieldAlert size={15} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-white truncate">
+                  {adminUser?.username || 'Super Admin'}
+                </div>
+                <div className="text-[9px] text-cyan-400 uppercase font-mono truncate">
+                  {adminUser?.role?.replace('_', ' ') || 'Super Admin'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Link
+            href="/download-app"
+            target="_blank"
+            className="w-full py-2 px-3 rounded-xl bg-cyan-950/40 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all"
+          >
+            <Smartphone size={13} />
+            <span>Portal APK Shell</span>
+            <ExternalLink size={10} className="opacity-60" />
+          </Link>
+
+          <button
+            onClick={onLogout}
+            className="w-full py-2 px-3 rounded-xl bg-rose-950/40 border border-rose-500/30 hover:bg-rose-900/60 text-rose-300 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <LogOut size={13} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+}
