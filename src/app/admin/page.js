@@ -41,6 +41,12 @@ export default function AdminPage() {
   const [usersList, setUsersList] = useState([]);
   const [methods, setMethods] = useState([]);
 
+  // Auth & login state for admin gate
+  const [authStatus, setAuthStatus] = useState('checking'); // 'checking' | 'authorized' | 'unauthenticated' | 'unauthorized'
+  const [adminLoginInput, setAdminLoginInput] = useState({ identifier: 'admin@playersparadisehub.com', password: 'Paradise@2026!' });
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [loginErrorMsg, setLoginErrorMsg] = useState('');
+
   // Form states for approving
   const [approvalInputs, setApprovalInputs] = useState({});
   const [allotmentForm, setAllotmentForm] = useState({ targetUser: '', amountSC: '', amountGC: '', actionType: 'CREDIT', notes: '' });
@@ -54,11 +60,22 @@ export default function AdminPage() {
       const meRes = await fetch('/api/auth/me');
       const meData = await meRes.json();
 
-      if (!meData.authenticated || !meData.user || meData.user.role === 'player') {
-        router.push('/');
+      if (!meData.authenticated || !meData.user) {
+        setUser(null);
+        setAuthStatus('unauthenticated');
+        setLoading(false);
         return;
       }
+
+      if (meData.user.role === 'player') {
+        setUser(meData.user);
+        setAuthStatus('unauthorized');
+        setLoading(false);
+        return;
+      }
+
       setUser(meData.user);
+      setAuthStatus('authorized');
 
       // Load all admin modules
       const [statsRes, reqRes, depRes, withRes, usersRes, methRes] = await Promise.all([
@@ -89,6 +106,45 @@ export default function AdminPage() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAdminLogin = async (e) => {
+    if (e) e.preventDefault();
+    setLoginSubmitting(true);
+    setLoginErrorMsg('');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adminLoginInput),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Login failed. Please check credentials.');
+      }
+
+      if (data.user.role === 'player') {
+        throw new Error('Access Denied: Player accounts cannot access the Admin Command Center. Staff or Admin clearance required.');
+      }
+
+      setUser(data.user);
+      setAuthStatus('authorized');
+      await loadData();
+    } catch (err) {
+      setLoginErrorMsg(err.message);
+    } finally {
+      setLoginSubmitting(false);
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setUser(null);
+      setAuthStatus('unauthenticated');
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -199,12 +255,187 @@ export default function AdminPage() {
     { id: 'gateways', label: 'Payment Gateways', icon: CreditCard },
   ];
 
-  if (loading && !user) {
+  if (authStatus === 'checking' && loading) {
     return (
-      <div className="min-h-screen bg-[var(--bg-deep)] text-white flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <RefreshCw size={28} className="animate-spin text-[var(--neon-cyan)] mx-auto" />
-          <p className="font-heading font-bold text-sm">AUTHENTICATING COMMAND CONSOLE...</p>
+      <div className="min-h-screen bg-[#050711] text-white flex items-center justify-center p-4">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-cyan-500 to-rose-500 p-0.5 animate-pulse">
+            <div className="w-full h-full bg-[#080b1e] rounded-2xl flex items-center justify-center">
+              <RefreshCw size={28} className="animate-spin text-cyan-400" />
+            </div>
+          </div>
+          <div>
+            <p className="font-heading font-black text-sm tracking-widest text-slate-200">VERIFYING ADMIN CLEARANCE...</p>
+            <p className="text-xs text-slate-500 mt-1 font-mono">Players Paradise Hub • Cyber Console</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (authStatus === 'unauthorized') {
+    return (
+      <div className="min-h-screen bg-[#050711] text-white flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-rose-600/10 rounded-full blur-[120px] pointer-events-none" />
+
+        <div className="relative z-10 max-w-md w-full bg-[#0a0d1f]/95 border border-rose-500/30 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-[0_0_50px_rgba(244,63,94,0.15)] text-center space-y-6">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-950/60 border border-rose-500/40 flex items-center justify-center text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
+            <ShieldAlert size={32} />
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[10px] font-bold tracking-widest uppercase">
+              Access Restricted
+            </div>
+            <h2 className="text-xl font-heading font-black text-white">Staff Clearance Required</h2>
+            <p className="text-xs text-slate-400">
+              You are currently authenticated as player <strong className="text-white">@{user?.username}</strong>. Only Super Admins and authorized staff can access this control center.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={handleAdminLogout}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-heading font-black text-xs tracking-wider flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(244,63,94,0.3)] transition-all cursor-pointer"
+            >
+              <LogOut size={16} />
+              SWITCH TO ADMIN ACCOUNT
+            </button>
+
+            <button
+              onClick={() => router.push('/')}
+              className="w-full py-3 px-4 rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white font-heading font-bold text-xs tracking-wider transition-all cursor-pointer"
+            >
+              RETURN TO PLAYER LOUNGE
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (authStatus === 'unauthenticated' || !user) {
+    return (
+      <div className="min-h-screen bg-[#050711] text-white flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-rose-600/15 rounded-full blur-[120px] pointer-events-none" />
+
+        <div className="relative z-10 max-w-md w-full bg-[#0a0d1f]/95 border border-rose-500/30 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-[0_0_60px_rgba(244,63,94,0.2)] space-y-6">
+          <div className="text-center space-y-3">
+            <div className="relative w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2 border-rose-500/50 shadow-[0_0_25px_rgba(244,63,94,0.4)]">
+              <Image
+                src="/playerparadisehub.jpeg"
+                alt="Players Paradise"
+                fill
+                className="object-cover"
+                priority
+              />
+            </div>
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[10px] font-bold tracking-widest uppercase mb-2">
+                <ShieldCheck size={12} /> RESTRICTED CONSOLE
+              </div>
+              <h2 className="text-xl font-heading font-black text-white tracking-wide">
+                CYBER COMMAND CENTER
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Enter your administrative credentials to proceed.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                <Sparkles size={13} className="text-amber-400" /> Default Super Admin:
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setAdminLoginInput({
+                    identifier: 'admin@playersparadisehub.com',
+                    password: 'Paradise@2026!',
+                  })
+                }
+                className="px-2.5 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-500 text-white font-bold text-[10px] tracking-wider transition-all cursor-pointer"
+              >
+                1-CLICK AUTO-FILL
+              </button>
+            </div>
+            <div className="font-mono text-[11px] text-slate-400 bg-slate-950/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80 flex items-center justify-between">
+              <span className="text-rose-300 truncate">admin@playersparadisehub.com</span>
+              <span className="text-slate-500 font-sans text-[10px]">Paradise@2026!</span>
+            </div>
+          </div>
+
+          {loginErrorMsg && (
+            <div className="p-3 rounded-xl bg-rose-950/70 border border-rose-500/60 text-rose-200 text-xs flex items-center gap-2">
+              <AlertCircle size={15} className="shrink-0 text-rose-400" />
+              <span>{loginErrorMsg}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleAdminLogin} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
+                Admin Username or Email
+              </label>
+              <input
+                type="text"
+                required
+                value={adminLoginInput.identifier}
+                onChange={(e) =>
+                  setAdminLoginInput({ ...adminLoginInput, identifier: e.target.value })
+                }
+                placeholder="admin@playersparadisehub.com"
+                className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-rose-500 text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
+                Security Password
+              </label>
+              <input
+                type="password"
+                required
+                value={adminLoginInput.password}
+                onChange={(e) =>
+                  setAdminLoginInput({ ...adminLoginInput, password: e.target.value })
+                }
+                placeholder="••••••••••••"
+                className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-rose-500 text-white rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginSubmitting}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-rose-600 via-rose-500 to-cyan-500 hover:from-rose-500 hover:to-cyan-400 text-white font-heading font-black text-xs tracking-wider flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(244,63,94,0.35)] transition-all cursor-pointer disabled:opacity-50"
+            >
+              {loginSubmitting ? (
+                <>
+                  <RefreshCw size={15} className="animate-spin" />
+                  AUTHENTICATING...
+                </>
+              ) : (
+                <>
+                  <Lock size={15} />
+                  SIGN IN TO ADMIN CONSOLE
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="text-center pt-2">
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="text-xs text-slate-400 hover:text-cyan-400 font-medium transition-colors cursor-pointer"
+            >
+              ← Back to Players Paradise Lounge
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -241,6 +472,14 @@ export default function AdminPage() {
             className="cyber-btn-outline text-xs py-1.5 px-3"
           >
             RETURN TO HUB
+          </button>
+          <button
+            onClick={handleAdminLogout}
+            className="px-3 py-1.5 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-300 hover:bg-rose-900/60 hover:text-white flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer"
+            title="Log Out of Admin"
+          >
+            <LogOut size={14} />
+            <span>LOGOUT</span>
           </button>
         </div>
       </header>
