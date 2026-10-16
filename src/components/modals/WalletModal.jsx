@@ -4,73 +4,124 @@ import React, { useState, useEffect } from 'react';
 import {
   X,
   Wallet,
-  ArrowDownLeft,
-  ArrowUpRight,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  ShieldCheck,
+  AlertCircle,
   Copy,
   Check,
-  AlertCircle,
-  CheckCircle2,
-  DollarSign,
-  ShieldCheck,
+  Upload,
+  Coins,
+  Sparkles,
   CreditCard,
   QrCode,
-  Zap,
-  Tag,
-  Clock
+  Image as ImageIcon,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 
 export default function WalletModal({
   isOpen,
   onClose,
-  initialTab = 'deposit',
   user,
   onBalanceUpdated,
 }) {
-  const [tab, setTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState('deposit'); // 'deposit' or 'redeem'
   const [methods, setMethods] = useState([]);
   const [selectedMethod, setSelectedMethod] = useState(null);
-  const [depositAmount, setDepositAmount] = useState('50');
-  const [referenceNote, setReferenceNote] = useState('');
-  const [promoCode, setPromoCode] = useState('');
-
-  // Cashout state
-  const [cashoutAmount, setCashoutAmount] = useState('50');
-  const [destinationTag, setDestinationTag] = useState('');
-  const [cashoutMethod, setCashoutMethod] = useState('Cash App');
-
+  const [depositAmount, setDepositAmount] = useState(50);
+  const [senderNote, setSenderNote] = useState('');
+  const [txHash, setTxHash] = useState('');
+  const [proofImage, setProofImage] = useState('');
+  const [redeemAmount, setRedeemAmount] = useState(50);
+  const [payoutMethod, setPayoutMethod] = useState('Cash App');
+  const [destinationAddress, setDestinationAddress] = useState('');
   const [loading, setLoading] = useState(false);
-  const [copiedTag, setCopiedTag] = useState(false);
-  const [statusMsg, setStatusMsg] = useState({ type: '', text: '' });
+  const [copied, setCopied] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const fetchHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const [depRes, withRes] = await Promise.all([
+        fetch('/api/payments/deposit?status=all'),
+        fetch('/api/payments/withdraw?status=all'),
+      ]);
+      const depData = await depRes.json();
+      const withData = await withRes.json();
+      const items = [];
+      if (depData.success && depData.deposits) {
+        items.push(...depData.deposits.map(d => ({ ...d, kind: 'DEPOSIT' })));
+      }
+      if (withData.success && withData.redemptions) {
+        items.push(...withData.redemptions.map(r => ({ ...r, kind: 'REDEMPTION' })));
+      }
+      items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setHistoryItems(items);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   useEffect(() => {
-    if (initialTab) setTab(initialTab);
-  }, [initialTab]);
+    if (isOpen && activeTab === 'history') {
+      fetchHistory();
+    }
+  }, [isOpen, activeTab]);
 
   useEffect(() => {
-    if (isOpen) {
-      fetch('/api/payments/methods')
-        .then((res) => res.json())
-        .then((data) => {
+    if (!isOpen) return;
+    const loadMethods = () => {
+      fetch(`/api/payments/methods?t=${Date.now()}`, { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => {
           if (data.success && data.methods?.length > 0) {
             setMethods(data.methods);
-            setSelectedMethod(data.methods[0]);
+            setSelectedMethod(prev => {
+              if (!prev) return data.methods[0];
+              const matched = data.methods.find(m => (m.id && prev.id && m.id === prev.id) || (m.name === prev.name));
+              return matched || data.methods[0];
+            });
           }
         })
         .catch(() => {});
-    }
+    };
+    loadMethods();
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const copyTag = (tag) => {
-    navigator.clipboard.writeText(tag);
-    setCopiedTag(true);
-    setTimeout(() => setCopiedTag(false), 2000);
+  const handleCopy = (text) => {
+    navigator.clipboard?.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg('Image size must be under 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProofImage(reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleDepositSubmit = async (e) => {
     e.preventDefault();
-    setStatusMsg({ type: '', text: '' });
+    setErrorMsg(null);
+    setMessage(null);
     setLoading(true);
 
     try {
@@ -78,34 +129,38 @@ export default function WalletModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: depositAmount,
-          method: selectedMethod?.name || 'Cash App',
-          referenceNumber: referenceNote,
-          promoCode,
+          amount: Number(depositAmount),
+          methodId: selectedMethod?.methodId,
+          methodName: selectedMethod?.name,
+          senderNote,
+          proofImage,
+          txHash,
         }),
       });
+
       const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to submit deposit.');
-      }
-
-      setStatusMsg({
-        type: 'success',
-        text: 'Deposit submitted successfully! Our financial team is verifying and crediting your account.',
-      });
-      setReferenceNote('');
-      if (onBalanceUpdated) onBalanceUpdated();
-    } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message });
-    } finally {
       setLoading(false);
+
+      if (data.success) {
+        setMessage('Deposit request submitted! Our financial desk is verifying your transfer.');
+        setSenderNote('');
+        setTxHash('');
+        setProofImage('');
+        if (onBalanceUpdated) onBalanceUpdated();
+        window.dispatchEvent(new CustomEvent('balanceUpdated'));
+      } else {
+        setErrorMsg(data.error || 'Failed to submit deposit.');
+      }
+    } catch {
+      setLoading(false);
+      setErrorMsg('Failed to submit deposit. Please try again.');
     }
   };
 
-  const handleCashoutSubmit = async (e) => {
+  const handleRedeemSubmit = async (e) => {
     e.preventDefault();
-    setStatusMsg({ type: '', text: '' });
+    setErrorMsg(null);
+    setMessage(null);
     setLoading(true);
 
     try {
@@ -113,343 +168,918 @@ export default function WalletModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: cashoutAmount,
-          method: cashoutMethod,
-          destinationTag,
+          amount: Number(redeemAmount),
+          payoutMethod,
+          destinationAddress,
         }),
       });
+
       const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to submit cashout.');
-      }
-
-      setStatusMsg({
-        type: 'success',
-        text: `Redemption of $${parseFloat(cashoutAmount).toFixed(2)} requested! Payout will be sent to ${destinationTag} within minutes.`,
-      });
-      setDestinationTag('');
-      if (onBalanceUpdated) onBalanceUpdated();
-    } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message });
-    } finally {
       setLoading(false);
+
+      if (data.success) {
+        setMessage('Prize redemption submitted! Approved payouts are settled promptly.');
+        setDestinationAddress('');
+        if (onBalanceUpdated) onBalanceUpdated();
+        window.dispatchEvent(new CustomEvent('balanceUpdated'));
+      } else {
+        setErrorMsg(data.error || 'Failed to submit redemption.');
+      }
+    } catch {
+      setLoading(false);
+      setErrorMsg('Failed to submit redemption request.');
     }
   };
 
-  const quickAmounts = ['20', '50', '100', '250', '500'];
+  const presetAmounts = [20, 50, 100, 250, 500];
 
   return (
-    <div className="cyber-modal-overlay">
-      <div className="relative w-full max-w-lg rounded-3xl border border-[var(--chrome-border)] bg-[var(--bg-deep)] p-6 md:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden max-h-[92vh] overflow-y-auto">
-        {/* Glow ambient */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--neon-cyan)]/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-[var(--neon-purple)]/10 rounded-full blur-3xl pointer-events-none" />
-
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        backgroundColor: 'rgba(5, 2, 10, 0.88)',
+        backdropFilter: 'blur(12px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+      }}
+    >
+      <div
+        className="modal-scrollable p-4 sm:p-6"
+        style={{
+          width: '100%',
+          maxWidth: '560px',
+          backgroundColor: '#0E0A24',
+          borderRadius: '24px',
+          border: '1px solid rgba(0, 240, 255, 0.35)',
+          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.95), 0 0 40px rgba(0, 240, 255, 0.15)',
+          position: 'relative',
+          color: '#F8FAFC',
+          maxHeight: '92vh',
+        }}
+      >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors z-20"
+          type="button"
+          style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            background: 'rgba(255, 255, 255, 0.06)',
+            border: 'none',
+            borderRadius: '50%',
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#9A91A8',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
         >
           <X size={18} />
         </button>
 
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[var(--neon-cyan)] to-blue-600 flex items-center justify-center text-black font-black shadow-[0_0_15px_rgba(0,240,255,0.4)]">
-            <Wallet size={22} />
-          </div>
-          <div>
-            <h2 className="font-heading font-black text-xl text-white">
-              CASHIER & WALLET
-            </h2>
-            <p className="text-xs text-slate-400">
-              Current Balance:{' '}
-              <span className="font-mono font-bold text-emerald-400">
-                ${Number(user?.balanceSC || 0).toFixed(2)} SC
+        {/* Modal Brand Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
+          <img
+            src="/images/logo.png"
+            alt="Players Paradise Hub"
+            style={{
+              height: '54px',
+              width: 'auto',
+              maxHeight: '60px',
+              objectFit: 'contain',
+              filter: 'drop-shadow(0 0 14px rgba(0, 240, 255, 0.5)) drop-shadow(0 0 20px rgba(224, 38, 216, 0.4))',
+            }}
+          />
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h2 style={{ fontFamily: 'Lexend, sans-serif', fontSize: '20px', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
+                Sovereign Cashier & Vault
+              </h2>
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontFamily: 'Lexend, sans-serif',
+                  fontWeight: 800,
+                  padding: '3px 8px',
+                  borderRadius: '9999px',
+                  backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                  color: '#00F0FF',
+                  border: '1px solid rgba(0, 240, 255, 0.3)',
+                }}
+              >
+                USD CASH
               </span>
+            </div>
+            <p style={{ fontSize: '12px', color: '#9A91A8', margin: '2px 0 0 0', fontFamily: 'Lexend, sans-serif' }}>
+              Instant settlements · Zero fees on sweepstakes transfers
             </p>
           </div>
         </div>
 
-        {/* Switcher */}
-        <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-900 border border-slate-800 mb-5">
+        {/* User Unified Balance Strip */}
+        {user && (
+          <div
+            style={{
+              backgroundColor: '#070514',
+              borderRadius: '14px',
+              padding: '12px 18px',
+              marginBottom: '18px',
+              border: '1px solid rgba(0, 240, 255, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <span style={{ fontSize: '10px', fontFamily: 'Lexend, sans-serif', fontWeight: 700, color: '#9A91A8', textTransform: 'uppercase' }}>
+                Unified Vault Balance
+              </span>
+              <p style={{ margin: '2px 0 0 0', fontFamily: 'Lexend, sans-serif', fontSize: '20px', fontWeight: 900, color: '#00F0FF' }}>
+                ${Number(user.balanceSC ?? user.balance ?? 0).toFixed(2)}
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '10px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#E026D8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                STATUS
+              </span>
+              <p style={{ margin: '2px 0 0 0', fontFamily: 'Lexend, sans-serif', fontSize: '12px', fontWeight: 800, color: '#FFFFFF' }}>
+                Verified Player
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Switcher Pills */}
+        {/* Separate Standalone Action Tabs */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '10px',
+            marginBottom: '20px',
+          }}
+        >
           <button
             type="button"
-            onClick={() => {
-              setTab('deposit');
-              setStatusMsg({ type: '', text: '' });
+            onClick={() => { setActiveTab('deposit'); setMessage(null); setErrorMsg(null); }}
+            style={{
+              padding: '10px 4px',
+              borderRadius: '12px',
+              border: activeTab === 'deposit' ? '1px solid #00F0FF' : '1px solid rgba(0, 240, 255, 0.22)',
+              backgroundColor: activeTab === 'deposit' ? '#00F0FF' : '#0E0A24',
+              color: activeTab === 'deposit' ? '#070514' : '#C8C1D4',
+              fontFamily: 'Lexend, sans-serif',
+              fontSize: '11px',
+              fontWeight: 900,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.2s',
+              boxShadow: activeTab === 'deposit' ? '0 4px 16px rgba(0, 240, 255, 0.35)' : '0 2px 8px rgba(0, 0, 0, 0.3)',
             }}
-            className={`flex items-center justify-center gap-2 py-2.5 text-xs font-heading font-bold rounded-lg transition-all ${
-              tab === 'deposit'
-                ? 'bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 text-black shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
           >
-            <ArrowDownLeft size={16} />
-            <span>INSTANT DEPOSIT</span>
+            <ArrowDownCircle size={14} />
+            <span>DEPOSIT</span>
           </button>
           <button
             type="button"
-            onClick={() => {
-              setTab('withdraw');
-              setStatusMsg({ type: '', text: '' });
+            onClick={() => { setActiveTab('redeem'); setMessage(null); setErrorMsg(null); }}
+            style={{
+              padding: '10px 4px',
+              borderRadius: '12px',
+              border: activeTab === 'redeem' ? '1px solid #00F0FF' : '1px solid rgba(0, 240, 255, 0.22)',
+              backgroundColor: activeTab === 'redeem' ? '#00F0FF' : '#0E0A24',
+              color: activeTab === 'redeem' ? '#070514' : '#C8C1D4',
+              fontFamily: 'Lexend, sans-serif',
+              fontSize: '11px',
+              fontWeight: 900,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.2s',
+              boxShadow: activeTab === 'redeem' ? '0 4px 16px rgba(0, 240, 255, 0.35)' : '0 2px 8px rgba(0, 0, 0, 0.3)',
             }}
-            className={`flex items-center justify-center gap-2 py-2.5 text-xs font-heading font-bold rounded-lg transition-all ${
-              tab === 'withdraw'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-black shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
           >
-            <ArrowUpRight size={16} />
-            <span>REDEEM CASHOUT</span>
+            <ArrowUpCircle size={14} />
+            <span>CASHOUT</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('history'); setMessage(null); setErrorMsg(null); }}
+            style={{
+              padding: '10px 4px',
+              borderRadius: '12px',
+              border: activeTab === 'history' ? '1px solid #00F0FF' : '1px solid rgba(0, 240, 255, 0.22)',
+              backgroundColor: activeTab === 'history' ? '#00F0FF' : '#0E0A24',
+              color: activeTab === 'history' ? '#070514' : '#C8C1D4',
+              fontFamily: 'Lexend, sans-serif',
+              fontSize: '11px',
+              fontWeight: 900,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.2s',
+              boxShadow: activeTab === 'history' ? '0 4px 16px rgba(0, 240, 255, 0.35)' : '0 2px 8px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <Clock size={14} />
+            <span>HISTORY</span>
           </button>
         </div>
 
-        {/* Status Alerts */}
-        {statusMsg.text && (
+        {/* Feedback Messages */}
+        {message && (
           <div
-            className={`mb-4 p-3 rounded-xl border flex items-center gap-2 text-xs ${
-              statusMsg.type === 'success'
-                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
-                : 'bg-red-950/60 border-red-500/50 text-red-200'
-            }`}
+            style={{
+              backgroundColor: 'rgba(20, 184, 166, 0.15)',
+              border: '1px solid rgba(20, 184, 166, 0.35)',
+              color: '#5EEAD4',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontFamily: 'Lexend, sans-serif',
+              marginBottom: '16px',
+              textAlign: 'center',
+            }}
           >
-            {statusMsg.type === 'success' ? (
-              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-            ) : (
-              <AlertCircle size={16} className="text-red-400 shrink-0" />
-            )}
-            <span>{statusMsg.text}</span>
+            ✓ {message}
+          </div>
+        )}
+        {errorMsg && (
+          <div
+            style={{
+              backgroundColor: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#FCA5A5',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontFamily: 'Lexend, sans-serif',
+              marginBottom: '16px',
+              textAlign: 'center',
+            }}
+          >
+            ⚠ {errorMsg}
           </div>
         )}
 
         {/* TAB 1: DEPOSIT */}
-        {tab === 'deposit' && (
-          <form onSubmit={handleDepositSubmit} className="space-y-4">
-            {/* Method Chooser */}
+        {activeTab === 'deposit' && (
+          <form onSubmit={handleDepositSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Step 1: Select Payment Gateway */}
             <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-2">
-                1. SELECT PAYMENT GATEWAY
+              <label style={{ display: 'block', fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#C8C1D4', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                1. SELECT PAYMENT METHOD
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {methods.map((m) => {
-                  const selected = selectedMethod?.methodId === m.methodId;
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                {methods.map(m => {
+                  const isSel = selectedMethod?.id === m.id;
                   return (
                     <button
-                      key={m.id || m.methodId}
                       type="button"
+                      key={m.id}
                       onClick={() => setSelectedMethod(m)}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
-                        selected
-                          ? 'border-[var(--neon-cyan)] bg-[var(--neon-cyan)]/15 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
-                          : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
-                      }`}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '14px',
+                        backgroundColor: isSel ? 'rgba(0, 240, 255, 0.15)' : '#070514',
+                        border: isSel ? '1px solid #00F0FF' : '1px solid rgba(0, 240, 255, 0.12)',
+                        boxShadow: isSel ? '0 0 16px rgba(0, 240, 255, 0.25)' : 'none',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                      }}
                     >
-                      <div className="font-heading font-bold text-xs text-white">
+                      <span style={{ fontSize: '12px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: isSel ? '#00F0FF' : '#C8C1D4' }}>
                         {m.name}
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                        {m.badge || `Min: $${m.minDeposit}`}
-                      </div>
+                      </span>
+                      <span style={{ fontSize: '10px', color: '#00F0FF', fontWeight: 700, marginTop: '4px' }}>
+                        {m.tag || 'Instant'}
+                      </span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Selected Method Details & Tag */}
-            {selectedMethod && (
-              <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-sub font-bold text-slate-400">
-                    SEND PAYMENT TO:
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30">
-                    VERIFIED OFFICIAL DESK
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="font-mono font-bold text-sm text-[var(--neon-cyan)] select-all">
-                    {selectedMethod.tag || '$PlayersParadiseHub'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => copyTag(selectedMethod.tag || '$PlayersParadiseHub')}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 transition-colors"
-                  >
-                    {copiedTag ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                    <span>{copiedTag ? 'COPIED' : 'COPY'}</span>
-                  </button>
-                </div>
-
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  {selectedMethod.instructions}
-                </p>
-              </div>
-            )}
-
-            {/* Amount input & Quick Chips */}
+            {/* Step 2: Amount Presets */}
             <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1.5">
-                2. ENTER AMOUNT (USD)
-              </label>
-              <div className="flex items-center gap-2 mb-2">
-                {quickAmounts.map((amt) => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
+                <label style={{ fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#C8C1D4', letterSpacing: '0.05em' }}>
+                  2. SELECT AMOUNT
+                </label>
+                <span style={{ fontSize: '11px', color: '#00F0FF', fontFamily: 'Lexend, sans-serif', fontWeight: 800 }}>
+                  Bonus: +{(depositAmount * 10000).toLocaleString()} GC FREE
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginBottom: '8px' }}>
+                {presetAmounts.map(amt => (
                   <button
-                    key={amt}
                     type="button"
+                    key={amt}
                     onClick={() => setDepositAmount(amt)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold font-mono transition-all ${
-                      depositAmount === amt
-                        ? 'bg-[var(--neon-cyan)] text-black shadow-md'
-                        : 'bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800'
-                    }`}
+                    style={{
+                      padding: '8px 0',
+                      borderRadius: '10px',
+                      backgroundColor: depositAmount === amt ? '#00F0FF' : '#070514',
+                      color: depositAmount === amt ? '#070514' : '#C8C1D4',
+                      border: depositAmount === amt ? '1px solid #00F0FF' : '1px solid rgba(255, 255, 255, 0.08)',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 900,
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
                   >
                     ${amt}
                   </button>
                 ))}
               </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="10"
-                  max="10000"
-                  step="1"
-                  required
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="cyber-input pl-8 font-mono font-bold text-base"
-                />
-                <span className="absolute left-3 top-3 text-slate-400 font-bold">$</span>
-              </div>
-            </div>
-
-            {/* Reference note / Cashtag identifier */}
-            <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1">
-                3. TRANSACTION NOTE OR CASHTAG (FOR FAST MATCH)
-              </label>
               <input
-                type="text"
-                placeholder="e.g. Sent from $JohnDoe77 or Ref# 928374"
-                value={referenceNote}
-                onChange={(e) => setReferenceNote(e.target.value)}
-                className="cyber-input"
+                type="number"
+                min="5"
+                step="1"
+                placeholder="Custom Amount ($5 minimum)"
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(Number(e.target.value))}
+                required
+                style={{
+                  width: '100%',
+                  backgroundColor: '#0E0816',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  color: '#FFFFFF',
+                  fontFamily: 'Lexend, sans-serif',
+                  fontWeight: 800,
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
 
-            {/* Promo Code */}
+            {/* Step 3: Cashier Transfer Instructions */}
+            {selectedMethod && (() => {
+              const identifier = selectedMethod.accountDetails || selectedMethod.details || selectedMethod.cashtag || selectedMethod.address || '';
+              const instructions = selectedMethod.instructions || selectedMethod.notes || '';
+              return (
+                <div
+                  style={{
+                    backgroundColor: '#0E0816',
+                    borderRadius: '14px',
+                    padding: '14px',
+                    border: '1px solid rgba(0, 240, 255, 0.25)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '10px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#A69FB3', textTransform: 'uppercase' }}>
+                      Send Payment To Official Cashier:
+                    </span>
+                    {identifier && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(identifier)}
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          color: '#00F0FF',
+                          fontSize: '11px',
+                          fontFamily: 'Lexend, sans-serif',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        {copied ? <Check size={12} color="#00F0FF" /> : <Copy size={12} />}
+                        <span>{copied ? 'COPIED!' : 'COPY'}</span>
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      backgroundColor: '#070514',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontFamily: 'monospace',
+                      fontSize: '13px',
+                      color: '#00F0FF',
+                      fontWeight: 700,
+                      wordBreak: 'break-all',
+                      marginBottom: '8px',
+                      border: '1px solid rgba(0, 240, 255, 0.2)',
+                    }}
+                  >
+                    {identifier || 'Contact 24/7 Live Desk for Tag'}
+                  </div>
+
+                  {/* Direct Payment Link */}
+                  {selectedMethod.paymentUrl && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <a
+                        href={selectedMethod.paymentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '8px 14px',
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, #00F0FF 0%, #00B4D8 100%)',
+                          color: '#070514',
+                          fontWeight: 900,
+                          fontSize: '11px',
+                          fontFamily: 'Lexend, sans-serif',
+                          textDecoration: 'none',
+                          boxShadow: '0 4px 14px rgba(0, 240, 255, 0.35)',
+                        }}
+                      >
+                        <span>⚡ Pay Directly on {selectedMethod.name}</span>
+                        <ExternalLink size={12} />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Scannable QR Code */}
+                  {selectedMethod.qrCode && (
+                    <div
+                      style={{
+                        margin: '10px 0',
+                        padding: '12px',
+                        borderRadius: '12px',
+                        backgroundColor: '#070514',
+                        border: '1px solid rgba(0, 240, 255, 0.25)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '8px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', fontWeight: 900, color: '#00F0FF', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <QrCode size={13} />
+                        <span>Scan QR Code to Pay ({selectedMethod.name})</span>
+                      </div>
+                      <div style={{ padding: '6px', backgroundColor: '#FFFFFF', borderRadius: '10px', boxShadow: '0 4px 14px rgba(0,0,0,0.5)' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={selectedMethod.qrCode}
+                          alt={`${selectedMethod.name} QR Code`}
+                          style={{ width: '150px', height: '150px', objectFit: 'contain', display: 'block' }}
+                        />
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+                        Scan using your {selectedMethod.name} app to auto-pay
+                      </span>
+                    </div>
+                  )}
+
+                  {instructions && (
+                    <p style={{ margin: 0, fontSize: '11px', color: '#9A91A8', lineHeight: 1.4, fontFamily: 'Lexend, sans-serif' }}>
+                      {instructions}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Step 4: Receipt Proof Screenshot Upload */}
             <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1">
-                PROMO / BONUS CODE (OPTIONAL)
+              <label style={{ display: 'block', fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#C8C1D4', marginBottom: '6px', letterSpacing: '0.05em' }}>
+                3. ATTACH PAYMENT PROOF RECEIPT
               </label>
-              <div className="relative">
+              <div
+                style={{
+                  border: '1px dashed rgba(0, 240, 255, 0.3)',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  backgroundColor: '#070514',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  position: 'relative',
+                }}
+              >
                 <input
-                  type="text"
-                  placeholder="e.g. PARADISE100"
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                  className="cyber-input uppercase pl-9"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    opacity: 0,
+                    cursor: 'pointer',
+                    width: '100%',
+                    height: '100%',
+                  }}
                 />
-                <Tag size={15} className="absolute left-3 top-3.5 text-slate-500" />
+                {proofImage ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#00F0FF', fontSize: '12px', fontWeight: 700 }}>
+                    <Check size={16} />
+                    <span>Receipt screenshot attached successfully!</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', color: '#9A91A8', fontSize: '11px' }}>
+                    <Upload size={18} color="#00F0FF" />
+                    <span>Click or tap to upload payment screenshot / receipt</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Submit */}
+            {/* Optional Note */}
+            <div>
+              <input
+                type="text"
+                placeholder="Sender username or transaction note (Optional)"
+                value={senderNote}
+                onChange={(e) => setSenderNote(e.target.value)}
+                style={{
+                  width: '100%',
+                  backgroundColor: '#0E0816',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  color: '#FFFFFF',
+                  fontSize: '12px',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full cyber-btn-cyan py-3 rounded-xl font-heading font-black text-sm tracking-wider"
+              className="btn-sovereign-coral"
+              style={{
+                width: '100%',
+                padding: '14px 0',
+                fontSize: '13px',
+                letterSpacing: '0.04em',
+              }}
             >
-              {loading ? 'SUBMITTING TRANSACTION...' : 'I HAVE SENT PAYMENT • CONFIRM DEPOSIT'}
+              <span>{loading ? 'PROCESSING DEPOSIT...' : `SUBMIT $${depositAmount} DEPOSIT REQUEST`}</span>
             </button>
           </form>
         )}
 
-        {/* TAB 2: CASHOUT */}
-        {tab === 'withdraw' && (
-          <form onSubmit={handleCashoutSubmit} className="space-y-4">
-            <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-emerald-500/30 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-sub font-bold text-slate-400">
-                  REDEEMABLE BALANCE
-                </span>
-                <div className="font-heading font-black text-lg text-emerald-400">
-                  ${Number(user?.balanceSC || 0).toFixed(2)} SC
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400">MIN CASHOUT</span>
-                <div className="font-mono font-bold text-xs text-white">$25.00 SC</div>
-              </div>
-            </div>
-
+        {/* TAB 2: REDEEM / WITHDRAWAL */}
+        {activeTab === 'redeem' && (
+          <form onSubmit={handleRedeemSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Payout Method */}
             <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1.5">
-                PAYOUT GATEWAY
+              <label style={{ display: 'block', fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#C8C1D4', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                1. SELECT PAYOUT DESTINATION
               </label>
-              <select
-                value={cashoutMethod}
-                onChange={(e) => setCashoutMethod(e.target.value)}
-                className="cyber-input bg-slate-900"
-              >
-                <option value="Cash App">Cash App Pay (Instant)</option>
-                <option value="Chime">Chime Direct Deposit</option>
-                <option value="Zelle">Zelle Instant Bank Transfer</option>
-                <option value="Bitcoin">Bitcoin (BTC Crypto Wallet)</option>
-                <option value="USDT">USDT Tether (TRC-20)</option>
-              </select>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                {['Cash App', 'Venmo', 'Zelle', 'Bitcoin'].map(method => (
+                  <button
+                    type="button"
+                    key={method}
+                    onClick={() => setPayoutMethod(method)}
+                    style={{
+                      padding: '10px 0',
+                      borderRadius: '12px',
+                      backgroundColor: payoutMethod === method ? '#14B8A6' : '#0E0816',
+                      color: payoutMethod === method ? '#0E0816' : '#C8C1D4',
+                      border: payoutMethod === method ? '1px solid #14B8A6' : '1px solid rgba(255, 255, 255, 0.08)',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 800,
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {method}
+                  </button>
+                ))}
+              </div>
             </div>
 
+            {/* Destination Handle / Address */}
             <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1.5">
-                YOUR CASHTAG / WALLET ADDRESS
+              <label style={{ display: 'block', fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#C8C1D4', marginBottom: '6px', letterSpacing: '0.05em' }}>
+                2. YOUR {payoutMethod.toUpperCase()} HANDLE / ADDRESS
               </label>
               <input
                 type="text"
-                required
                 placeholder={
-                  cashoutMethod === 'Cash App'
-                    ? 'e.g. $MyCashtag'
-                    : cashoutMethod === 'Bitcoin'
-                    ? '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'
-                    : 'Your account handle / email'
+                  payoutMethod === 'Cash App'
+                    ? 'Enter $Cashtag (e.g. $JohnDoe)'
+                    : payoutMethod === 'Venmo'
+                    ? 'Enter @VenmoHandle'
+                    : payoutMethod === 'Zelle'
+                    ? 'Enter registered email or phone'
+                    : 'Enter Bitcoin wallet address'
                 }
-                value={destinationTag}
-                onChange={(e) => setDestinationTag(e.target.value)}
-                className="cyber-input"
+                value={destinationAddress}
+                onChange={(e) => setDestinationAddress(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  backgroundColor: '#0E0816',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  color: '#FFFFFF',
+                  fontFamily: 'Lexend, sans-serif',
+                  fontSize: '13px',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
 
+            {/* Amount */}
             <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1.5">
-                AMOUNT TO REDEEM (MIN $25)
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="25"
-                  max={user?.balanceSC || 10000}
-                  step="1"
-                  required
-                  value={cashoutAmount}
-                  onChange={(e) => setCashoutAmount(e.target.value)}
-                  className="cyber-input pl-8 font-mono font-bold text-base"
-                />
-                <span className="absolute left-3 top-3 text-slate-400 font-bold">$</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                <label style={{ fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#C8C1D4', letterSpacing: '0.05em' }}>
+                  3. REDEMPTION AMOUNT (MIN: 20 SC)
+                </label>
+                {user && (
+                  <button
+                    type="button"
+                    onClick={() => setRedeemAmount(Math.floor(user.balanceSC || 0))}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#14B8A6',
+                      fontSize: '11px',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    MAX (${Number(user.balanceSC || 0).toFixed(2)})
+                  </button>
+                )}
               </div>
+              <input
+                type="number"
+                min="20"
+                step="1"
+                placeholder="Enter SC amount (minimum 20.00)"
+                value={redeemAmount}
+                onChange={(e) => setRedeemAmount(Number(e.target.value))}
+                required
+                style={{
+                  width: '100%',
+                  backgroundColor: '#0E0816',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  color: '#FFFFFF',
+                  fontFamily: 'Lexend, sans-serif',
+                  fontWeight: 800,
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
+              />
             </div>
 
+            {/* Payout Security Notice */}
+            <div
+              style={{
+                backgroundColor: 'rgba(20, 184, 166, 0.08)',
+                border: '1px solid rgba(20, 184, 166, 0.25)',
+                borderRadius: '12px',
+                padding: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <ShieldCheck size={20} color="#14B8A6" style={{ shrink: 0 }} />
+              <p style={{ margin: 0, fontSize: '11px', color: '#CBD5E1', lineHeight: 1.4 }}>
+                Redemptions are verified against anti-fraud protocols and processed directly to your payout handle.
+              </p>
+            </div>
+
+            {/* Submit Redemption */}
             <button
               type="submit"
-              disabled={loading || (user?.balanceSC || 0) < 25}
-              className="w-full py-3 rounded-xl font-heading font-black text-sm tracking-wider bg-gradient-to-r from-emerald-500 to-teal-500 text-black shadow-lg hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
+              className="btn-sovereign-teal"
+              style={{
+                width: '100%',
+                padding: '14px 0',
+                fontSize: '13px',
+                letterSpacing: '0.04em',
+              }}
             >
-              {loading ? 'PROCESSING CASHOUT...' : 'CONFIRM INSTANT REDEMPTION'}
+              <span>{loading ? 'PROCESSING REDEMPTION...' : `REDEEM $${redeemAmount} CASH PRIZE`}</span>
             </button>
           </form>
+        )}
+
+        {/* TAB 3: VAULT STATUS & AUDIT TRAIL */}
+        {activeTab === 'history' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <div>
+                <h3 style={{ fontFamily: 'Lexend, sans-serif', fontSize: '13px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
+                  Vault Activity & Payout History
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+                  Live ledger of deposits, redemptions & staff audit decisions
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchHistory}
+                disabled={loadingHistory}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  color: '#C8C1D4',
+                  fontSize: '11px',
+                  fontFamily: 'Lexend, sans-serif',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                <Clock size={12} />
+                <span>{loadingHistory ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
+            </div>
+
+            {loadingHistory ? (
+              <div style={{ textAlign: 'center', padding: '36px 0', color: '#9A91A8', fontSize: '12px', fontFamily: 'Lexend, sans-serif' }}>
+                <Clock size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#00F0FF' }} />
+                Fetching vault transaction logs...
+              </div>
+            ) : historyItems.length === 0 ? (
+              <div
+                style={{
+                  textAlign: 'center',
+                  padding: '40px 20px',
+                  backgroundColor: '#0E0816',
+                  borderRadius: '16px',
+                  border: '1px dashed rgba(255, 255, 255, 0.1)',
+                }}
+              >
+                <Wallet size={28} color="#6E6280" style={{ margin: '0 auto 10px auto', display: 'block' }} />
+                <p style={{ margin: 0, fontFamily: 'Lexend, sans-serif', fontSize: '13px', fontWeight: 700, color: '#C8C1D4' }}>
+                  No Transaction Records Found
+                </p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#6E6280', fontFamily: 'Lexend, sans-serif' }}>
+                  Make your first deposit to fund your sweepstakes wallet.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                {historyItems.map((item) => {
+                  const isDeposit = item.kind === 'DEPOSIT';
+                  const isApproved = item.status === 'APPROVED';
+                  const isRejected = item.status === 'REJECTED';
+                  const isPending = !isApproved && !isRejected;
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        backgroundColor: '#0E0816',
+                        borderRadius: '14px',
+                        padding: '14px 16px',
+                        border: isRejected
+                          ? '1px solid rgba(239, 68, 68, 0.4)'
+                          : isApproved
+                          ? '1px solid rgba(20, 184, 166, 0.3)'
+                          : '1px solid rgba(255, 255, 255, 0.08)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '10px',
+                              backgroundColor: isDeposit ? 'rgba(0, 240, 255, 0.15)' : 'rgba(224, 38, 216, 0.15)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {isDeposit ? <ArrowDownCircle size={16} color="#00F0FF" /> : <ArrowUpCircle size={16} color="#E026D8" />}
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '12px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#FFFFFF' }}>
+                              {isDeposit ? 'Deposit' : 'Redemption'} · {item.methodName || item.payoutMethod || 'Cash'}
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '10px', color: '#6E6280', fontFamily: 'Lexend, sans-serif' }}>
+                              {item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Recent'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <span
+                            style={{
+                              fontFamily: 'Lexend, sans-serif',
+                              fontSize: '14px',
+                              fontWeight: 900,
+                              color: isDeposit ? '#00F0FF' : '#E026D8',
+                            }}
+                          >
+                            {isDeposit ? '+' : '-'}${Number(item.amount || 0).toFixed(2)}
+                          </span>
+                          <div>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                marginTop: '3px',
+                                fontSize: '9.5px',
+                                fontFamily: 'Lexend, sans-serif',
+                                fontWeight: 800,
+                                padding: '2px 8px',
+                                borderRadius: '9999px',
+                                backgroundColor: isApproved
+                                  ? 'rgba(0, 240, 255, 0.15)'
+                                  : isRejected
+                                  ? 'rgba(239, 68, 68, 0.15)'
+                                  : 'rgba(224, 38, 216, 0.15)',
+                                color: isApproved ? '#00F0FF' : isRejected ? '#F87171' : '#E026D8',
+                                border: `1px solid ${
+                                  isApproved
+                                    ? 'rgba(0, 240, 255, 0.3)'
+                                    : isRejected
+                                    ? 'rgba(239, 68, 68, 0.35)'
+                                    : 'rgba(224, 38, 216, 0.3)'
+                                }`,
+                              }}
+                            >
+                              {item.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Destination handle for redemptions */}
+                      {!isDeposit && item.destinationAddress && (
+                        <div style={{ fontSize: '11px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif', wordBreak: 'break-all' }}>
+                          Payout Handle: <span style={{ color: '#E2E8F0', fontWeight: 600 }}>{item.destinationAddress}</span>
+                        </div>
+                      )}
+
+                      {/* Rejection Note Display */}
+                      {isRejected && item.rejectReason && (
+                        <div
+                          style={{
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: '10px',
+                            padding: '10px 12px',
+                            marginTop: '4px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#F87171', fontSize: '10.5px', fontWeight: 800, fontFamily: 'Lexend, sans-serif' }}>
+                            <AlertCircle size={13} />
+                            <span>STAFF REJECTION NOTE / REASON:</span>
+                          </div>
+                          <p style={{ margin: '4px 0 0 0', fontSize: '11.5px', color: '#FECACA', fontFamily: 'Lexend, sans-serif', lineHeight: 1.4 }}>
+                            {item.rejectReason}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

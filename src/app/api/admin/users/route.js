@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
+import bcrypt from 'bcryptjs';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
@@ -33,6 +34,7 @@ export async function GET(req) {
         id: u._id ? u._id.toString() : u.id,
         username: u.username,
         email: u.email,
+        phone: u.phone || '',
         role: u.role,
         balanceSC: u.balanceSC || 0,
         balanceGC: u.balanceGC || 0,
@@ -47,16 +49,16 @@ export async function GET(req) {
   }
 }
 
-// PATCH toggle ban or update user
+// PATCH toggle ban, reset password, or update user
 export async function PATCH(req) {
   try {
     const session = await getSessionUser();
-    if (!session || session.role !== ROLES.SUPER_ADMIN && session.role !== ROLES.OPERATION_ADMIN) {
+    if (!session || (session.role !== ROLES.SUPER_ADMIN && session.role !== ROLES.OPERATION_ADMIN)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
     }
 
     const body = await req.json();
-    const { userId, isBanned, vipTier, kycStatus } = body;
+    const { userId, isBanned, vipTier, kycStatus, newPassword } = body;
 
     const db = await getDb();
     const usersCol = db.collection('users');
@@ -64,15 +66,22 @@ export async function PATCH(req) {
     let filter = { _id: userId };
     if (ObjectId.isValid(userId)) filter = { _id: new ObjectId(userId) };
 
-    const updateFields = {};
+    const updateFields = { updatedAt: new Date() };
     if (isBanned !== undefined) updateFields.isBanned = isBanned;
     if (vipTier) updateFields.vipTier = vipTier;
     if (kycStatus) updateFields.kycStatus = kycStatus;
+    if (newPassword && newPassword.trim().length >= 4) {
+      updateFields.passwordHash = await bcrypt.hash(newPassword.trim(), 10);
+    }
 
     await usersCol.updateOne(filter, { $set: updateFields });
 
-    return NextResponse.json({ success: true, message: 'User status updated successfully.' });
+    return NextResponse.json({
+      success: true,
+      message: newPassword ? 'Password reset successfully!' : 'User status updated successfully.',
+    });
   } catch (err) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+

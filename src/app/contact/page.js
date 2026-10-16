@@ -13,6 +13,7 @@ export default function ContactPage() {
   const router = useRouter();
   const [sent, setSent] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', subject: '', message: '' });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -24,8 +25,8 @@ export default function ContactPage() {
       <CyberSidebar
         collapsed={false}
         setCollapsed={() => {}}
-        mobileOpen={false}
-        setMobileOpen={() => {}}
+        mobileOpen={mobileSidebarOpen}
+        setMobileOpen={setMobileSidebarOpen}
         user={null}
         onOpenWallet={() => router.push('/wallet')}
         onOpenGameRequest={() => router.push('/')}
@@ -35,7 +36,7 @@ export default function ContactPage() {
 
       <div className="flex-1 flex flex-col lg:pl-64">
         <CyberNavbar
-          onToggleSidebar={() => {}}
+          onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={null}
           onOpenAuth={() => router.push('/')}
           onOpenWallet={() => router.push('/wallet')}

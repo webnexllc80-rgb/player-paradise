@@ -5,6 +5,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'players_paradise_cyber_secret_key_
 
 export const ROLES = {
   SUPER_ADMIN: 'super_admin',
+  ADMIN: 'admin',
   OPERATION_ADMIN: 'operation_admin',
   FINANCIAL_MANAGER: 'financial_manager',
   COIN_MANAGER: 'coin_manager',
@@ -12,11 +13,13 @@ export const ROLES = {
   PLAYER: 'player',
 };
 
-// Map each role to permitted administrative tabs (No affiliates)
+// Map each role to permitted administrative tabs
 export const ROLE_PERMISSIONS = {
   [ROLES.SUPER_ADMIN]: [
     'overview',
     'requests',
+    'account_requests',
+    'coins_allotment',
     'games',
     'finance',
     'gateways',
@@ -24,14 +27,17 @@ export const ROLE_PERMISSIONS = {
     'users',
     'ledger',
     'chat',
-    'kyc',
     'promos',
+    'affiliates',
+    'affiliate_commissions',
     'staff',
     'settings',
   ],
   [ROLES.OPERATION_ADMIN]: [
     'overview',
     'requests',
+    'account_requests',
+    'coins_allotment',
     'games',
     'finance',
     'gateways',
@@ -39,27 +45,47 @@ export const ROLE_PERMISSIONS = {
     'users',
     'ledger',
     'chat',
-    'kyc',
     'promos',
+    'affiliates',
+    'affiliate_commissions',
   ],
   [ROLES.FINANCIAL_MANAGER]: [
     'overview',
     'finance',
+    'coins_allotment',
     'ledger',
     'gateways',
     'tx_search',
-    'kyc',
   ],
   [ROLES.COIN_MANAGER]: [
     'overview',
     'requests',
+    'account_requests',
+    'coins_allotment',
     'tx_search',
   ],
   [ROLES.CHAT_SUPPORT]: [
     'overview',
     'chat',
   ],
-  [ROLES.PLAYER]: [],
+  [ROLES.ADMIN]: [
+    'overview',
+    'requests',
+    'account_requests',
+    'coins_allotment',
+    'games',
+    'finance',
+    'gateways',
+    'tx_search',
+    'users',
+    'ledger',
+    'chat',
+    'promos',
+    'affiliates',
+    'affiliate_commissions',
+    'staff',
+    'settings',
+  ],
 };
 
 export function signToken(payload, expiresIn = '7d') {
@@ -77,7 +103,7 @@ export function verifyToken(token) {
 export async function getSessionUser() {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('players_session')?.value;
+    const token = cookieStore.get('players_session')?.value || cookieStore.get('vegas_session')?.value;
     if (!token) return null;
     return verifyToken(token);
   } catch {
@@ -85,8 +111,8 @@ export async function getSessionUser() {
   }
 }
 
-export function hasPermission(userRole, tab) {
-  if (!userRole) return false;
-  const allowed = ROLE_PERMISSIONS[userRole] || [];
-  return allowed.includes(tab);
+export function hasPermission(role, section) {
+  if (role === ROLES.SUPER_ADMIN) return true;
+  const allowed = ROLE_PERMISSIONS[role] || [];
+  return allowed.includes(section);
 }

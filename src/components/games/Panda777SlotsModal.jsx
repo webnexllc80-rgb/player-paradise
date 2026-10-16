@@ -86,7 +86,7 @@ export default function Panda777SlotsModal({
 
   return (
     <div className="cyber-modal-overlay">
-      <div className="relative w-full max-w-xl rounded-3xl border-2 border-[var(--neon-cyan)] bg-[#070919] p-6 md:p-8 shadow-[0_0_50px_rgba(0,240,255,0.35)] overflow-hidden">
+      <div className="relative w-full max-w-xl rounded-3xl border-2 border-[var(--neon-cyan)] bg-[#070919] p-4 sm:p-6 md:p-8 shadow-[0_0_50px_rgba(0,240,255,0.35)] max-h-[92vh] overflow-y-auto modal-scrollable">
         {/* Glow & Sound buttons */}
         <div className="absolute top-0 right-1/4 w-72 h-72 bg-[var(--neon-cyan)]/15 rounded-full blur-3xl pointer-events-none" />
 
@@ -146,48 +146,18 @@ export default function Panda777SlotsModal({
           )}
         </div>
 
-        {/* Currency & Bet Controls */}
+        {/* Single Currency & Bet Controls */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            {/* Currency switch */}
-            <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrency('SC');
-                  setBet(1);
-                }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold font-mono ${
-                  currency === 'SC'
-                    ? 'bg-emerald-500 text-black shadow-md'
-                    : 'text-slate-400'
-                }`}
-              >
-                SC (Cash)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrency('GC');
-                  setBet(500);
-                }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold font-mono ${
-                  currency === 'GC'
-                    ? 'bg-purple-500 text-white shadow-md'
-                    : 'text-slate-400'
-                }`}
-              >
-                GC (Arcade)
-              </button>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SELECT CHIP:</span>
             </div>
 
-            {/* Current Balance */}
+            {/* Current Single Balance */}
             <div className="text-right">
-              <span className="text-[10px] text-slate-400">BALANCE:</span>
-              <div className="font-mono font-bold text-sm text-white">
-                {currency === 'SC'
-                  ? `$${Number(user?.balanceSC || 0).toFixed(2)} SC`
-                  : `${Number(user?.balanceGC || 0).toLocaleString()} GC`}
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">BALANCE:</span>
+              <div className="font-mono font-black text-sm text-emerald-400">
+                ${Number(user?.balance ?? user?.balanceSC ?? 0).toFixed(2)}
               </div>
             </div>
           </div>
@@ -204,7 +174,7 @@ export default function Panda777SlotsModal({
                     : 'bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800'
                 }`}
               >
-                {currency === 'SC' ? `$${chip}` : chip.toLocaleString()}
+                ${chip}
               </button>
             ))}
           </div>
@@ -215,7 +185,7 @@ export default function Panda777SlotsModal({
             disabled={spinning}
             className="w-full py-4 rounded-2xl font-heading font-black text-lg tracking-widest bg-gradient-to-r from-[var(--neon-cyan)] via-blue-500 to-[var(--neon-purple)] text-black shadow-[0_0_30px_rgba(0,240,255,0.5)] hover:scale-101 active:scale-99 transition-all disabled:opacity-50"
           >
-            {spinning ? 'SPINNING MATRIX...' : `SPIN • BET ${currency === 'SC' ? `$${bet}` : bet.toLocaleString()} ${currency}`}
+            {spinning ? 'SPINNING MATRIX...' : `SPIN • BET $${bet}`}
           </button>
         </div>
       </div>

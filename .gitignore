@@ -22,3 +22,6 @@ yarn-error.log*
 # OS Files
 .DS_Store
 *.pem
+*firebase-adminsdk*.json
+firebase-service-account.json
+firebase-admin.json

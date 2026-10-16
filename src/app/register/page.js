@@ -41,7 +41,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-white flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md p-8 rounded-3xl border border-[var(--chrome-border)] bg-[#070919] shadow-2xl space-y-6 relative overflow-hidden">
+      <div className="w-full max-w-md p-5 sm:p-8 rounded-3xl border border-[var(--chrome-border)] bg-[#070919] shadow-2xl space-y-6 relative overflow-hidden">
         <div className="text-center space-y-3">
           <Link href="/">
             <div

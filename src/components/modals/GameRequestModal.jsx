@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   X,
   KeyRound,
@@ -19,6 +20,7 @@ export default function GameRequestModal({
   onRequestCreated,
   onOpenAuth,
 }) {
+  const router = useRouter();
   const platforms = [
     { title: 'Ultra Panda', category: 'Fish & Slots', badge: 'TOP CHOICE' },
     { title: 'Fire Kirin', category: 'Fish Arcade King', badge: 'POPULAR' },
@@ -62,15 +64,9 @@ export default function GameRequestModal({
         throw new Error(data.message || 'Failed to submit account request.');
       }
 
-      setStatus({
-        error: '',
-        success: data.message || 'Game account request submitted! Your credentials will appear shortly.',
-      });
-
       if (onRequestCreated) onRequestCreated();
-      setTimeout(() => {
-        onClose();
-      }, 2000);
+      onClose();
+      router.push(`/game-accounts/provisioning?requestId=${data.requestId || ''}&game=${encodeURIComponent(selectedGame)}`);
     } catch (err) {
       setStatus({ error: err.message, success: '' });
     } finally {

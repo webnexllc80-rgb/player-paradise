@@ -318,3 +318,162 @@ h1, h2, h3, h4, .font-heading {
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.45);
 }
+
+/* ======================================================== */
+/* Responsive Modal & Overlay Architecture                  */
+/* ======================================================== */
+.modal-scrollable {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.vegas-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: rgba(4, 2, 12, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  animation: fadeIn 0.2s ease-out;
+  box-sizing: border-box;
+}
+
+.vegas-modal-card {
+  background-color: #0E0A24;
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  border-radius: 22px;
+  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.95), 0 0 35px rgba(0, 240, 255, 0.18);
+  color: #F8FAFC;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ======================================================== */
+/* Admin Sidebar & Console Component Styles                 */
+/* ======================================================== */
+.vegas-sidebar-section-header {
+  padding: 8px 12px 4px 12px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: var(--font-heading, 'Orbitron', sans-serif);
+}
+
+.vegas-sidebar-nav-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  color: #94A3B8;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+}
+
+.vegas-sidebar-nav-btn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #FFFFFF;
+}
+
+.vegas-sidebar-nav-btn.active {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.16) 0%, rgba(192, 38, 211, 0.16) 100%);
+  border-color: rgba(0, 240, 255, 0.45);
+  color: #FFFFFF;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.15), inset 0 0 12px rgba(0, 240, 255, 0.08);
+}
+
+.vegas-sidebar-icon-box {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.vegas-sidebar-nav-btn.active .vegas-sidebar-icon-box {
+  background-color: rgba(0, 240, 255, 0.2);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+.vegas-sidebar-badge {
+  font-size: 10px;
+  font-weight: 900;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  font-family: monospace;
+}
+
+.btn-coral {
+  background: linear-gradient(135deg, #00f0ff 0%, #c026d3 100%);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-coral:hover {
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.6), 0 0 35px rgba(192, 38, 211, 0.5);
+  transform: translateY(-1px);
+}
+
+.admin-mobile-hamburger {
+  display: flex;
+}
+@media (min-width: 768px) {
+  .admin-mobile-hamburger {
+    display: none !important;
+  }
+}
+
+/* ======================================================== */
+/* Responsive Layout & Container Enhancements               */
+/* ======================================================== */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Responsive Table Helper */
+.table-scroll-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent horizontal scroll bleed on mobile */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Mobile Safe Areas */
+.pb-mobile-nav {
+  padding-bottom: max(80px, calc(64px + env(safe-area-inset-bottom, 16px)));
+}
+

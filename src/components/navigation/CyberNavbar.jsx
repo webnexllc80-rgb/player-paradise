@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Menu,
@@ -26,6 +27,7 @@ export default function CyberNavbar({
   onOpenAuth,
   onOpenWallet,
   onOpenDailyBonus,
+  onOpenSpinWheel,
   onOpenNotifications,
   onLogout,
   unreadNotifsCount = 0,
@@ -76,7 +78,7 @@ export default function CyberNavbar({
           >
             <Image src="/logo.png" alt="Logo" fill className="object-cover" />
           </div>
-          <span className="font-heading font-black text-xs tracking-wider text-white">
+          <span className="font-heading font-black text-xs tracking-wider text-white hidden sm:inline">
             PARADISE<span className="text-[var(--neon-cyan)]">HUB</span>
           </span>
         </div>
@@ -100,49 +102,52 @@ export default function CyberNavbar({
       <div className="flex items-center gap-2 md:gap-3">
         {user ? (
           <>
-            {/* Live Dual Balance Chip */}
-            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-slate-700/70 shadow-inner">
-              {/* SC Balance (Cash) */}
-              <div
-                onClick={() => onOpenWallet('deposit')}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/40 cursor-pointer hover:border-emerald-400 transition-all group"
-                title="Paradise Cash (Redeemable 1:1 USD)"
-              >
-                <span className="text-[10px] font-black px-1 rounded bg-emerald-500 text-black">SC</span>
-                <span className="font-mono font-bold text-xs md:text-sm text-emerald-400 group-hover:text-emerald-300">
-                  ${Number(user.balanceSC || 0).toFixed(2)}
-                </span>
-              </div>
-
-              {/* GC Balance (Arcade Fun Coins) */}
-              <div
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-950/40 border border-purple-500/30"
-                title="Game Coins"
-              >
-                <span className="text-[10px] font-black px-1 rounded bg-purple-500 text-white">GC</span>
-                <span className="font-mono font-bold text-xs text-purple-300">
-                  {Number(user.balanceGC || 0).toLocaleString()}
-                </span>
-              </div>
-
-              {/* Deposit Quick Button */}
-              <button
-                onClick={() => onOpenWallet('deposit')}
-                className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 text-black hover:scale-105 transition-transform shadow-[0_0_10px_rgba(0,240,255,0.4)]"
-                title="Deposit Credits"
-              >
-                <Plus size={16} strokeWidth={3} />
-              </button>
-            </div>
-
-            {/* Quick Cashout Button (Desktop) */}
-            <button
-              onClick={() => onOpenWallet('withdraw')}
-              className="hidden lg:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+            {/* Live Single Wallet Balance Chip */}
+            <Link
+              href="/deposit"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 hover:border-emerald-400 shadow-inner group transition-all"
+              title="Player Wallet Balance (Click to Deposit)"
             >
-              <ArrowUpRight size={14} className="text-emerald-400" />
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-500 text-black uppercase tracking-wider">
+                BALANCE
+              </span>
+              <span className="font-mono font-bold text-xs sm:text-sm text-emerald-400 group-hover:text-emerald-300">
+                ${Number(user.balance ?? user.balanceSC ?? 0).toFixed(2)}
+              </span>
+            </Link>
+
+            {/* Deposit Direct Action */}
+            <Link
+              href="/deposit"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 text-black text-xs font-heading font-black shadow-[0_0_12px_rgba(16,185,129,0.35)] hover:scale-102 active:scale-98 transition-all"
+              title="Deposit Funds"
+            >
+              <Plus size={14} strokeWidth={3} />
+              <span className="hidden sm:inline">DEPOSIT</span>
+            </Link>
+
+            {/* Redeem Cashout Direct Action */}
+            <Link
+              href="/withdraw"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+              title="Redeem Winnings"
+            >
+              <ArrowUpRight size={14} className="text-[var(--neon-cyan)]" />
               <span>Redeem</span>
-            </button>
+            </Link>
+
+            {/* Daily Lucky Spin Wheel Button */}
+            {onOpenSpinWheel && (
+              <button
+                type="button"
+                onClick={onOpenSpinWheel}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-amber-300 text-xs font-bold transition-all shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+                title="Daily Free Spin Wheel (Win up to $50)"
+              >
+                <Gift size={14} className="text-amber-400 animate-bounce" />
+                <span className="hidden lg:inline">Daily Spin</span>
+              </button>
+            )}
           </>
         ) : (
           /* Guest Actions */
@@ -263,19 +268,6 @@ export default function CyberNavbar({
                     <Sparkles size={15} className="text-amber-400" />
                     <span>VIP & Rewards</span>
                   </div>
-
-                  {user.role && user.role !== 'player' && (
-                    <div
-                      onClick={() => {
-                        router.push('/admin');
-                        setProfileOpen(false);
-                      }}
-                      className="flex items-center gap-2 px-3 py-2 text-xs text-rose-300 font-bold hover:bg-rose-950/40 rounded-xl cursor-pointer"
-                    >
-                      <ShieldCheck size={15} className="text-rose-400" />
-                      <span>Admin Control Center</span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="pt-1 border-t border-slate-800">

@@ -13,40 +13,41 @@ import {
   Gamepad2,
   Clock,
   User,
-  ShieldAlert
+  ShieldAlert,
+  Gift,
+  Plus,
+  Trash2,
+  Edit,
+  ExternalLink
 } from 'lucide-react';
 
 export default function RequestsTab({
   requests = [],
+  usersList = [],
+  gamesList = [],
   onApproveClick,
   onRejectClick,
+  onAddAccountClick,
+  onDeleteGameAccount,
 }) {
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [platformFilter, setPlatformFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'READY' | 'REJECTED'
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState(null);
 
-  const platforms = ['ALL', 'Ultra Panda', 'Fire Kirin', 'Orion Stars', 'Game Vault', 'Milky Way', 'Juwa'];
-
   const filteredRequests = requests.filter((req) => {
-    // Status filter
+    // Status Filter
     if (statusFilter === 'PENDING' && req.status !== 'PENDING') return false;
-    if (statusFilter === 'APPROVED' && req.status !== 'READY' && req.status !== 'APPROVED') return false;
+    if (statusFilter === 'READY' && req.status !== 'READY' && req.status !== 'APPROVED') return false;
     if (statusFilter === 'REJECTED' && req.status !== 'REJECTED') return false;
 
-    // Platform filter
-    if (platformFilter !== 'ALL') {
-      const p = (req.gameTitle || req.gamePlatform || '').toLowerCase();
-      if (!p.includes(platformFilter.toLowerCase())) return false;
-    }
-
-    // Search filter
-    if (searchTerm) {
+    // Search Filter
+    if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
-      const matchUsername = (req.playerUsername || '').toLowerCase().includes(q);
-      const matchEmail = (req.playerEmail || '').toLowerCase().includes(q);
-      const matchPlatform = (req.gameTitle || req.gamePlatform || '').toLowerCase().includes(q);
-      if (!matchUsername && !matchEmail && !matchPlatform) return false;
+      const matchEmail = (req.userEmail || '').toLowerCase().includes(q);
+      const matchName = (req.userName || '').toLowerCase().includes(q);
+      const matchGame = (req.gameTitle || '').toLowerCase().includes(q);
+      const matchAccount = (req.gameAccountUsername || '').toLowerCase().includes(q);
+      if (!matchEmail && !matchName && !matchGame && !matchAccount) return false;
     }
 
     return true;
@@ -59,208 +60,231 @@ export default function RequestsTab({
   };
 
   const pendingCount = requests.filter((r) => r.status === 'PENDING').length;
-  const approvedCount = requests.filter((r) => r.status === 'READY' || r.status === 'APPROVED').length;
+  const readyCount = requests.filter((r) => r.status === 'READY' || r.status === 'APPROVED').length;
   const rejectedCount = requests.filter((r) => r.status === 'REJECTED').length;
 
   return (
     <div className="space-y-5">
-      {/* Top Filter Bar */}
-      <div className="p-4 rounded-2xl bg-[#090d22]/90 border border-cyan-500/20 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Status Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-          <button
-            onClick={() => setStatusFilter('ALL')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              statusFilter === 'ALL'
-                ? 'bg-cyan-500 text-slate-950 font-black shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
-            }`}
-          >
-            ALL ({requests.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('PENDING')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-              statusFilter === 'PENDING'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-[0_0_12px_rgba(245,158,11,0.4)]'
-                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
-            }`}
-          >
-            <span>PENDING</span>
-            {pendingCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-950 text-amber-300 font-mono">
-                {pendingCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setStatusFilter('APPROVED')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              statusFilter === 'APPROVED'
-                ? 'bg-emerald-500 text-slate-950 font-black shadow-[0_0_12px_rgba(16,185,129,0.4)]'
-                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
-            }`}
-          >
-            APPROVED ({approvedCount})
-          </button>
-          <button
-            onClick={() => setStatusFilter('REJECTED')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              statusFilter === 'REJECTED'
-                ? 'bg-rose-500 text-white font-black shadow-[0_0_12px_rgba(244,63,94,0.4)]'
-                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
-            }`}
-          >
-            REJECTED ({rejectedCount})
-          </button>
+      {/* Top Header Card */}
+      <div className="p-4 md:p-5 rounded-2xl bg-[#090d22]/90 border border-cyan-500/20 backdrop-blur-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-heading font-black text-sm md:text-base text-white tracking-wider flex items-center gap-2">
+            <KeyRound size={20} className="text-cyan-400" />
+            GAME ACCOUNT REQUESTS &amp; CREATED ACCOUNTS
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Pending requests stay pinned on top · Automated and manual game platform provisioning
+          </p>
         </div>
 
-        {/* Search & Platform Filter */}
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:w-60">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search player, email..."
-              className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-400 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white outline-none"
-            />
-          </div>
+        <button
+          onClick={onAddAccountClick}
+          className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-heading font-black text-xs flex items-center gap-1.5 shadow-[0_0_20px_rgba(0,240,255,0.35)] transition-all cursor-pointer"
+        >
+          <Plus size={15} />
+          <span>ADD ACCOUNT MANUALLY</span>
+        </button>
+      </div>
 
+      {/* Search & Status Filter Controls */}
+      <div className="p-4 rounded-2xl bg-[#090d22]/90 border border-cyan-500/20 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between gap-3">
+        <div className="relative flex-1 w-full md:w-auto">
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search requests by email, player name, or game platform..."
+            className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-400 rounded-xl pl-9 pr-4 py-2 text-xs text-white outline-none"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+            Status:
+          </span>
           <select
-            value={platformFilter}
-            onChange={(e) => setPlatformFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 focus:border-cyan-400 text-slate-300 rounded-xl px-3 py-1.5 text-xs outline-none"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-800 focus:border-cyan-400 text-cyan-300 rounded-xl px-3 py-2 text-xs font-bold outline-none cursor-pointer"
           >
-            {platforms.map((p) => (
-              <option key={p} value={p}>
-                {p === 'ALL' ? 'All Platforms' : p}
-              </option>
-            ))}
+            <option value="ALL">ALL (Pending on top - {requests.length})</option>
+            <option value="PENDING">PENDING (Requires Action - {pendingCount})</option>
+            <option value="READY">READY / APPROVED ({readyCount})</option>
+            <option value="REJECTED">REJECTED ({rejectedCount})</option>
           </select>
         </div>
       </div>
 
-      {/* Requests List */}
-      <div className="space-y-3">
-        {filteredRequests.map((req) => {
-          const isPending = req.status === 'PENDING';
-          const isApproved = req.status === 'READY' || req.status === 'APPROVED';
-          const isRejected = req.status === 'REJECTED';
+      {/* Requests Master Table */}
+      <div className="rounded-2xl border border-cyan-500/20 bg-[#080a14] overflow-hidden shadow-lg">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-800/90 bg-[#060814] text-slate-400 text-[10px] font-heading font-bold uppercase tracking-wider">
+                <th className="py-3 px-3 w-10 text-center">#</th>
+                <th className="py-3 px-4">Player Name</th>
+                <th className="py-3 px-4">Player Email</th>
+                <th className="py-3 px-4">Requested Game</th>
+                <th className="py-3 px-4">Game Account</th>
+                <th className="py-3 px-4">Request Timestamp</th>
+                <th className="py-3 px-3 text-center">Status</th>
+                <th className="py-3 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {filteredRequests.map((req, idx) => {
+                const isPending = req.status === 'PENDING';
+                const isReady = req.status === 'READY' || req.status === 'APPROVED';
+                const isRejected = req.status === 'REJECTED';
 
-          return (
-            <div
-              key={req.id || req._id}
-              className="p-4 rounded-2xl bg-[#090d22]/90 border border-slate-800 hover:border-cyan-500/40 transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
-            >
-              {/* Left Details */}
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
-                  <Gamepad2 size={22} />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-heading font-bold text-sm text-white">
-                      @{req.playerUsername || 'Player'}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {req.playerEmail}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider ${
-                        isPending
-                          ? 'bg-amber-950/80 text-amber-300 border border-amber-600/40 animate-pulse'
-                          : isApproved
-                          ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-600/40'
-                          : 'bg-rose-950/80 text-rose-300 border border-rose-600/40'
-                      }`}
-                    >
-                      {req.status}
-                    </span>
-                  </div>
-                  <div className="text-xs text-cyan-400 font-mono mt-0.5 flex items-center gap-2">
-                    <strong className="text-white">{req.gameTitle || req.gamePlatform}</strong>
-                    <span className="text-slate-500">•</span>
-                    <span className="text-slate-400 text-[11px] flex items-center gap-1">
-                      <Clock size={11} /> {new Date(req.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Middle: Credentials Display if Approved */}
-              {isApproved && (req.gameAccountUsername || req.username) && (
-                <div className="p-2.5 rounded-xl bg-slate-950/90 border border-slate-800 text-xs flex items-center gap-3 font-mono">
-                  <div>
-                    <span className="text-slate-500 text-[10px] block">USER:</span>
-                    <span className="text-cyan-300 font-bold">{req.gameAccountUsername || req.username}</span>
-                  </div>
-                  <div className="border-l border-slate-800 pl-3">
-                    <span className="text-slate-500 text-[10px] block">PASS:</span>
-                    <span className="text-purple-300 font-bold">{req.gameAccountPassword || req.password}</span>
-                  </div>
-                  <button
-                    onClick={() =>
-                      handleCopy(
-                        `${req.gameAccountUsername || req.username} | ${req.gameAccountPassword || req.password}`,
-                        req.id || req._id
-                      )
-                    }
-                    className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white ml-1 cursor-pointer"
-                    title="Copy Credentials"
+                return (
+                  <tr
+                    key={req.id || req._id}
+                    className={`hover:bg-slate-900/40 transition-colors ${
+                      isPending ? 'bg-amber-950/10' : ''
+                    }`}
                   >
-                    {copiedId === (req.id || req._id) ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                  </button>
-                </div>
+                    {/* Index */}
+                    <td className="py-3.5 px-3 text-center font-mono text-slate-500">
+                      {idx + 1}
+                    </td>
+
+                    {/* Player Name */}
+                    <td className="py-3.5 px-4 font-heading font-bold text-white">
+                      {req.userName || req.userEmail?.split('@')[0] || '—'}
+                    </td>
+
+                    {/* Player Email */}
+                    <td className="py-3.5 px-4 font-mono font-bold text-cyan-400">
+                      {req.userEmail || '—'}
+                    </td>
+
+                    {/* Requested Game */}
+                    <td className="py-3.5 px-4">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="px-2 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-bold text-[10px]">
+                          {req.gameTitle}
+                        </span>
+                        {req.freeplayPending && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-950 border border-emerald-500/40 text-emerald-300 tracking-wider">
+                            <Gift size={10} />
+                            <span>FREEPLAY ATTACHED (${Number(req.freeplayAmount || 3).toFixed(2)})</span>
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Game Account Credentials */}
+                    <td className="py-3.5 px-4 font-mono">
+                      {req.gameAccountUsername ? (
+                        <div className="inline-flex items-center gap-1.5 p-1 px-2 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
+                          <span className="text-purple-300 font-bold">{req.gameAccountUsername}</span>
+                          <button
+                            onClick={() =>
+                              handleCopy(
+                                `${req.gameAccountUsername} | ${req.gameAccountPassword}`,
+                                req.id || req._id
+                              )
+                            }
+                            className="text-slate-400 hover:text-white"
+                            title="Copy credentials"
+                          >
+                            {copiedId === (req.id || req._id) ? (
+                              <Check size={12} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        </div>
+                      ) : req.existingAccounts && req.existingAccounts.length > 0 ? (
+                        <div className="space-y-1">
+                          {req.existingAccounts.slice(0, 2).map((acc, aIdx) => (
+                            <div key={aIdx} className="text-[10px] text-slate-400">
+                              <span className="text-slate-500">{acc.gameTitle}:</span>{' '}
+                              <strong className="text-purple-300">{acc.username}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 text-[11px] italic">No account yet</span>
+                      )}
+                    </td>
+
+                    {/* Request Timestamp */}
+                    <td className="py-3.5 px-4 text-slate-400 text-[11px] font-mono whitespace-nowrap">
+                      {new Date(req.createdAt).toLocaleString()}
+                    </td>
+
+                    {/* Status */}
+                    <td className="py-3.5 px-3 text-center">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border ${
+                          isPending
+                            ? 'bg-amber-950/80 text-amber-300 border-amber-600/50 animate-pulse'
+                            : isReady
+                            ? 'bg-emerald-950/80 text-emerald-300 border-emerald-600/50'
+                            : 'bg-rose-950/80 text-rose-300 border-rose-600/50'
+                        }`}
+                      >
+                        {req.status}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="py-3.5 px-4 text-right">
+                      {isPending ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => onApproveClick(req)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm cursor-pointer"
+                          >
+                            <CheckCircle2 size={12} />
+                            <span>Approve</span>
+                          </button>
+                          <button
+                            onClick={() => onRejectClick(req)}
+                            className="px-2 py-1 rounded-lg bg-rose-950/60 border border-rose-500/40 hover:bg-rose-900 text-rose-300 text-[10px] font-bold cursor-pointer"
+                          >
+                            <XCircle size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => onApproveClick(req)}
+                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white"
+                            title="Edit credentials"
+                          >
+                            <Edit size={12} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              onDeleteGameAccount?.(req.userEmail, req.gameTitle)
+                            }
+                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-rose-950 text-slate-400 hover:text-rose-400"
+                            title="Delete game credentials"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {filteredRequests.length === 0 && (
+                <tr>
+                  <td colSpan="8" className="py-12 text-center text-slate-500">
+                    <KeyRound size={28} className="mx-auto opacity-30 text-cyan-400 mb-2" />
+                    <p className="font-heading text-sm">No game account requests match criteria.</p>
+                  </td>
+                </tr>
               )}
-
-              {/* If Rejected: Show reason */}
-              {isRejected && (
-                <div className="text-xs text-rose-300 bg-rose-950/30 border border-rose-500/20 px-3 py-1.5 rounded-xl">
-                  Reason: {req.rejectionReason || 'No reason specified'}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-                {isPending && (
-                  <>
-                    <button
-                      onClick={() => onRejectClick(req)}
-                      className="px-3 py-1.5 rounded-xl bg-rose-950/60 border border-rose-500/40 hover:bg-rose-900/80 text-rose-200 text-xs font-bold transition-all cursor-pointer"
-                    >
-                      Reject
-                    </button>
-                    <button
-                      onClick={() => onApproveClick(req)}
-                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-heading font-black shadow-[0_0_15px_rgba(0,240,255,0.4)] transition-all cursor-pointer flex items-center gap-1.5"
-                    >
-                      <CheckCircle2 size={13} />
-                      <span>APPROVE</span>
-                    </button>
-                  </>
-                )}
-
-                {isApproved && (
-                  <button
-                    onClick={() => onApproveClick(req)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
-                  >
-                    Edit Creds
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {filteredRequests.length === 0 && (
-          <div className="text-center py-12 p-6 rounded-2xl bg-[#090d22]/50 border border-slate-800 text-slate-500 space-y-2">
-            <KeyRound size={28} className="mx-auto opacity-40 text-cyan-400" />
-            <p className="font-heading text-sm">No game requests matching the criteria.</p>
-          </div>
-        )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

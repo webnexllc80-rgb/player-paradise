@@ -95,19 +95,19 @@ export default function WalletPage() {
               </p>
             </div>
 
-            {/* Balances Display */}
+            {/* Single Unified Wallet Balance Display */}
             <div className="flex items-center gap-4 bg-slate-950/80 p-4 rounded-2xl border border-slate-800 shrink-0">
               <div>
-                <span className="text-[10px] text-slate-400 font-bold">REDEEMABLE CASH (SC)</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AVAILABLE BALANCE</span>
                 <div className="font-mono font-black text-2xl text-emerald-400">
-                  ${Number(user?.balanceSC || 0).toFixed(2)}
+                  ${Number(user?.availableSC ?? (user?.balanceSC - (user?.frozenBalance || 0)) ?? user?.balance ?? 0).toFixed(2)}
                 </div>
               </div>
               <div className="h-8 w-px bg-slate-800" />
               <div>
-                <span className="text-[10px] text-slate-400 font-bold">GAME COINS (GC)</span>
-                <div className="font-mono font-black text-xl text-purple-300">
-                  {Number(user?.balanceGC || 0).toLocaleString()}
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">TOTAL BALANCE</span>
+                <div className="font-mono font-black text-xl text-white">
+                  ${Number(user?.balance ?? user?.balanceSC ?? 0).toFixed(2)}
                 </div>
               </div>
             </div>
@@ -115,11 +115,8 @@ export default function WalletPage() {
 
           {/* Quick Action Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button
-              onClick={() => {
-                if (user) setWalletModal({ open: true, tab: 'deposit' });
-                else setAuthModal({ open: true, tab: 'login' });
-              }}
+            <Link
+              href="/deposit"
               className="p-5 rounded-2xl bg-gradient-to-r from-blue-950/60 to-cyan-950/40 border border-[var(--neon-cyan)]/40 hover:border-[var(--neon-cyan)] flex items-center justify-between transition-all group"
             >
               <div className="flex items-center gap-3">
@@ -134,13 +131,10 @@ export default function WalletPage() {
                 </div>
               </div>
               <span className="text-xs font-bold text-[var(--neon-cyan)]">START →</span>
-            </button>
+            </Link>
 
-            <button
-              onClick={() => {
-                if (user) setWalletModal({ open: true, tab: 'withdraw' });
-                else setAuthModal({ open: true, tab: 'login' });
-              }}
+            <Link
+              href="/withdraw"
               className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-teal-950/40 border border-emerald-500/40 hover:border-emerald-500 flex items-center justify-between transition-all group"
             >
               <div className="flex items-center gap-3">
@@ -151,11 +145,11 @@ export default function WalletPage() {
                   <h3 className="font-heading font-black text-base text-white group-hover:text-emerald-300">
                     REDEEM CASHOUT
                   </h3>
-                  <p className="text-xs text-slate-400">Min $25 • Instant Cash App payout</p>
+                  <p className="text-xs text-slate-400">Min $20 • Instant 24/7 payout</p>
                 </div>
               </div>
               <span className="text-xs font-bold text-emerald-400">START →</span>
-            </button>
+            </Link>
           </div>
 
           {/* Recent Deposits & Cashouts History */}

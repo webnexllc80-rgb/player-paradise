@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser } from '@/lib/auth';
 
+// GET game credentials (by player email)
 export async function GET(req) {
   try {
     const session = await getSessionUser();
@@ -18,19 +19,18 @@ export async function GET(req) {
     const accounts = await db
       .collection('gameAccounts')
       .find({ userEmail: cleanEmail, status: 'READY' })
-      .sort({ createdAt: -1 })
       .toArray();
 
     return NextResponse.json({
       success: true,
-      gameAccounts: accounts.map((acc) => ({
-        id: acc._id ? acc._id.toString() : acc.id,
+      gameAccounts: accounts.map(acc => ({
+        id: acc._id.toString(),
         userEmail: acc.userEmail,
         gameTitle: acc.gameTitle,
         username: acc.username,
         password: acc.password,
         status: acc.status || 'READY',
-        createdAt: acc.createdAt,
+        createdAt: acc.createdAt || new Date(),
       })),
     });
   } catch (err) {

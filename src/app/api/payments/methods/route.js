@@ -4,83 +4,187 @@ import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { ensureDbInitialized } from '@/lib/initDb';
 
-// GET active payment methods
-export async function GET() {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// GET payment methods
+export async function GET(req) {
   try {
     await ensureDbInitialized();
-    const db = await getDb();
-    const methods = await db.collection('paymentMethods').find({ active: true }).toArray();
+    const { searchParams } = new URL(req.url);
+    const all = searchParams.get('all') === 'true';
 
-    return NextResponse.json({
-      success: true,
-      methods: methods.map((m) => ({
-        id: m._id ? m._id.toString() : m.id,
-        methodId: m.methodId,
-        name: m.name,
-        displayName: m.displayName || m.name,
-        icon: m.icon || 'DollarSign',
-        tag: m.tag || '',
-        instructions: m.instructions || '',
-        qrCodeUrl: m.qrCodeUrl || '',
-        minDeposit: m.minDeposit || 10,
-        maxDeposit: m.maxDeposit || 5000,
-        minWithdrawal: m.minWithdrawal || 25,
-        maxWithdrawal: m.maxWithdrawal || 5000,
-        badge: m.badge || '',
-        active: m.active !== false,
-      })),
-    });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    const db = await getDb();
+    const methodsCol = db.collection('payment_methods');
+
+    const query = all ? {} : { isActive: true };
+    const methods = await methodsCol.find(query).toArray();
+
+    return NextResponse.json(
+      {
+        success: true,
+        methods: methods.map(m => ({
+          id: m._id.toString(),
+          methodId: m.methodId,
+          name: m.name,
+          type: m.type || 'custom',
+          tag: m.tag || 'Instant',
+          accountDetails: m.accountDetails || m.cashtag || m.address || m.details || '',
+          cashtag: m.accountDetails || m.cashtag || '',
+          details: m.accountDetails || m.details || '',
+          instructions: m.instructions || '',
+          paymentUrl: m.paymentUrl || '',
+          qrCode: m.qrCode || '',
+          minDeposit: m.minDeposit || 10,
+          maxDeposit: m.maxDeposit || 5000,
+          isActive: m.isActive ?? true,
+        })),
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        },
+      }
+    );
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-// POST: Admin adds or updates payment method
+// POST: Add Payment Method (Super Admin & Financial Manager)
 export async function POST(req) {
   try {
     const session = await getSessionUser();
-    if (!session || session.role === ROLES.PLAYER) {
-      return NextResponse.json({ success: false, error: 'Unauthorized staff access.' }, { status: 403 });
+    if (!session || (session.role !== ROLES.SUPER_ADMIN && session.role !== ROLES.FINANCIAL_MANAGER)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { methodId, name, tag, instructions, minDeposit, maxDeposit, active } = body;
+    const {
+      name,
+      type = 'custom',
+      accountDetails,
+      instructions,
+      paymentUrl = '',
+      qrCode = '',
+      minDeposit = 10,
+      maxDeposit = 5000,
+      tag = 'Instant',
+    } = await req.json();
+
+    if (!name || !accountDetails) {
+      return NextResponse.json({ success: false, error: 'Name and Account Details are required.' }, { status: 400 });
+    }
 
     const db = await getDb();
-    const methodsCol = db.collection('paymentMethods');
+    const methodsCol = db.collection('payment_methods');
 
-    const existing = await methodsCol.findOne({ methodId });
-    if (existing) {
-      await methodsCol.updateOne(
-        { _id: existing._id },
-        {
-          $set: {
-            name: name || existing.name,
-            tag: tag || existing.tag,
-            instructions: instructions || existing.instructions,
-            minDeposit: Number(minDeposit) || existing.minDeposit,
-            maxDeposit: Number(maxDeposit) || existing.maxDeposit,
-            active: active !== undefined ? active : existing.active,
-            updatedAt: new Date(),
-          },
-        }
-      );
-      return NextResponse.json({ success: true, message: 'Payment method updated successfully.' });
-    }
+    const methodId = name.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_' + Date.now().toString(36);
+    const cleanQr = qrCode ? qrCode.trim() : '';
+    const finalQr = cleanQr === '[Uploaded Image Attached]' ? '' : cleanQr;
 
-    await methodsCol.insertOne({
+    const newMethod = {
       methodId,
       name,
-      tag,
-      instructions,
+      type: type || 'custom',
+      tag: tag || 'Instant',
+      accountDetails,
+      instructions: instructions || 'Send payment and upload proof.',
+      paymentUrl: paymentUrl ? paymentUrl.trim() : '',
+      qrCode: finalQr,
       minDeposit: Number(minDeposit) || 10,
       maxDeposit: Number(maxDeposit) || 5000,
-      active: true,
+      isActive: true,
       createdAt: new Date(),
-    });
+    };
 
-    return NextResponse.json({ success: true, message: 'Payment method created successfully.' });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    const res = await methodsCol.insertOne(newMethod);
+    return NextResponse.json({
+      success: true,
+      id: res.insertedId.toString(),
+      method: { ...newMethod, id: res.insertedId.toString() },
+      message: 'Payment method created successfully.',
+    });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// PUT: Edit Payment Method
+export async function PUT(req) {
+  try {
+    const session = await getSessionUser();
+    if (!session || (session.role !== ROLES.SUPER_ADMIN && session.role !== ROLES.FINANCIAL_MANAGER)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 403 });
+    }
+
+    const {
+      id,
+      name,
+      type,
+      accountDetails,
+      instructions,
+      paymentUrl,
+      qrCode,
+      minDeposit,
+      maxDeposit,
+      isActive,
+      tag,
+    } = await req.json();
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Method ID is required.' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const methodsCol = db.collection('payment_methods');
+
+    const updateFields = {};
+    if (name !== undefined) updateFields.name = name;
+    if (type !== undefined) updateFields.type = type;
+    if (accountDetails !== undefined) updateFields.accountDetails = accountDetails;
+    if (instructions !== undefined) updateFields.instructions = instructions;
+    if (paymentUrl !== undefined) updateFields.paymentUrl = paymentUrl.trim();
+    if (qrCode !== undefined) {
+      const cleanQr = qrCode.trim();
+      if (cleanQr !== '[Uploaded Image Attached]') {
+        updateFields.qrCode = cleanQr;
+      }
+    }
+    if (minDeposit !== undefined) updateFields.minDeposit = Number(minDeposit);
+    if (maxDeposit !== undefined) updateFields.maxDeposit = Number(maxDeposit);
+    if (isActive !== undefined) updateFields.isActive = Boolean(isActive);
+    if (tag !== undefined) updateFields.tag = tag;
+    updateFields.updatedAt = new Date();
+
+    await methodsCol.updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
+
+    return NextResponse.json({ success: true, message: 'Payment method updated successfully.' });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// DELETE: Remove Payment Method
+export async function DELETE(req) {
+  try {
+    const session = await getSessionUser();
+    if (!session || (session.role !== ROLES.SUPER_ADMIN && session.role !== ROLES.FINANCIAL_MANAGER)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Method ID is required.' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const methodsCol = db.collection('payment_methods');
+
+    await methodsCol.deleteOne({ _id: new ObjectId(id) });
+    return NextResponse.json({ success: true, message: 'Payment method deleted.' });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

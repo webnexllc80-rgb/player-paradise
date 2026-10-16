@@ -1,297 +1,775 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
-  KeyRound,
-  ExternalLink,
+  Key,
   Copy,
   Check,
   Eye,
   EyeOff,
-  Plus,
-  ShieldCheck,
   Sparkles,
   Clock,
-  Gamepad2,
-  RefreshCw
+  Play,
+  ArrowDownCircle,
+  PlusCircle,
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  ExternalLink,
+  Coins,
+  Lock
 } from 'lucide-react';
+import LoadCoinsModal from '@/components/modals/LoadCoinsModal';
 
-export default function PlayerGameCredentialsHub({
+export default function PlayerGameAccountsHub({
   user,
-  onRequestNewGame,
+  games = [],
   onOpenAuth,
+  onPlayGame,
+  onDeposit,
 }) {
-  const [accounts, setAccounts] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [copiedField, setCopiedField] = useState(null);
-  const [showPasswords, setShowPasswords] = useState({});
+  const router = useRouter();
+  const [activeAccounts, setActiveAccounts] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [rejectedRequests, setRejectedRequests] = useState([]);
+  const [loadCoinsModal, setLoadCoinsModal] = useState({ open: false, game: null });
+  const [loading, setLoading] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [showPasswordMap, setShowPasswordMap] = useState({});
+  const [requestingGameId, setRequestingGameId] = useState(null);
+  const [requestSuccessMsg, setRequestSuccessMsg] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
 
-  const fetchData = async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+  const fetchAccountsAndRequests = async () => {
+    if (!user?.email) return;
+
     setLoading(true);
     try {
-      const [accRes, reqRes] = await Promise.all([
-        fetch('/api/game-accounts'),
-        fetch('/api/account-requests'),
+      const [credRes, reqRes] = await Promise.all([
+        fetch(`/api/game-accounts?email=${encodeURIComponent(user.email)}`),
+        fetch(`/api/account-requests?email=${encodeURIComponent(user.email)}`),
       ]);
-      const accData = await accRes.json();
+
+      const credData = await credRes.json();
       const reqData = await reqRes.json();
 
-      if (accData.success) setAccounts(accData.gameAccounts || []);
-      if (reqData.success) {
-        // filter pending requests that don't yet have accounts
-        setRequests(reqData.accountRequests?.filter((r) => r.status === 'PENDING') || []);
+      const readyList = [];
+      const pendingList = [];
+      const rejectedList = [];
+
+      // Add verified ready credentials
+      if (credData.success && credData.gameAccounts) {
+        readyList.push(...credData.gameAccounts);
       }
+
+      // Check account requests
+      if (reqData.success && reqData.accountRequests) {
+        reqData.accountRequests.forEach((req) => {
+          if (req.status === 'READY') {
+            const alreadyExists = readyList.some(
+              (a) => a.gameTitle?.toLowerCase() === req.gameTitle?.toLowerCase()
+            );
+            if (!alreadyExists) {
+              readyList.push({
+                gameTitle: req.gameTitle,
+                gameId: req.gameId,
+                username: req.gameAccountUsername,
+                password: req.gameAccountPassword,
+                status: 'READY',
+              });
+            }
+          } else if (req.status === 'PENDING') {
+            pendingList.push(req);
+          } else if (req.status === 'REJECTED' || req.status === 'CANCELLED') {
+            rejectedList.push(req);
+          }
+        });
+      }
+
+      setActiveAccounts(readyList);
+      setPendingRequests(pendingList);
+      setRejectedRequests(rejectedList);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching game accounts:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, [user]);
+    if (user?.email) {
+      fetchAccountsAndRequests();
+      const interval = setInterval(fetchAccountsAndRequests, 6000);
+      return () => clearInterval(interval);
+    } else {
+      setActiveAccounts([]);
+      setPendingRequests([]);
+    }
+  }, [user?.email]);
 
-  const copyToClipboard = (text, id) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(id);
-    setTimeout(() => setCopiedField(null), 2000);
+  const handleCopy = (text, key) => {
+    navigator.clipboard?.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const togglePassword = (id) => {
-    setShowPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
+  const togglePasswordVisibility = (key) => {
+    setShowPasswordMap((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
   };
 
-  if (!user) {
-    return (
-      <div className="w-full my-8 p-6 md:p-8 rounded-3xl border border-[var(--chrome-border)] bg-gradient-to-br from-[#0c122e] to-[#060814] relative overflow-hidden">
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-2 text-center md:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--neon-purple)]/20 border border-[var(--neon-purple)]/40 text-[var(--neon-purple-light)] text-xs font-bold font-sub">
-              <KeyRound size={14} />
-              <span>PLAYER LOGIN CREDENTIALS HUB</span>
-            </div>
-            <h2 className="text-xl md:text-2xl font-black font-heading text-white">
-              Access Your Game Logins & Passwords
-            </h2>
-            <p className="text-sm text-slate-300 max-w-lg">
-              Sign in to request and securely view your unique player credentials for Ultra Panda, Fire Kirin, Orion Stars, and Game Vault.
-            </p>
-          </div>
-          <button
-            onClick={() => onOpenAuth('login')}
-            className="cyber-btn-cyan py-3 px-6 text-sm shrink-0"
-          >
-            <KeyRound size={16} />
-            <span>SIGN IN TO ACCESS IDS</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const handleRequestAccount = async (game) => {
+    if (!user) {
+      if (onOpenAuth) onOpenAuth('login');
+      return;
+    }
+
+    const gameTitle = game.title || game.name;
+    const gameId = game.gameId || game.id || game._id;
+
+    setRequestingGameId(gameId);
+    setErrorMsg(null);
+    setRequestSuccessMsg(null);
+
+    try {
+      const res = await fetch('/api/account-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameTitle,
+          gameId,
+          userEmail: user.email,
+          userName: user.username,
+        }),
+      });
+
+      const data = await res.json();
+      setRequestingGameId(null);
+
+      if (data.success) {
+        router.push(`/game-accounts/provisioning?requestId=${data.requestId || ''}&game=${encodeURIComponent(gameTitle)}`);
+      } else {
+        setErrorMsg(data.message || 'Failed to submit request.');
+      }
+    } catch {
+      setRequestingGameId(null);
+      setErrorMsg('Network error. Could not request game account.');
+    }
+  };
 
   return (
-    <div className="w-full my-8 p-6 md:p-8 rounded-3xl border border-[var(--chrome-border)] bg-gradient-to-br from-[#0c122e] to-[#060814] shadow-2xl relative">
-      {/* Station Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+    <section id="my-game-accounts-section" style={{ marginBottom: '50px' }}>
+      {/* Section Header */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: '16px', marginBottom: '24px' }}>
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-[var(--neon-cyan)]/20 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/40">
-              <KeyRound size={18} />
-            </span>
-            <h2 className="text-xl md:text-2xl font-black font-heading text-white">
-              MY GAME PASSWORDS & IDS
-            </h2>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#00F0FF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
+            <Key size={13} />
+            <span>PLAYER PLATFORM MANAGER</span>
           </div>
-          <p className="text-xs md:text-sm text-slate-400 mt-1">
-            Your official login accounts for connected sweepstakes platforms. Copy credentials and launch instantly.
-          </p>
+          <h2 style={{ fontFamily: 'Lexend, sans-serif', fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 900, color: '#FFFFFF', margin: 0, letterSpacing: '-0.02em' }}>
+            My Game Accounts &amp; Platform IDs
+          </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        {user && (
           <button
-            onClick={fetchData}
-            className="p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white transition-colors"
-            title="Refresh IDs"
+            type="button"
+            onClick={fetchAccountsAndRequests}
+            disabled={loading}
+            style={{
+              backgroundColor: '#140E33',
+              border: '1px solid rgba(0, 240, 255, 0.3)',
+              color: '#00F0FF',
+              borderRadius: '9999px',
+              padding: '7px 16px',
+              fontSize: '11.5px',
+              fontFamily: 'Lexend, sans-serif',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            <span>Sync Accounts</span>
           </button>
-          <button
-            onClick={onRequestNewGame}
-            className="cyber-btn-cyan py-2.5 px-4 text-xs font-bold"
-          >
-            <Plus size={15} />
-            <span>REQUEST NEW GAME ID</span>
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Content Area */}
-      <div className="pt-6">
-        {loading ? (
-          <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-400">
-            <RefreshCw size={24} className="animate-spin text-[var(--neon-cyan)]" />
-            <span className="text-xs font-sub font-semibold">SYNCHRONIZING SECURE CREDENTIALS...</span>
-          </div>
-        ) : accounts.length === 0 && requests.length === 0 ? (
-          /* Empty state */
-          <div className="py-10 text-center space-y-4 max-w-md mx-auto">
-            <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center mx-auto text-slate-500">
-              <KeyRound size={28} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-heading font-bold text-base text-white">No Game Accounts Yet</h3>
-              <p className="text-xs text-slate-400">
-                You haven&apos;t requested any game accounts yet. Click below to request your username and password for Ultra Panda, Fire Kirin, Orion Stars, or any platform!
-              </p>
-            </div>
+      {/* Success Notification Alert */}
+      {requestSuccessMsg && (
+        <div
+          style={{
+            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.4)',
+            color: '#A7F3D0',
+            padding: '12px 16px',
+            borderRadius: '14px',
+            fontSize: '12.5px',
+            fontFamily: 'Lexend, sans-serif',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          <CheckCircle2 size={18} color="#10B981" />
+          <span>{requestSuccessMsg}</span>
+        </div>
+      )}
+
+      {/* Error Alert */}
+      {errorMsg && (
+        <div
+          style={{
+            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            color: '#FCA5A5',
+            padding: '12px 16px',
+            borderRadius: '14px',
+            fontSize: '12.5px',
+            fontFamily: 'Lexend, sans-serif',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          <AlertCircle size={18} color="#EF4444" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 1. MY ACTIVE GAME ACCOUNTS (Approved & Ready)             */}
+      {/* ======================================================== */}
+      <div style={{ marginBottom: '36px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981', boxShadow: '0 0 10px #10B981' }} />
+          <h3 style={{ margin: 0, fontFamily: 'Lexend, sans-serif', fontSize: '18px', fontWeight: 900, color: '#FFFFFF' }}>
+            Active Accounts ({activeAccounts.length})
+          </h3>
+          <span style={{ fontSize: '11px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+            — Direct credentials ready to play
+          </span>
+        </div>
+
+        {!user ? (
+          /* Guest Lock Card */
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(20, 14, 51, 0.7) 0%, rgba(10, 6, 26, 0.7) 100%)',
+              border: '1px dashed rgba(0, 240, 255, 0.3)',
+              borderRadius: '18px',
+              padding: '30px 20px',
+              textAlign: 'center',
+            }}
+          >
+            <Key size={36} color="#00F0FF" style={{ margin: '0 auto 12px auto', opacity: 0.8 }} />
+            <h4 style={{ margin: '0 0 6px 0', fontFamily: 'Lexend, sans-serif', fontSize: '16px', fontWeight: 900, color: '#FFFFFF' }}>
+              Sign in to view your game accounts
+            </h4>
+            <p style={{ margin: '0 0 16px 0', fontSize: '12.5px', color: '#A69FB3', fontFamily: 'Lexend, sans-serif', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto' }}>
+              Your usernames, passwords, and balances for Fire Kirin, Orion Stars, and Juwa will appear here once authenticated.
+            </p>
             <button
-              onClick={onRequestNewGame}
-              className="cyber-btn-cyan py-2.5 px-5 text-xs font-bold"
+              type="button"
+              onClick={() => onOpenAuth && onOpenAuth('login')}
+              style={{
+                background: 'linear-gradient(135deg, #E026D8 0%, #00F0FF 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '9999px',
+                padding: '10px 28px',
+                fontFamily: 'Lexend, sans-serif',
+                fontSize: '12px',
+                fontWeight: 900,
+                cursor: 'pointer',
+                boxShadow: '0 4px 18px rgba(0, 240, 255, 0.35)',
+              }}
             >
-              <Plus size={14} />
-              <span>REQUEST YOUR FIRST GAME ID</span>
+              SIGN IN / REGISTER
             </button>
           </div>
+        ) : activeAccounts.length === 0 ? (
+          /* User has 0 active accounts yet */
+          <div
+            style={{
+              backgroundColor: '#0F0924',
+              border: '1px dashed rgba(255, 255, 255, 0.1)',
+              borderRadius: '18px',
+              padding: '28px 20px',
+              textAlign: 'center',
+            }}
+          >
+            <Sparkles size={28} color="#00F0FF" style={{ margin: '0 auto 10px auto', opacity: 0.8 }} />
+            <p style={{ margin: '0 0 6px 0', fontFamily: 'Lexend, sans-serif', fontSize: '14.5px', fontWeight: 800, color: '#FFFFFF' }}>
+              No Active Platform IDs Yet
+            </p>
+            <p style={{ margin: 0, fontSize: '12px', color: '#8E849E', fontFamily: 'Lexend, sans-serif' }}>
+              Your direct credentials and platform accounts will appear here once approved by our desk. Browse our games or make a deposit to activate your accounts.
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {/* Active Ready Accounts */}
-            {accounts.map((acc) => {
-              const passVisible = showPasswords[acc.id];
+          /* Active Accounts Grid */
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
+              gap: '16px',
+            }}
+          >
+            {activeAccounts.map((acc, index) => {
+              const matchedGame = games.find(
+                (g) => (g.title || g.name || '').toLowerCase().trim() === (acc.gameTitle || '').toLowerCase().trim()
+              );
+              const thumb = matchedGame?.thumbnail || '/images/vegas-777.webp';
+              const isPasswordVisible = showPasswordMap[`acc_${index}`];
+
               return (
                 <div
-                  key={acc.id}
-                  className="p-4 rounded-2xl bg-slate-900/90 border border-slate-700/80 hover:border-[var(--neon-cyan)]/80 transition-all shadow-lg space-y-3 relative group"
+                  key={`acc_${index}`}
+                  style={{
+                    backgroundColor: '#120B2E',
+                    border: '1px solid rgba(0, 240, 255, 0.35)',
+                    borderRadius: '18px',
+                    padding: '16px',
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 240, 255, 0.1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}
                 >
-                  {/* Top Bar */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Gamepad2 size={16} className="text-[var(--neon-cyan)]" />
-                      <span className="font-heading font-bold text-sm text-white">
-                        {acc.gameTitle}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                      ACTIVE
-                    </span>
-                  </div>
-
-                  {/* Credentials Box */}
-                  <div className="space-y-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
-                    {/* Username */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400 font-mono text-[11px]">USERNAME:</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-white selection:bg-[var(--neon-cyan)]">
-                          {acc.username}
-                        </span>
-                        <button
-                          onClick={() => copyToClipboard(acc.username, `user_${acc.id}`)}
-                          className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-[var(--neon-cyan)] transition-colors"
-                          title="Copy Username"
+                  <div>
+                    {/* Top Row: Thumbnail + Title + Ready Badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                      <div
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '12px',
+                          overflow: 'hidden',
+                          position: 'relative',
+                          backgroundColor: '#070514',
+                          border: '1px solid rgba(0, 240, 255, 0.3)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Image
+                          src={thumb}
+                          alt={acc.gameTitle}
+                          fill
+                          style={{ objectFit: 'cover' }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4
+                          style={{
+                            margin: '0 0 3px 0',
+                            fontFamily: 'Lexend, sans-serif',
+                            fontSize: '15px',
+                            fontWeight: 900,
+                            color: '#FFFFFF',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
                         >
-                          {copiedField === `user_${acc.id}` ? (
-                            <Check size={14} className="text-emerald-400" />
-                          ) : (
-                            <Copy size={14} />
-                          )}
-                        </button>
+                          {acc.gameTitle}
+                        </h4>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '9.5px',
+                            fontFamily: 'Lexend, sans-serif',
+                            fontWeight: 900,
+                            color: '#10B981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                          }}
+                        >
+                          <CheckCircle2 size={10} />
+                          READY TO PLAY
+                        </span>
                       </div>
                     </div>
 
-                    {/* Password */}
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
-                      <span className="text-slate-400 font-mono text-[11px]">PASSWORD:</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-amber-300">
-                          {passVisible ? acc.password : '••••••••'}
-                        </span>
-                        <button
-                          onClick={() => togglePassword(acc.id)}
-                          className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                          title={passVisible ? 'Hide Password' : 'Show Password'}
-                        >
-                          {passVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                        <button
-                          onClick={() => copyToClipboard(acc.password, `pass_${acc.id}`)}
-                          className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition-colors"
-                          title="Copy Password"
-                        >
-                          {copiedField === `pass_${acc.id}` ? (
-                            <Check size={14} className="text-emerald-400" />
-                          ) : (
-                            <Copy size={14} />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action row */}
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      Ready to log in
-                    </span>
-                    <button
-                      onClick={() => {
-                        // Attempt to open web portal
-                        let target = 'https://ultrapanda.mobi';
-                        const titleLower = acc.gameTitle.toLowerCase();
-                        if (titleLower.includes('fire')) target = 'http://firekirin.xyz:8580';
-                        else if (titleLower.includes('orion')) target = 'http://orionstars.vip:8580';
-                        else if (titleLower.includes('game vault')) target = 'https://download.gamevault999.com';
-                        else if (titleLower.includes('milky')) target = 'http://milkywayapp.xyz';
-                        else if (titleLower.includes('juwa')) target = 'https://m.juwa777.com';
-                        window.open(target, '_blank');
+                    {/* Credentials Box */}
+                    <div
+                      style={{
+                        backgroundColor: '#070514',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '12px',
+                        padding: '10px 12px',
+                        marginBottom: '14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
                       }}
-                      className="inline-flex items-center gap-1 text-[var(--neon-cyan)] hover:text-white font-bold transition-colors"
                     >
-                      <span>LAUNCH PLATFORM</span>
-                      <ExternalLink size={12} />
+                      {/* Username Row */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: '9px', color: '#8E849E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            USERNAME / ID
+                          </p>
+                          <p style={{ margin: '2px 0 0 0', fontFamily: 'Lexend, sans-serif', fontSize: '13px', fontWeight: 800, color: '#00F0FF' }}>
+                            {acc.username || 'VIP Player'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(acc.username, `user_${index}`)}
+                          style={{
+                            background: 'rgba(0, 240, 255, 0.12)',
+                            border: '1px solid rgba(0, 240, 255, 0.3)',
+                            borderRadius: '6px',
+                            padding: '4px 8px',
+                            color: '#00F0FF',
+                            fontSize: '10px',
+                            fontFamily: 'Lexend, sans-serif',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          {copiedKey === `user_${index}` ? <Check size={11} /> : <Copy size={11} />}
+                          <span>{copiedKey === `user_${index}` ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+
+                      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.06)' }} />
+
+                      {/* Password Row */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: '9px', color: '#8E849E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            PIN / PASSWORD
+                          </p>
+                          <p style={{ margin: '2px 0 0 0', fontFamily: 'Lexend, sans-serif', fontSize: '13px', fontWeight: 800, color: '#FFFFFF' }}>
+                            {isPasswordVisible ? acc.password : '••••••••'}
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={() => togglePasswordVisibility(`acc_${index}`)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#8E849E',
+                              cursor: 'pointer',
+                              padding: '2px',
+                            }}
+                          >
+                            {isPasswordVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(acc.password, `pass_${index}`)}
+                            style={{
+                              background: 'rgba(0, 240, 255, 0.12)',
+                              border: '1px solid rgba(0, 240, 255, 0.3)',
+                              borderRadius: '6px',
+                              padding: '4px 8px',
+                              color: '#00F0FF',
+                              fontSize: '10px',
+                              fontFamily: 'Lexend, sans-serif',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            {copiedKey === `pass_${index}` ? <Check size={11} /> : <Copy size={11} />}
+                            <span>{copiedKey === `pass_${index}` ? 'Copied' : 'Copy'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions: Launch + Top Up */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => matchedGame && onPlayGame ? onPlayGame(matchedGame) : window.open(`/game/${matchedGame?.gameId || matchedGame?.id}`, '_self')}
+                      style={{
+                        background: 'linear-gradient(135deg, #E026D8 0%, #00F0FF 100%)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '9px 0',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontSize: '11.5px',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 14px rgba(0, 240, 255, 0.3)',
+                      }}
+                    >
+                      <Play size={13} fill="#0E0816" />
+                      <span>LAUNCH GAME</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setLoadCoinsModal({ open: true, game: matchedGame || { title: acc.gameTitle, gameId: acc.gameId } })}
+                      style={{
+                        backgroundColor: '#140E33',
+                        border: '1px solid rgba(0, 240, 255, 0.4)',
+                        color: '#00F0FF',
+                        borderRadius: '10px',
+                        padding: '9px 0',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Coins size={13} />
+                      <span>LOAD COINS</span>
                     </button>
                   </div>
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
 
-            {/* Pending Requests */}
-            {requests.map((req) => (
+      {/* ======================================================== */}
+      {/* 2. PENDING REQUESTS (Desk Preparing Credentials)         */}
+      {/* ======================================================== */}
+      {pendingRequests.length > 0 && (
+        <div style={{ marginBottom: '36px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#F59E0B', boxShadow: '0 0 10px #F59E0B' }} />
+            <h3 style={{ margin: 0, fontFamily: 'Lexend, sans-serif', fontSize: '18px', fontWeight: 900, color: '#FFFFFF' }}>
+              Pending Credentials ({pendingRequests.length})
+            </h3>
+            <span style={{ fontSize: '11px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+              — Desk is generating your player ID (typically 2-5 mins)
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
+              gap: '14px',
+            }}
+          >
+            {pendingRequests.map((req, index) => (
               <div
-                key={req.id}
-                className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-3"
+                key={`pend_${index}`}
+                style={{
+                  backgroundColor: '#0F0924',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  borderRadius: '16px',
+                  padding: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.5)',
+                }}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Gamepad2 size={16} className="text-amber-400" />
-                    <span className="font-heading font-bold text-sm text-white">
-                      {req.gameTitle}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 animate-pulse">
-                    <Clock size={11} />
-                    STAFF PENDING
+                <div>
+                  <h4 style={{ margin: '0 0 3px 0', fontFamily: 'Lexend, sans-serif', fontSize: '14.5px', fontWeight: 800, color: '#FFFFFF' }}>
+                    {req.gameTitle}
+                  </h4>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '9.5px',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 800,
+                      color: '#F59E0B',
+                      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    <Clock size={10} className="animate-spin" />
+                    GENERATING CREDENTIALS
                   </span>
                 </div>
-
-                <div className="p-3 rounded-xl bg-slate-950/70 border border-amber-500/20 text-xs text-slate-300">
-                  <p>Our 24/7 coin manager is creating your unique login. Your credentials will appear here momentarily.</p>
-                </div>
-
-                <div className="text-[10px] text-amber-400/80 font-mono">
-                  Submitted: {new Date(req.createdAt).toLocaleTimeString()}
+                <div style={{ textAlign: 'right' }}>
+                  {req.transferAmount > 0 ? (
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                        color: '#FDE68A',
+                        fontSize: '11px',
+                        fontWeight: 900,
+                      }}
+                    >
+                      <Lock size={10} color="#F59E0B" />
+                      <span>${Number(req.transferAmount).toFixed(2)} SC Frozen</span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '10px', color: '#8E849E', fontFamily: 'Lexend, sans-serif' }}>
+                      In Queue ⏳
+                    </span>
+                  )}
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/game-accounts/provisioning?requestId=${req.id}&game=${encodeURIComponent(req.gameTitle)}`)}
+                      style={{
+                        marginTop: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                        border: '1px solid rgba(0, 240, 255, 0.4)',
+                        color: '#00F0FF',
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Clock size={10} />
+                      <span>Track Handshake</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+      {/* ======================================================== */}
+      {/* 3. REJECTED REQUESTS WITH ADMIN REASON NOTES             */}
+      {/* ======================================================== */}
+      {rejectedRequests.length > 0 && (
+        <div style={{ marginBottom: '36px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#EF4444', boxShadow: '0 0 10px #EF4444' }} />
+            <h3 style={{ margin: 0, fontFamily: 'Lexend, sans-serif', fontSize: '18px', fontWeight: 900, color: '#FFFFFF' }}>
+              Requests Requiring Attention ({rejectedRequests.length})
+            </h3>
+            <span style={{ fontSize: '11px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+              — Staff feedback on your previous requests
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
+              gap: '14px',
+            }}
+          >
+            {rejectedRequests.map((req, index) => (
+              <div
+                key={`rej_${index}`}
+                style={{
+                  backgroundColor: '#0F0924',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.5)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h4 style={{ margin: 0, fontFamily: 'Lexend, sans-serif', fontSize: '15px', fontWeight: 800, color: '#FFFFFF' }}>
+                    {req.gameTitle}
+                  </h4>
+                  <span
+                    style={{
+                      fontSize: '9.5px',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 800,
+                      color: '#EF4444',
+                      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    NOT APPROVED
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: '10px',
+                    padding: '10px',
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: '12px', color: '#FCA5A5', fontFamily: 'Lexend, sans-serif', lineHeight: 1.4 }}>
+                    <strong>Support Note:</strong> {req.rejectionReason || 'Game server unavailable or request cancelled.'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleRequestAccount({ title: req.gameTitle, gameId: req.gameId })}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    color: '#FFFFFF',
+                    fontSize: '11px',
+                    fontFamily: 'Lexend, sans-serif',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Retry Request ↻
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Load Coins Modal */}
+      <LoadCoinsModal
+        isOpen={loadCoinsModal.open}
+        game={loadCoinsModal.game}
+        user={user}
+        onClose={() => setLoadCoinsModal({ open: false, game: null })}
+        onSuccess={() => fetchAccountsAndRequests()}
+      />
+    </section>
   );
 }

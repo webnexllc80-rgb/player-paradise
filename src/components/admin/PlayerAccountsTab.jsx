@@ -18,6 +18,7 @@ import {
 export default function PlayerAccountsTab({
   usersList = [],
   onOpenAllotment,
+  onResetPassword,
   onToggleBan,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -159,6 +160,15 @@ export default function PlayerAccountsTab({
                 >
                   <Coins size={13} />
                   <span>Adjust</span>
+                </button>
+
+                <button
+                  onClick={() => onResetPassword?.(u)}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-500/40 hover:border-amber-400 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Reset Player Password"
+                >
+                  <ShieldCheck size={13} />
+                  <span>Pass</span>
                 </button>
 
                 <button

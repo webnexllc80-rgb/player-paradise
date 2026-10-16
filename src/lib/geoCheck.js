@@ -1,8 +1,13 @@
-export function isGeoAllowed(req) {
-  if (process.env.BYPASS_GEO_LOCK === 'true' || process.env.NODE_ENV === 'development') {
-    return true;
-  }
-  // In production, can check headers like cf-ipcountry or x-vercel-ip-country
-  const country = req.headers?.get?.('cf-ipcountry') || req.headers?.get?.('x-country-code') || 'US';
-  return country === 'US';
+// Geo-compliance and access verification for Vegas One
+// All states and regions are unrestricted and permitted.
+
+export const RESTRICTED_US_STATES = [];
+
+export function checkGeoAccess(req) {
+  return {
+    allowed: true,
+    country: 'US',
+    state: 'ALL',
+    message: 'Access permitted for all states.',
+  };
 }

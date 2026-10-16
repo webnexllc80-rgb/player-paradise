@@ -33,20 +33,19 @@ export default function CyberSidebar({
   onOpenGameRequest,
   onOpenChat,
   onOpenDailyBonus,
+  onOpenSpinWheel,
 }) {
   const pathname = usePathname();
   const router = useRouter();
-
-  const isStaff = user && user.role && user.role !== 'player';
-
   const navItems = [
     { label: 'Game Lobby', path: '/', icon: Gamepad2, badge: 'HOT' },
     { label: 'All Games', path: '/games', icon: Trophy },
     { label: 'My Game IDs', action: onOpenGameRequest, icon: KeyRound, highlight: true },
-    { label: 'Cashier Wallet', action: () => onOpenWallet('deposit'), icon: Wallet },
+    { label: 'Deposit Funds', path: '/deposit', icon: Wallet },
+    { label: 'Redeem Cashout', path: '/withdraw', icon: Receipt },
+    { label: 'Daily Spin', path: '/spin-wheel', icon: Gift, glow: true },
     { label: 'Ledger History', path: '/ledger', icon: Receipt },
     { label: 'Promotions & VIP', path: '/promotions', icon: Crown },
-    { label: 'Daily Mystery', action: onOpenDailyBonus, icon: Gift, glow: true },
     { label: 'Download App', path: '/download-app', icon: Download, badge: 'APK / iOS' },
     { label: 'Live 24/7 Chat', action: onOpenChat, icon: MessageSquare },
     { label: 'How To Play', path: '/how-to-play', icon: HelpCircle },
@@ -199,44 +198,34 @@ export default function CyberSidebar({
               </div>
             );
           })}
-
-          {/* Admin Control Center link for Staff/Admin */}
-          {isStaff && (
-            <div className="pt-3 border-t border-slate-800/80">
-              <div
-                onClick={() => {
-                  router.push('/admin');
-                  setMobileOpen(false);
-                }}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold cursor-pointer bg-gradient-to-r from-rose-950/60 to-red-900/40 text-rose-300 border border-rose-500/50 hover:border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.25)] transition-all"
-              >
-                <div className="w-8 h-8 rounded-lg bg-rose-600/30 text-rose-300 flex items-center justify-center shrink-0">
-                  <ShieldAlert size={18} />
-                </div>
-                {(!collapsed || mobileOpen) && (
-                  <div className="flex items-center justify-between flex-1">
-                    <span>ADMIN COMMAND</span>
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white">STAFF</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer Quick Action */}
         {(!collapsed || mobileOpen) ? (
           <div className="p-3 border-t border-[var(--chrome-border)]/60 bg-slate-950/40 space-y-2">
-            <button
-              onClick={() => {
-                onOpenWallet('deposit');
-                setMobileOpen(false);
-              }}
-              className="w-full cyber-btn-cyan text-xs py-2.5 font-bold"
-            >
-              <Wallet size={15} />
-              <span>DEPOSIT CREDITS</span>
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  router.push('/deposit');
+                  setMobileOpen(false);
+                }}
+                className="cyber-btn-cyan text-[11px] py-2 font-bold flex items-center justify-center gap-1"
+              >
+                <Wallet size={13} />
+                <span>DEPOSIT</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  router.push('/withdraw');
+                  setMobileOpen(false);
+                }}
+                className="rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-200 text-[11px] py-2 font-bold flex items-center justify-center gap-1 transition-all"
+              >
+                <span>REDEEM</span>
+              </button>
+            </div>
             <div className="text-[10px] text-center text-slate-500 font-mono">
               PLAYERS PARADISE v1.0 • 2026
             </div>
@@ -244,7 +233,7 @@ export default function CyberSidebar({
         ) : (
           <div className="p-2 border-t border-[var(--chrome-border)]/60 flex justify-center">
             <button
-              onClick={() => onOpenWallet('deposit')}
+              onClick={() => router.push('/deposit')}
               className="w-10 h-10 rounded-xl bg-[var(--neon-cyan)] text-black flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.4)] hover:scale-105 transition-transform"
               title="Deposit Credits"
             >

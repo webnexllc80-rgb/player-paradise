@@ -30,7 +30,27 @@ export default function AdminSidebar({
   adminUser,
   onLogout,
 }) {
-  const menuItems = [
+  const hasAccess = (tabId, role) => {
+    const roles = String(role || '').toLowerCase().split(',').map((r) => r.trim());
+    if (roles.includes('super_admin') || roles.includes('admin')) return true;
+    if (tabId === 'overview') return true;
+
+    if (roles.includes('operation_admin')) {
+      return !['staff', 'settings'].includes(tabId);
+    }
+    if (roles.includes('financial_manager') || roles.includes('financial_admin')) {
+      return ['overview', 'ledger', 'gateways'].includes(tabId);
+    }
+    if (roles.includes('coin_manager') || roles.includes('coins_admin')) {
+      return ['overview', 'requests', 'coins'].includes(tabId);
+    }
+    if (roles.includes('chat_support') || roles.includes('support_admin')) {
+      return ['overview', 'support'].includes(tabId);
+    }
+    return false;
+  };
+
+  const allMenuItems = [
     { id: 'overview', label: 'Overview Analytics', icon: LayoutDashboard },
     {
       id: 'requests',
@@ -44,8 +64,13 @@ export default function AdminSidebar({
       icon: Wallet,
       badge: pendingCounts.ledger || 0,
     },
+    {
+      id: 'coins',
+      label: 'Coins Allotment Queue',
+      icon: Coins,
+      badge: pendingCounts.coins || 0,
+    },
     { id: 'users', label: 'Player Accounts', icon: Users },
-    { id: 'coins', label: 'Balance Adjuster', icon: Coins },
     { id: 'gateways', label: 'Payment Gateways', icon: CreditCard },
     { id: 'games', label: 'Games Library', icon: Gamepad2 },
     { id: 'staff', label: 'Staff Management', icon: ShieldCheck },
@@ -57,6 +82,8 @@ export default function AdminSidebar({
     },
     { id: 'settings', label: 'System Settings', icon: Settings },
   ];
+
+  const menuItems = allMenuItems.filter((item) => hasAccess(item.id, adminUser?.role));
 
   return (
     <>

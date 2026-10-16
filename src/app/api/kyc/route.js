@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
+import { sendEmail } from '@/lib/email';
 
-// GET: Check KYC status
-export async function GET() {
+// GET: List KYC submissions (Staff) or current status (Player)
+export async function GET(req) {
   try {
     const session = await getSessionUser();
     if (!session) {
@@ -12,36 +13,49 @@ export async function GET() {
     }
 
     const db = await getDb();
-    const usersCol = db.collection('users');
+    const kycCol = db.collection('kyc_requests');
+    const isStaff =
+      session.role === ROLES.SUPER_ADMIN ||
+      session.role === ROLES.FINANCIAL_MANAGER ||
+      session.role === ROLES.OPERATION_ADMIN;
 
-    let userFilter = { _id: session.userId };
-    if (ObjectId.isValid(session.userId)) {
-      userFilter = { _id: new ObjectId(session.userId) };
+    if (!isStaff) {
+      const kyc = await kycCol.findOne({ userId: session.userId }, { sort: { createdAt: -1 } });
+      return NextResponse.json({ success: true, kyc });
     }
 
-    const user = await usersCol.findOne(userFilter);
-    const kycCol = db.collection('kyc');
-    const application = await kycCol.findOne({ userId: session.userId });
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get('status') || 'pending';
+
+    const query = status === 'all' ? {} : { status };
+    const requests = await kycCol.find(query).sort({ createdAt: -1 }).toArray();
 
     return NextResponse.json({
       success: true,
-      kycStatus: user?.kycStatus || 'unverified',
-      application: application
-        ? {
-            fullName: application.fullName,
-            state: application.state,
-            idType: application.idType,
-            status: application.status,
-            submittedAt: application.createdAt,
-          }
-        : null,
+      requests: requests.map(r => ({
+        id: r._id.toString(),
+        userId: r.userId,
+        username: r.username,
+        legalName: r.legalName,
+        dob: r.dob,
+        state: r.state,
+        ssnLast4: r.ssnLast4,
+        idFrontUrl: r.idFrontUrl,
+        idBackUrl: r.idBackUrl,
+        selfieUrl: r.selfieUrl,
+        addressProofUrl: r.addressProofUrl,
+        status: r.status,
+        rejectReason: r.rejectReason || null,
+        processedBy: r.processedBy || null,
+        createdAt: r.createdAt,
+      })),
     });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-// POST: Player submits KYC application
+// POST: Player Submit KYC
 export async function POST(req) {
   try {
     const session = await getSessionUser();
@@ -49,80 +63,129 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { fullName, dob, state, idType, idNumber } = body;
+    const { legalName, dob, state, ssnLast4, idFrontUrl, idBackUrl, selfieUrl, addressProofUrl } = await req.json();
 
-    if (!fullName || !state || !idNumber) {
-      return NextResponse.json(
-        { success: false, error: 'Legal full name, state, and ID number are required.' },
-        { status: 400 }
-      );
+    if (!legalName || !dob || !state || !idFrontUrl) {
+      return NextResponse.json({ success: false, error: 'Legal name, DOB, state, and ID image are required.' }, { status: 400 });
     }
 
     const db = await getDb();
-    const kycCol = db.collection('kyc');
+    const kycCol = db.collection('kyc_requests');
     const usersCol = db.collection('users');
 
-    const appDoc = {
+    const newKyc = {
       userId: session.userId,
       username: session.username,
-      email: session.email,
-      fullName: fullName.trim(),
-      dob: dob || '',
-      state: state.trim(),
-      idType: idType || "Driver's License",
-      idNumber: idNumber.trim(),
-      status: 'PENDING',
+      legalName,
+      dob,
+      state: state.toUpperCase(),
+      ssnLast4: ssnLast4 || 'XXXX',
+      idFrontUrl,
+      idBackUrl: idBackUrl || null,
+      selfieUrl: selfieUrl || null,
+      addressProofUrl: addressProofUrl || null,
+      status: 'pending',
+      rejectReason: null,
+      processedBy: null,
       createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
-    await kycCol.insertOne(appDoc);
+    const res = await kycCol.insertOne(newKyc);
 
-    let userFilter = { _id: session.userId };
-    if (ObjectId.isValid(session.userId)) {
-      userFilter = { _id: new ObjectId(session.userId) };
-    }
-    await usersCol.updateOne(userFilter, { $set: { kycStatus: 'pending' } });
+    await usersCol.updateOne(
+      { _id: new ObjectId(session.userId) },
+      { $set: { kycStatus: 'pending' } }
+    );
 
     return NextResponse.json({
       success: true,
-      message: 'KYC identity submitted! Verification typically completes within 10-30 minutes.',
+      id: res.insertedId.toString(),
+      message: 'KYC documents submitted for compliance review.',
     });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-// PATCH: Staff approves/rejects KYC
-export async function PATCH(req) {
+// PUT: Review KYC (Super Admin & Financial Manager)
+export async function PUT(req) {
   try {
-    const session = await getSessionUser();
-    if (!session || session.role === ROLES.PLAYER) {
-      return NextResponse.json({ success: false, error: 'Unauthorized staff access.' }, { status: 403 });
+    const authorizedRoles = [
+      ROLES.SUPER_ADMIN,
+      ROLES.FINANCIAL_MANAGER,
+      ROLES.OPERATION_ADMIN,
+    ];
+    if (!session || !authorizedRoles.includes(session.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { userId, action, reason } = body;
+    const { kycId, action, rejectReason } = await req.json();
+
+    if (!kycId || !action) {
+      return NextResponse.json({ success: false, error: 'KYC ID and action required.' }, { status: 400 });
+    }
 
     const db = await getDb();
+    const kycCol = db.collection('kyc_requests');
     const usersCol = db.collection('users');
-    const kycCol = db.collection('kyc');
 
-    let userFilter = { _id: userId };
-    if (ObjectId.isValid(userId)) {
-      userFilter = { _id: new ObjectId(userId) };
+    const kyc = await kycCol.findOne({ _id: new ObjectId(kycId) });
+    if (!kyc) {
+      return NextResponse.json({ success: false, error: 'KYC request not found.' }, { status: 404 });
     }
 
-    if (action === 'APPROVE') {
-      await usersCol.updateOne(userFilter, { $set: { kycStatus: 'approved' } });
-      await kycCol.updateOne({ userId }, { $set: { status: 'APPROVED', updatedBy: session.username } });
-      return NextResponse.json({ success: true, message: 'KYC verified and approved!' });
-    } else {
-      await usersCol.updateOne(userFilter, { $set: { kycStatus: 'rejected' } });
-      await kycCol.updateOne({ userId }, { $set: { status: 'REJECTED', reason: reason || 'Document unclear' } });
-      return NextResponse.json({ success: true, message: 'KYC rejected.' });
+    const user = await usersCol.findOne({ _id: new ObjectId(kyc.userId) });
+
+    if (action === 'approve') {
+      await kycCol.updateOne(
+        { _id: kyc._id },
+        {
+          $set: {
+            status: 'approved',
+            processedBy: `${session.username} (${session.role})`,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      await usersCol.updateOne(
+        { _id: new ObjectId(kyc.userId) },
+        { $set: { kycStatus: 'approved' } }
+      );
+
+      if (user?.email) {
+        sendEmail({
+          to: user.email,
+          subject: 'Vegas One - KYC Verified!',
+          html: `<p>Hi ${user.username}, your US identity verification has been approved! You can now request instant cash prize redemptions.</p>`,
+        }).catch(() => {});
+      }
+
+      return NextResponse.json({ success: true, message: 'KYC Approved successfully.' });
+    } else if (action === 'reject') {
+      await kycCol.updateOne(
+        { _id: kyc._id },
+        {
+          $set: {
+            status: 'rejected',
+            rejectReason: rejectReason || 'Document blurred or information mismatch',
+            processedBy: `${session.username} (${session.role})`,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      await usersCol.updateOne(
+        { _id: new ObjectId(kyc.userId) },
+        { $set: { kycStatus: 'rejected' } }
+      );
+
+      return NextResponse.json({ success: true, message: 'KYC Rejected.' });
     }
-  } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+
+    return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

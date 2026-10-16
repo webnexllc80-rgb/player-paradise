@@ -16,6 +16,7 @@ export default function CyberMobileBottomNav({
   onOpenAuth,
   onOpenWallet,
   onOpenGameRequest,
+  onOpenSpinWheel,
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -39,31 +40,31 @@ export default function CyberMobileBottomNav({
       id: 'ids',
       label: 'Game IDs',
       icon: KeyRound,
-      action: onOpenGameRequest,
+      action: onOpenGameRequest || (() => router.push('/games')),
       highlight: true,
       isActive: false,
     },
     {
-      id: 'wallet',
-      label: 'Wallet',
+      id: 'deposit',
+      label: 'Deposit',
       icon: Wallet,
-      action: () => onOpenWallet('deposit'),
-      isActive: pathname === '/wallet',
+      action: () => router.push('/deposit'),
+      isActive: pathname === '/deposit',
     },
     {
-      id: 'profile',
-      label: user ? 'VIP Club' : 'Sign In',
-      icon: user ? Sparkles : User,
-      action: () => {
-        if (user) router.push('/promotions');
-        else onOpenAuth('login');
-      },
-      isActive: pathname === '/promotions',
+      id: 'spin',
+      label: 'Spin $50',
+      icon: Sparkles,
+      action: onOpenSpinWheel || (() => router.push('/promotions')),
+      isActive: false,
     },
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-[var(--bg-deep)]/95 backdrop-blur-xl border-t border-[var(--chrome-border)]/60 px-2 py-1.5 flex items-center justify-around shadow-[0_-10px_25px_rgba(0,0,0,0.6)]">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-[var(--bg-deep)]/95 backdrop-blur-xl border-t border-[var(--chrome-border)]/60 px-2 pt-1.5 flex items-center justify-around shadow-[0_-10px_25px_rgba(0,0,0,0.6)]"
+      style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))' }}
+    >
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const active = tab.isActive;

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -20,6 +20,7 @@ import CyberFooter from '@/components/common/CyberFooter';
 
 export default function HowToPlayPage() {
   const router = useRouter();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const steps = [
     {
@@ -53,8 +54,8 @@ export default function HowToPlayPage() {
       <CyberSidebar
         collapsed={false}
         setCollapsed={() => {}}
-        mobileOpen={false}
-        setMobileOpen={() => {}}
+        mobileOpen={mobileSidebarOpen}
+        setMobileOpen={setMobileSidebarOpen}
         user={null}
         onOpenWallet={() => router.push('/wallet')}
         onOpenGameRequest={() => router.push('/')}
@@ -64,7 +65,7 @@ export default function HowToPlayPage() {
 
       <div className="flex-1 flex flex-col lg:pl-64">
         <CyberNavbar
-          onToggleSidebar={() => {}}
+          onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={null}
           onOpenAuth={() => router.push('/')}
           onOpenWallet={() => router.push('/wallet')}

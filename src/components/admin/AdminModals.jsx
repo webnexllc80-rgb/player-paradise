@@ -58,8 +58,8 @@ export function ApproveRequestModal({ isOpen, onClose, request, onConfirm }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-lg bg-[#0a0d1f] border border-cyan-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-lg bg-[#0a0d1f] border border-cyan-500/30 rounded-3xl p-4 sm:p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] space-y-5 max-h-[92vh] overflow-y-auto modal-scrollable">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
@@ -192,8 +192,8 @@ export function RejectRequestModal({ isOpen, onClose, request, onConfirm }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-rose-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(244,63,94,0.2)] space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-rose-500/30 rounded-3xl p-4 sm:p-6 shadow-[0_0_50px_rgba(244,63,94,0.2)] space-y-5 max-h-[92vh] overflow-y-auto modal-scrollable">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/40 flex items-center justify-center text-rose-400">
@@ -389,8 +389,8 @@ export function QuickAllotmentModal({ isOpen, onClose, targetUser, onComplete })
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-cyan-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-cyan-500/30 rounded-3xl p-4 sm:p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] space-y-4 max-h-[92vh] overflow-y-auto modal-scrollable">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
@@ -558,8 +558,8 @@ export function AddGatewayModal({ isOpen, onClose, onComplete }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-cyan-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-cyan-500/30 rounded-3xl p-4 sm:p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] space-y-4 max-h-[92vh] overflow-y-auto modal-scrollable">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
@@ -712,8 +712,8 @@ export function AddStaffModal({ isOpen, onClose, onComplete }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-purple-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(192,38,211,0.2)] space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-purple-500/30 rounded-3xl p-4 sm:p-6 shadow-[0_0_50px_rgba(192,38,211,0.2)] space-y-4 max-h-[92vh] overflow-y-auto modal-scrollable">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/40 flex items-center justify-center text-purple-400">
@@ -809,3 +809,296 @@ export function AddStaffModal({ isOpen, onClose, onComplete }) {
     </div>
   );
 }
+
+// 7. Manual Add Game Account Modal (Proactively create credentials for a player)
+export function ManualAddAccountModal({ isOpen, onClose, usersList = [], gamesList = [], onComplete }) {
+  const [playerEmail, setPlayerEmail] = useState('');
+  const [selectedGame, setSelectedGame] = useState('Ultra Panda');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const defaultGames = ['Ultra Panda', 'Fire Kirin', 'Orion Stars', 'Game Vault', 'Milky Way', 'Juwa'];
+
+  if (!isOpen) return null;
+
+  const handleAutoGenerate = () => {
+    const cleanPlayer = (playerEmail.split('@')[0] || 'player').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const randNum = Math.floor(100 + Math.random() * 900);
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let randPass = '';
+    for (let i = 0; i < 8; i++) {
+      randPass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setUsername(`${cleanPlayer}_${randNum}`);
+    setPassword(`${randPass}!`);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!playerEmail.trim()) {
+      setError('Player email is required.');
+      return;
+    }
+    if (!username.trim() || !password.trim()) {
+      setError('Game username and password are required.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/api/game-accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userEmail: playerEmail.trim(),
+          gameTitle: selectedGame,
+          username: username.trim(),
+          password: password.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Failed to create game credentials.');
+      onComplete?.(data.message || 'Game account created successfully!');
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-[#0a0d1f] border border-cyan-500/30 rounded-3xl p-4 sm:p-6 shadow-[0_0_50px_rgba(0,240,255,0.2)] space-y-4 max-h-[92vh] overflow-y-auto modal-scrollable">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+              <KeyRound size={20} />
+            </div>
+            <div>
+              <h3 className="font-heading font-black text-white text-base">ADD GAME ACCOUNT</h3>
+              <p className="text-xs text-slate-400">Manually provision platform credentials</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-rose-950/70 border border-rose-500/60 text-rose-200 text-xs flex items-center gap-2">
+            <AlertCircle size={15} className="shrink-0 text-rose-400" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          <div>
+            <label className="block text-[11px] font-bold text-slate-400 mb-1">Target Player Email / Account</label>
+            <input
+              type="email"
+              required
+              value={playerEmail}
+              onChange={(e) => setPlayerEmail(e.target.value)}
+              placeholder="player@demo.com"
+              className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl px-3 py-2 text-xs text-white outline-none"
+            />
+            {usersList.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                <span className="text-[10px] text-slate-500 font-bold">Quick Pick:</span>
+                {usersList.slice(0, 4).map((u) => (
+                  <button
+                    key={u.id || u._id}
+                    type="button"
+                    onClick={() => setPlayerEmail(u.email)}
+                    className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:text-cyan-400"
+                  >
+                    @{u.username}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-400 mb-1">Casino Platform</label>
+            <select
+              value={selectedGame}
+              onChange={(e) => setSelectedGame(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl px-3 py-2 text-xs text-white outline-none"
+            >
+              {defaultGames.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs font-bold text-slate-300">Credentials</span>
+            <button
+              type="button"
+              onClick={handleAutoGenerate}
+              className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
+            >
+              <Sparkles size={12} /> Auto-Generate
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-400 mb-1">Assigned Username</label>
+            <input
+              type="text"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. panda_vip99"
+              className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl px-3 py-2 text-xs text-white outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-400 mb-1">Assigned Password</label>
+            <input
+              type="text"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Pass@8821"
+              className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl px-3 py-2 text-xs text-white outline-none font-mono"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-heading font-black text-xs flex items-center justify-center gap-1.5 shadow-[0_0_20px_rgba(0,240,255,0.4)] disabled:opacity-50 cursor-pointer"
+            >
+              {submitting ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              <span>SAVE &amp; ASSIGN ACCOUNT</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 8. Reset Player Password Modal
+export function ResetPasswordModal({ isOpen, onClose, user, onConfirm }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen || !user) return null;
+
+  const handleGenerate = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%';
+    let p = 'Paradise';
+    for (let i = 0; i < 4; i++) {
+      p += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewPassword(p);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await onConfirm(user.id || user._id, newPassword);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Failed to reset password.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-[#0a0d1f] border border-cyan-500/40 rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-4 animate-in fade-in max-h-[92vh] overflow-y-auto modal-scrollable">
+        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div>
+            <h3 className="font-heading font-black text-sm md:text-base text-white">Reset Player Password</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Target: <strong className="text-cyan-400">@{user.username}</strong> ({user.email})
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-bold">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                New Player Password *
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerate}
+                className="text-[10px] text-cyan-400 font-bold hover:underline"
+              >
+                Auto-Generate
+              </button>
+            </div>
+            <input
+              type="text"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="e.g. Paradise2026!"
+              required
+              className="w-full bg-[#060817] border border-white/10 focus:border-cyan-400 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono outline-none"
+            />
+          </div>
+
+          <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-800 text-[11px] text-cyan-300">
+            💡 The player can immediately log in with this new password. Make sure to share it via Live Chat or SMS.
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 text-slate-950 font-heading font-black text-xs flex items-center justify-center gap-1.5 shadow-lg disabled:opacity-50 cursor-pointer"
+            >
+              {submitting ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+              <span>CONFIRM &amp; RESET</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+

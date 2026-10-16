@@ -22,6 +22,12 @@ import GameRequestModal from '@/components/modals/GameRequestModal';
 import DailyBonusModal from '@/components/modals/DailyBonusModal';
 import NotificationsModal from '@/components/modals/NotificationsModal';
 import ExternalGameModal from '@/components/modals/ExternalGameModal';
+import SubscriptionPromoModal from '@/components/modals/SubscriptionPromoModal';
+import LoadCoinsModal from '@/components/modals/LoadCoinsModal';
+import KycModal from '@/components/modals/KycModal';
+import BonusAlertToast from '@/components/common/BonusAlertToast';
+import PushNotificationManager from '@/components/common/PushNotificationManager';
+import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
 
 // Games
 import Panda777SlotsModal from '@/components/games/Panda777SlotsModal';
@@ -58,8 +64,12 @@ export default function HomePage() {
   const [walletModal, setWalletModal] = useState({ open: false, tab: 'deposit' });
   const [gameRequestModal, setGameRequestModal] = useState({ open: false, initialGame: null });
   const [dailyBonusOpen, setDailyBonusOpen] = useState(false);
+  const [spinWheelOpen, setSpinWheelOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeExternalGame, setActiveExternalGame] = useState(null);
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [kycOpen, setKycOpen] = useState(false);
+  const [loadCoinsModal, setLoadCoinsModal] = useState({ open: false, game: null });
 
   // In-House playable game modal states
   const [slotsOpen, setSlotsOpen] = useState(false);
@@ -166,6 +176,7 @@ export default function HomePage() {
         onOpenGameRequest={() => handleRequestGame()}
         onOpenChat={() => setChatOpen(true)}
         onOpenDailyBonus={() => setDailyBonusOpen(true)}
+        onOpenSpinWheel={() => setSpinWheelOpen(true)}
       />
 
       {/* Main Content Layout */}
@@ -181,6 +192,7 @@ export default function HomePage() {
           onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
           onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
           onOpenDailyBonus={() => setDailyBonusOpen(true)}
+          onOpenSpinWheel={() => setSpinWheelOpen(true)}
           onOpenNotifications={() => setNotificationsOpen(true)}
           onLogout={handleLogout}
           unreadNotifsCount={1}
@@ -331,6 +343,15 @@ export default function HomePage() {
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
         onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
         onOpenGameRequest={() => handleRequestGame()}
+        onOpenSpinWheel={() => setSpinWheelOpen(true)}
+      />
+
+      {/* Daily Lucky Spin Wheel Modal */}
+      <DailySpinWheelModal
+        isOpen={spinWheelOpen}
+        onClose={() => setSpinWheelOpen(false)}
+        user={user}
+        onBalanceUpdated={loadUser}
       />
 
       {/* Floating 24/7 Live Support Chat */}
@@ -404,6 +425,36 @@ export default function HomePage() {
         onClose={() => setCrashOpen(false)}
         user={user}
         onBalanceUpdated={loadUser}
+      />
+
+      {/* Push Notifications & Real-Time Broadcast Toast */}
+      <PushNotificationManager />
+      <BonusAlertToast />
+
+      {/* Promos & Broadcasts Modal */}
+      <SubscriptionPromoModal
+        isOpen={subscriptionModalOpen}
+        onClose={() => setSubscriptionModalOpen(false)}
+        user={user}
+        onSubscribed={loadUser}
+      />
+
+      {/* KYC Verification Modal */}
+      <KycModal
+        isOpen={kycOpen}
+        onClose={() => setKycOpen(false)}
+        user={user}
+        onSuccess={loadUser}
+      />
+
+      {/* Sweepstakes Coin Allotment Modal */}
+      <LoadCoinsModal
+        isOpen={loadCoinsModal.open}
+        onClose={() => setLoadCoinsModal({ open: false, game: null })}
+        game={loadCoinsModal.game}
+        user={user}
+        onSuccess={loadUser}
+        onOpenDeposit={() => setWalletModal({ open: true, tab: 'deposit' })}
       />
     </div>
   );

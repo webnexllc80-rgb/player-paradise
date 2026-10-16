@@ -4,90 +4,159 @@ import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { ensureDbInitialized } from '@/lib/initDb';
 
-// GET Games
 export async function GET(req) {
   try {
     await ensureDbInitialized();
+
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category');
-    const search = searchParams.get('search');
+    const all = searchParams.get('all') === 'true';
 
     const db = await getDb();
     const gamesCol = db.collection('games');
 
-    const query = { active: true };
-    if (category && category !== 'all') {
-      query.category = category;
+    const query = {};
+    if (!all) {
+      query.isActive = { $ne: false };
     }
-    if (search) {
-      query.title = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    if (category && category !== 'all' && category !== 'lobby') {
+      query.category = category.toLowerCase();
     }
 
-    const games = await gamesCol.find(query).sort({ priority: 1 }).toArray();
+    const games = await gamesCol.find(query).sort({ isFeatured: -1, playsCount: -1 }).toArray();
 
     return NextResponse.json({
       success: true,
-      games: games.map((g) => ({
-        id: g.id || (g._id ? g._id.toString() : ''),
+      games: games.map(g => ({
+        id: g._id.toString(),
+        gameId: g.gameId,
         title: g.title,
-        category: g.category,
-        isInternal: !!g.isInternal,
-        platform: g.platform || '',
-        playUrl: g.playUrl || '',
-        rtp: g.rtp || 98.0,
-        rating: g.rating || 4.9,
-        badge: g.badge || '',
-        image: g.image || '/images/vegas-777.svg',
-        fallbackImage: g.fallbackImage || '',
-        description: g.description || '',
-        minBet: g.minBet || 1,
-        maxBet: g.maxBet || 100,
-        jackpot: g.jackpot || 50000,
+        category: g.category || 'sweepstakes',
+        provider: g.provider || 'Vegas One Studio',
+        thumbnail: g.thumbnail || '/images/vegas-777.webp',
+        type: g.type || 'internal',
+        url: g.url || null,
+        badge: g.badge || (g.isHot ? 'HOT' : (g.isFeatured ? 'EXCLUSIVE' : '')),
+        isActive: g.isActive !== false,
+        isHot: g.isHot ?? false,
+        isFeatured: g.isFeatured ?? false,
+        playsCount: g.playsCount || 0,
       })),
     });
-  } catch (err) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-// POST: Admin add game
+// Admin Add Game
 export async function POST(req) {
   try {
     const session = await getSessionUser();
-    if (!session || session.role === ROLES.PLAYER) {
-      return NextResponse.json({ success: false, message: 'Unauthorized staff access.' }, { status: 403 });
+    if (!session || session.role !== ROLES.SUPER_ADMIN) {
+      return NextResponse.json({ success: false, error: 'Unauthorized. Super Admin only.' }, { status: 403 });
     }
 
     const body = await req.json();
-    const { title, category, isInternal, platform, playUrl, rtp, description, badge, image } = body;
+    const { title, provider, thumbnail, type = 'internal', url, badge, isActive } = body;
 
-    if (!title || !category) {
-      return NextResponse.json({ success: false, message: 'Game title and category are required.' }, { status: 400 });
+    if (!title) {
+      return NextResponse.json({ success: false, error: 'Title is required.' }, { status: 400 });
     }
 
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const db = await getDb();
     const gamesCol = db.collection('games');
 
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const normalizedBadge = (badge || '').toUpperCase().trim();
     const newGame = {
-      id: slug,
+      gameId: slug + '-' + Math.floor(Math.random() * 1000),
       title,
-      category,
-      isInternal: !!isInternal,
-      platform: platform || '',
-      playUrl: playUrl || '',
-      rtp: parseFloat(rtp) || 98.0,
-      rating: 4.9,
-      badge: badge || 'NEW',
-      image: image || '/images/vegas-777.svg',
-      description: description || '',
-      active: true,
+      category: body.category ? body.category.toLowerCase() : 'sweepstakes',
+      provider: provider || 'Vegas One Studio',
+      thumbnail: thumbnail || '/images/vegas-777.webp',
+      type: type || 'internal',
+      url: url || '',
+      badge: normalizedBadge,
+      isActive: isActive !== undefined ? Boolean(isActive) : true,
+      isHot: normalizedBadge === 'HOT',
+      isFeatured: normalizedBadge === 'EXCLUSIVE' || normalizedBadge === 'POPULAR',
+      playsCount: 0,
       createdAt: new Date(),
     };
 
-    await gamesCol.insertOne(newGame);
-    return NextResponse.json({ success: true, message: 'Game added successfully!', game: newGame });
-  } catch (err) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    const res = await gamesCol.insertOne(newGame);
+    return NextResponse.json({
+      success: true,
+      gameId: res.insertedId.toString(),
+      message: 'Game added successfully',
+      game: { ...newGame, id: res.insertedId.toString() }
+    });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// Admin Edit Game
+export async function PUT(req) {
+  try {
+    const session = await getSessionUser();
+    if (!session || session.role !== ROLES.SUPER_ADMIN) {
+      return NextResponse.json({ success: false, error: 'Unauthorized. Super Admin only.' }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { id, title, provider, thumbnail, isActive, badge, url, category } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Game ID required' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const gamesCol = db.collection('games');
+
+    const updateFields = {};
+    if (title !== undefined) updateFields.title = title;
+    if (provider !== undefined) updateFields.provider = provider;
+    if (thumbnail !== undefined) updateFields.thumbnail = thumbnail;
+    if (url !== undefined) updateFields.url = url;
+    if (category !== undefined) updateFields.category = category.toLowerCase();
+    if (isActive !== undefined) updateFields.isActive = Boolean(isActive);
+    if (badge !== undefined) {
+      const normalizedBadge = (badge || '').toUpperCase().trim();
+      updateFields.badge = normalizedBadge;
+      updateFields.isHot = normalizedBadge === 'HOT';
+      updateFields.isFeatured = normalizedBadge === 'EXCLUSIVE' || normalizedBadge === 'POPULAR';
+    }
+
+    await gamesCol.updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
+
+    return NextResponse.json({ success: true, message: 'Game updated successfully' });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// Admin Delete Game
+export async function DELETE(req) {
+  try {
+    const session = await getSessionUser();
+    if (!session || session.role !== ROLES.SUPER_ADMIN) {
+      return NextResponse.json({ success: false, error: 'Unauthorized. Super Admin only.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Game ID required' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const gamesCol = db.collection('games');
+
+    await gamesCol.deleteOne({ _id: new ObjectId(id) });
+    return NextResponse.json({ success: true, message: 'Game deleted successfully' });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

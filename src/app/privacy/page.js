@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import CyberNavbar from '@/components/navigation/CyberNavbar';
@@ -10,14 +10,15 @@ import CyberFooter from '@/components/common/CyberFooter';
 
 export default function PrivacyPage() {
   const router = useRouter();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-white flex flex-col">
       <CyberSidebar
         collapsed={false}
         setCollapsed={() => {}}
-        mobileOpen={false}
-        setMobileOpen={() => {}}
+        mobileOpen={mobileSidebarOpen}
+        setMobileOpen={setMobileSidebarOpen}
         user={null}
         onOpenWallet={() => router.push('/wallet')}
         onOpenGameRequest={() => router.push('/')}
@@ -27,7 +28,7 @@ export default function PrivacyPage() {
 
       <div className="flex-1 flex flex-col lg:pl-64">
         <CyberNavbar
-          onToggleSidebar={() => {}}
+          onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={null}
           onOpenAuth={() => router.push('/')}
           onOpenWallet={() => router.push('/wallet')}

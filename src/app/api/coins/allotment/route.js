@@ -3,91 +3,174 @@ import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
+// Search player for allotment or fetch recent allotment history
+export async function GET(req) {
+  try {
+    const session = await getSessionUser();
+    const authorizedRoles = [
+      ROLES.SUPER_ADMIN,
+      ROLES.OPERATION_ADMIN,
+      ROLES.FINANCIAL_MANAGER,
+      ROLES.COIN_MANAGER,
+    ];
+    if (!session || !authorizedRoles.includes(session.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized. Staff allotment access required.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get('q');
+    const history = searchParams.get('history');
+
+    const db = await getDb();
+
+    if (history === 'true') {
+      const ledgerCol = db.collection('ledger');
+      const records = await ledgerCol
+        .find({ type: { $in: ['admin_allotment', 'admin_deduction'] } })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .toArray();
+
+      return NextResponse.json({
+        success: true,
+        history: records.map(r => ({
+          id: r._id.toString(),
+          userId: r.userId,
+          username: r.username,
+          type: r.type,
+          currency: r.currency || 'SC',
+          amount: r.amount,
+          balanceBefore: r.balanceBefore,
+          balanceAfter: r.balanceAfter,
+          performedBy: r.performedBy,
+          staffRole: r.staffRole,
+          notes: r.notes,
+          createdAt: r.createdAt,
+        })),
+      });
+    }
+
+    const usersCol = db.collection('users');
+
+    const filter = { role: ROLES.PLAYER };
+    if (query && query.trim()) {
+      filter.$or = [
+        { username: { $regex: new RegExp(query.trim(), 'i') } },
+        { email: { $regex: new RegExp(query.trim(), 'i') } },
+      ];
+    }
+
+    const players = await usersCol
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(15)
+      .toArray();
+
+    return NextResponse.json({
+      success: true,
+      players: players.map(p => ({
+        id: p._id.toString(),
+        username: p.username,
+        email: p.email,
+        balanceSC: p.balanceSC || 0,
+        balanceGC: p.balanceGC || 0,
+        kycStatus: p.kycStatus || 'none',
+        createdAt: p.createdAt,
+      })),
+    });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// POST: Credit or Debit coins
 export async function POST(req) {
   try {
     const session = await getSessionUser();
-    if (!session || (session.role !== ROLES.SUPER_ADMIN && session.role !== ROLES.COIN_MANAGER && session.role !== ROLES.OPERATION_ADMIN)) {
-      return NextResponse.json({ success: false, error: 'Unauthorized staff role.' }, { status: 403 });
+    const authorizedRoles = [
+      ROLES.SUPER_ADMIN,
+      ROLES.OPERATION_ADMIN,
+      ROLES.FINANCIAL_MANAGER,
+      ROLES.COIN_MANAGER,
+    ];
+    if (!session || !authorizedRoles.includes(session.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized. Staff allotment access required.' }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { targetUser, amountSC, amountGC, actionType, notes } = body;
+    const { playerId, action, currency = 'SC', amount, reason } = await req.json();
 
-    if (!targetUser) {
-      return NextResponse.json({ success: false, error: 'Target user username or email is required.' }, { status: 400 });
+    if (!playerId || !action || !amount || !reason) {
+      return NextResponse.json(
+        { success: false, error: 'Player ID, action (credit/debit), amount and reason are required.' },
+        { status: 400 }
+      );
     }
 
-    const scVal = parseFloat(amountSC) || 0;
-    const gcVal = parseInt(amountGC, 10) || 0;
-
-    if (scVal === 0 && gcVal === 0) {
-      return NextResponse.json({ success: false, error: 'Please enter SC or GC amount.' }, { status: 400 });
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      return NextResponse.json({ success: false, error: 'Amount must be greater than zero.' }, { status: 400 });
     }
 
-    const cleanUser = targetUser.trim().toLowerCase();
     const db = await getDb();
     const usersCol = db.collection('users');
+    const ledgerCol = db.collection('ledger');
 
-    const user = await usersCol.findOne({
-      $or: [{ email: cleanUser }, { username: cleanUser }],
-    });
-
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Player account not found.' }, { status: 404 });
+    const player = await usersCol.findOne({ _id: new ObjectId(playerId) });
+    if (!player) {
+      return NextResponse.json({ success: false, error: 'Player not found.' }, { status: 404 });
     }
 
-    const isCredit = actionType !== 'DEBIT';
-    const finalSC = isCredit ? Math.abs(scVal) : -Math.abs(scVal);
-    const finalGC = isCredit ? Math.abs(gcVal) : -Math.abs(gcVal);
+    const balanceField = currency === 'SC' ? 'balanceSC' : 'balanceGC';
+    const currentBalance = player[balanceField] || 0;
 
-    // Prevent negative balances on debit
-    if (!isCredit) {
-      if ((user.balanceSC || 0) + finalSC < 0 || (user.balanceGC || 0) + finalGC < 0) {
-        return NextResponse.json({ success: false, error: 'Player does not have sufficient balance for debit.' }, { status: 400 });
+    let delta = 0;
+    let type = '';
+
+    if (action === 'credit') {
+      delta = numAmount;
+      type = 'admin_allotment';
+    } else if (action === 'debit') {
+      if (currentBalance < numAmount) {
+        return NextResponse.json(
+          { success: false, error: `Insufficient player balance. Current: ${currentBalance}` },
+          { status: 400 }
+        );
       }
+      delta = -numAmount;
+      type = 'admin_deduction';
+    } else {
+      return NextResponse.json({ success: false, error: 'Action must be credit or debit.' }, { status: 400 });
     }
 
+    const newBalance = Number((currentBalance + delta).toFixed(2));
+
+    // Update Player Balance
     await usersCol.updateOne(
-      { _id: user._id },
-      {
-        $inc: {
-          balanceSC: finalSC,
-          balanceGC: finalGC,
-        },
-      }
+      { _id: player._id },
+      { $inc: { [balanceField]: delta } }
     );
 
-    // Record in ledger
-    const ledgerCol = db.collection('ledger');
+    // Write to Immutable Ledger
     await ledgerCol.insertOne({
-      userId: user._id.toString(),
-      username: user.username,
-      email: user.email,
-      type: isCredit ? 'STAFF_CREDIT' : 'STAFF_DEBIT',
-      amountSC: finalSC,
-      amountGC: finalGC,
-      status: 'COMPLETED',
-      notes: notes || `Manual ${isCredit ? 'credit' : 'debit'} by staff member ${session.username}`,
-      staffUser: session.username,
-      createdAt: new Date(),
-    });
-
-    // Notify player
-    const notifsCol = db.collection('notifications');
-    await notifsCol.insertOne({
-      userEmail: user.email,
-      title: isCredit ? 'Balance Credited by Staff' : 'Balance Adjusted by Staff',
-      message: `Staff adjusted your balance: ${finalSC >= 0 ? '+' : ''}${finalSC} SC, ${finalGC >= 0 ? '+' : ''}${finalGC} GC.`,
-      type: isCredit ? 'SUCCESS' : 'INFO',
-      read: false,
+      userId: player._id.toString(),
+      username: player.username,
+      type,
+      currency,
+      amount: delta,
+      balanceBefore: currentBalance,
+      balanceAfter: newBalance,
+      performedBy: session.username,
+      staffRole: session.role,
+      notes: `Reason: ${reason.trim()} (Processed by ${session.username} - ${session.role})`,
       createdAt: new Date(),
     });
 
     return NextResponse.json({
       success: true,
-      message: `Successfully adjusted balance for ${user.username}: ${finalSC >= 0 ? '+' : ''}${finalSC} SC, ${finalGC >= 0 ? '+' : ''}${finalGC} GC`,
+      message: `Successfully ${action}ed ${numAmount} ${currency} to ${player.username}.`,
+      newBalance,
     });
-  } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

@@ -38,19 +38,14 @@ export default function LoginPage() {
     }
   };
 
-  const autofillDemo = (role) => {
-    if (role === 'admin') {
-      setIdentifier('admin@playersparadisehub.com');
-      setPassword('Paradise@2026!');
-    } else {
-      setIdentifier('player@demo.com');
-      setPassword('Player@2026!');
-    }
+  const autofillDemo = () => {
+    setIdentifier('player@demo.com');
+    setPassword('Player@2026!');
   };
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-white flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md p-8 rounded-3xl border border-[var(--chrome-border)] bg-[#070919] shadow-2xl space-y-6 relative overflow-hidden">
+      <div className="w-full max-w-md p-5 sm:p-8 rounded-3xl border border-[var(--chrome-border)] bg-[#070919] shadow-2xl space-y-6 relative overflow-hidden">
         <div className="text-center space-y-3">
           <Link href="/">
             <div
@@ -121,16 +116,10 @@ export default function LoginPage() {
 
           <div className="flex items-center justify-center gap-2 pt-2 border-t border-slate-800">
             <button
-              onClick={() => autofillDemo('player')}
+              onClick={autofillDemo}
               className="text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-300"
             >
               Demo Player ($550 SC)
-            </button>
-            <button
-              onClick={() => autofillDemo('admin')}
-              className="text-[10px] font-bold px-2 py-1 rounded bg-rose-950 text-rose-300"
-            >
-              Super Admin
             </button>
           </div>
         </div>

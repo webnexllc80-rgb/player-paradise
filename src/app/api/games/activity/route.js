@@ -1,36 +1,76 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
+import { getSessionUser, ROLES } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(req) {
   try {
-    const db = await getDb();
-    const activityCol = db.collection('activity');
-    const recentWins = await activityCol.find({}).sort({ createdAt: -1 }).limit(15).toArray();
+    const { searchParams } = new URL(req.url);
+    const mode = searchParams.get('mode') || 'ticker'; // 'ticker' or 'admin'
+    const limit = parseInt(searchParams.get('limit') || '20');
 
-    // Default ticker items
-    const fallbackWins = [
-      { username: 'CyberAce77', gameTitle: 'Ultra Panda', amount: 340.5, currency: 'SC' },
-      { username: 'PandaKing99', gameTitle: 'Panda 777 Slots', amount: 820.0, currency: 'SC' },
-      { username: 'MatrixNeo', gameTitle: 'Cyber Matrix Crash', amount: 450.0, currency: 'SC' },
-      { username: 'NeonHunter', gameTitle: 'Fire Kirin', amount: 1250.0, currency: 'SC' },
-      { username: 'VortexPlayer', gameTitle: 'Orion Stars', amount: 290.75, currency: 'SC' },
-      { username: 'ShadowBlade', gameTitle: 'Game Vault 999', amount: 620.0, currency: 'SC' },
-      { username: 'LuckyPanda', gameTitle: 'Juwa 777', amount: 380.0, currency: 'SC' },
+    const db = await getDb();
+    const activityCol = db.collection('game_activity');
+
+    if (mode === 'admin') {
+      const session = await getSessionUser();
+      if (!session || (session.role !== ROLES.SUPER_ADMIN && session.role !== ROLES.FINANCIAL_MANAGER)) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
+      }
+
+      const activities = await activityCol
+        .find({})
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .toArray();
+
+      return NextResponse.json({
+        success: true,
+        activities: activities.map(a => ({
+          id: a._id.toString(),
+          gameId: a.gameId,
+          username: a.username,
+          betAmount: a.betAmount,
+          winAmount: a.winAmount,
+          multiplier: a.multiplier,
+          currency: a.currency,
+          outcome: a.outcome,
+          createdAt: a.createdAt,
+        })),
+      });
+    }
+
+    // Ticker mode (Public)
+    const recentWins = await activityCol
+      .find({ winAmount: { $gt: 0 } })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+
+    // If database is new/empty, provide realistic default ticker items
+    const fallbackTicker = [
+      { username: 'raze', game: 'Vegas 777 Deluxe', amount: 7016.45, currency: 'SC' },
+      { username: 'nyx', game: 'Golden Treasure', amount: 2118.14, currency: 'SC' },
+      { username: 'satoshi.j', game: 'Neon Rocket Crash', amount: 6990.66, currency: 'SC' },
+      { username: 'halcyon', game: 'Fire Kirin', amount: 3410.00, currency: 'SC' },
+      { username: 'crypto_ace', game: 'Blackjack High Roller', amount: 4800.00, currency: 'SC' },
+      { username: 'lucky_bella', game: 'Orion Stars', amount: 1520.25, currency: 'SC' },
+      { username: 'drake99', game: 'Royal European Roulette', amount: 5600.00, currency: 'SC' },
     ];
 
-    const wins = recentWins.length > 0 ? recentWins : fallbackWins;
+    const displayWins = recentWins.length > 0
+      ? recentWins.map(w => ({
+          username: w.username,
+          game: w.gameId.replace(/-/g, ' ').toUpperCase(),
+          amount: w.winAmount,
+          currency: w.currency || 'SC',
+        }))
+      : fallbackTicker;
 
     return NextResponse.json({
       success: true,
-      activity: wins.map((w) => ({
-        username: w.username,
-        gameTitle: w.gameTitle,
-        amount: w.amount,
-        currency: w.currency || 'SC',
-        time: 'Just now',
-      })),
+      ticker: displayWins,
     });
-  } catch (err) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

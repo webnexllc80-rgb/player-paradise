@@ -1,85 +1,105 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
+import { getSessionUser } from '@/lib/auth';
 
-export async function POST() {
+// GET - Check 3 Freeplay eligibility and claim status
+export async function GET(req) {
   try {
     const session = await getSessionUser();
     if (!session) {
-      return NextResponse.json({ success: false, message: 'Please log in to claim your daily bonus.' }, { status: 401 });
+      return NextResponse.json({ success: true, claimed: false, amount: 3.0 });
+    }
+
+    const db = await getDb();
+    const userId = session.userId || session.id;
+    let user = null;
+    if (userId && ObjectId.isValid(userId)) {
+      user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    }
+    if (!user && session.email) {
+      user = await db.collection('users').findOne({ email: session.email.toLowerCase().trim() });
+    }
+
+    const claimed = Boolean(user?.freeplayClaimed);
+
+    return NextResponse.json({
+      success: true,
+      claimed,
+      amount: 3.0,
+      claimedAt: user?.freeplayClaimedAt || null,
+    });
+  } catch (err) {
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  }
+}
+
+// POST - User requests / claims 3 Freeplay
+export async function POST(req) {
+  try {
+    const session = await getSessionUser();
+    if (!session) {
+      return NextResponse.json({ success: false, message: 'Please sign in to claim your 3 Freeplay.' }, { status: 401 });
     }
 
     const db = await getDb();
     const usersCol = db.collection('users');
-
-    let userFilter = { _id: session.userId };
-    if (ObjectId.isValid(session.userId)) {
-      userFilter = { _id: new ObjectId(session.userId) };
+    const userId = session.userId || session.id;
+    let user = null;
+    if (userId && ObjectId.isValid(userId)) {
+      user = await usersCol.findOne({ _id: new ObjectId(userId) });
     }
-
-    let user = await usersCol.findOne(userFilter);
-    if (!user) {
-      user = await usersCol.findOne({ email: session.email });
+    if (!user && session.email) {
+      user = await usersCol.findOne({ email: session.email.toLowerCase().trim() });
     }
 
     if (!user) {
-      return NextResponse.json({ success: false, message: 'Player account not found.' }, { status: 404 });
+      return NextResponse.json({ success: false, message: 'User not found. Please log in again.' }, { status: 404 });
     }
 
-    const now = new Date();
-    if (user.lastDailyBonusClaim) {
-      const lastClaim = new Date(user.lastDailyBonusClaim);
-      const hoursSince = (now.getTime() - lastClaim.getTime()) / (1000 * 60 * 60);
-      if (hoursSince < 24) {
-        const remainingHours = Math.ceil(24 - hoursSince);
-        return NextResponse.json({
-          success: false,
-          cooldown: true,
-          remainingHours,
-          message: `Daily bonus already claimed! Next reward available in ${remainingHours} hours.`,
-        });
+    if (user.freeplayClaimed) {
+      return NextResponse.json({
+        success: false,
+        alreadyClaimed: true,
+        message: 'Already claimed! You have already claimed your 3 Freeplay bonus.',
+      });
+    }
+
+    // Award 3 SC Freeplay
+    const awardSC = 3.0;
+    const newBalanceSC = (Number(user.balanceSC) || 0) + awardSC;
+
+    await usersCol.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          freeplayClaimed: true,
+          freeplayClaimedAt: new Date(),
+          balanceSC: newBalanceSC,
+        },
       }
-    }
+    );
 
-    // Dynamic mystery reward
-    const rewards = [
-      { sc: 1.0, gc: 5000, label: 'Cyber Bronze Box' },
-      { sc: 2.5, gc: 10000, label: 'Silver Matrix Crate' },
-      { sc: 5.0, gc: 25000, label: 'Golden Cyber Chest' },
-      { sc: 10.0, gc: 50000, label: 'Diamond Panda Jackpot' },
-    ];
-    // Weighted pick: 50% bronze, 30% silver, 15% gold, 5% diamond
-    const rand = Math.random();
-    let picked = rewards[0];
-    if (rand > 0.95) picked = rewards[3];
-    else if (rand > 0.8) picked = rewards[2];
-    else if (rand > 0.5) picked = rewards[1];
-
-    await usersCol.updateOne(userFilter, {
-      $inc: { balanceSC: picked.sc, balanceGC: picked.gc },
-      $set: { lastDailyBonusClaim: now },
-    });
-
+    // Record in ledger
     const ledgerCol = db.collection('ledger');
     await ledgerCol.insertOne({
-      userId: session.userId,
-      username: session.username,
-      email: session.email,
-      type: 'DAILY_BONUS',
-      amountSC: picked.sc,
-      amountGC: picked.gc,
-      status: 'COMPLETED',
-      notes: `Claimed daily reward: ${picked.label}`,
-      createdAt: now,
+      userId: user._id.toString(),
+      userEmail: user.email,
+      username: user.username,
+      type: 'freeplay_bonus',
+      amount: awardSC,
+      currency: 'SC',
+      balanceAfter: newBalanceSC,
+      description: '🎁 3 Freeplay Welcome Bonus credited to vault',
+      status: 'completed',
+      createdAt: new Date(),
     });
 
     return NextResponse.json({
       success: true,
-      message: `Congratulations! You unlocked the ${picked.label}: +${picked.sc} SC and +${picked.gc.toLocaleString()} GC!`,
-      reward: picked,
-      newBalanceSC: (user.balanceSC || 0) + picked.sc,
-      newBalanceGC: (user.balanceGC || 0) + picked.gc,
+      message: '🎉 $3.00 Freeplay bonus credited to your vault!',
+      newBalanceSC,
+      claimed: true,
     });
   } catch (err) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

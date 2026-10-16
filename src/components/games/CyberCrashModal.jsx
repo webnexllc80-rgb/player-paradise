@@ -83,7 +83,7 @@ export default function CyberCrashModal({
 
   return (
     <div className="cyber-modal-overlay">
-      <div className="relative w-full max-w-lg rounded-3xl border-2 border-[var(--neon-purple)] bg-[#070919] p-6 md:p-8 shadow-[0_0_50px_rgba(192,38,211,0.35)] overflow-hidden">
+      <div className="relative w-full max-w-lg rounded-3xl border-2 border-[var(--neon-purple)] bg-[#070919] p-5 sm:p-6 md:p-8 shadow-[0_0_50px_rgba(192,38,211,0.35)] max-h-[92vh] overflow-y-auto modal-scrollable">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors z-20"
@@ -141,7 +141,7 @@ export default function CyberCrashModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1">
-                BET AMOUNT ({currency})
+                BET AMOUNT ($ USD)
               </label>
               <input
                 type="number"
@@ -174,7 +174,7 @@ export default function CyberCrashModal({
             disabled={playing}
             className="w-full py-4 rounded-2xl font-heading font-black text-base tracking-widest bg-gradient-to-r from-[var(--neon-purple)] via-pink-600 to-[var(--neon-cyan)] text-white shadow-[0_0_25px_rgba(192,38,211,0.5)] hover:scale-101 transition-all disabled:opacity-50"
           >
-            {playing ? 'LAUNCHING...' : `LAUNCH ROCKET • BET $${bet} ${currency}`}
+            {playing ? 'LAUNCHING...' : `LAUNCH ROCKET • BET $${bet}`}
           </button>
         </div>
       </div>

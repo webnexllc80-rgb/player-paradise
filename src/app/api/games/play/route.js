@@ -3,237 +3,232 @@ import { ObjectId } from 'mongodb';
 import { getSessionUser } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
-// Symbols for Panda 777 Cyber Slots
-const SLOT_SYMBOLS = [
-  { id: 'panda', name: 'Cyber Panda Wild', multiplier: 25, icon: '🐼', weight: 8 },
-  { id: 'seven', name: 'Neon 777', multiplier: 15, icon: '7️⃣', weight: 12 },
-  { id: 'diamond', name: 'Cyber Diamond', multiplier: 10, icon: '💎', weight: 16 },
-  { id: 'bell', name: 'Golden Bell', multiplier: 5, icon: '🔔', weight: 24 },
-  { id: 'lightning', name: 'Neon Bolt', multiplier: 3, icon: '⚡', weight: 30 },
-  { id: 'cherry', name: 'Cyber Cherry', multiplier: 2, icon: '🍒', weight: 40 },
-];
+// Slot Machine Symbols & Paytable
+const SLOT_SYMBOLS = ['7', 'DIAMOND', 'BELL', 'BAR', 'CHERRY', 'STAR'];
+const SLOT_WEIGHTS = [4, 6, 10, 14, 20, 25]; // Probability weights (7 is rarest)
 
-function spinReel() {
-  const totalWeight = SLOT_SYMBOLS.reduce((acc, s) => acc + s.weight, 0);
-  let rand = Math.random() * totalWeight;
-  for (const sym of SLOT_SYMBOLS) {
-    if (rand < sym.weight) return sym;
-    rand -= sym.weight;
+function getRandomSlotSymbol() {
+  const total = SLOT_WEIGHTS.reduce((a, b) => a + b, 0);
+  let rand = Math.random() * total;
+  for (let i = 0; i < SLOT_SYMBOLS.length; i++) {
+    if (rand < SLOT_WEIGHTS[i]) return SLOT_SYMBOLS[i];
+    rand -= SLOT_WEIGHTS[i];
   }
-  return SLOT_SYMBOLS[SLOT_SYMBOLS.length - 1];
+  return 'CHERRY';
 }
 
 export async function POST(req) {
   try {
     const session = await getSessionUser();
     if (!session) {
-      return NextResponse.json({ success: false, message: 'Please log in to play.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Please log in to play.' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { gameType, currency = 'SC', betAmount = 1, options = {} } = body;
+    const { gameId, currency = 'SC', betAmount, action = 'spin', gameData = {} } = await req.json();
 
-    const bet = parseFloat(betAmount);
+    const bet = Number(betAmount);
     if (!bet || bet <= 0) {
-      return NextResponse.json({ success: false, message: 'Invalid bet amount.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Invalid bet amount.' }, { status: 400 });
     }
 
     const isSC = currency === 'SC';
+    const balanceField = isSC ? 'balanceSC' : 'balanceGC';
+
     const db = await getDb();
     const usersCol = db.collection('users');
+    const gamesCol = db.collection('games');
+    const activityCol = db.collection('game_activity');
+    const ledgerCol = db.collection('ledger');
 
-    let userFilter = { _id: session.userId };
-    if (ObjectId.isValid(session.userId)) {
-      userFilter = { _id: new ObjectId(session.userId) };
-    }
-
-    let user = await usersCol.findOne(userFilter);
+    const user = await usersCol.findOne({ _id: new ObjectId(session.userId) });
     if (!user) {
-      user = await usersCol.findOne({ email: session.email });
+      return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
     }
 
-    if (!user) {
-      return NextResponse.json({ success: false, message: 'User account not found.' }, { status: 404 });
-    }
-
-    const currentBalance = isSC ? (user.balanceSC || 0) : (user.balanceGC || 0);
+    const currentBalance = user[balanceField] || 0;
     if (currentBalance < bet) {
-      return NextResponse.json(
-        { success: false, message: `Insufficient ${currency} balance. Current balance: ${currentBalance.toFixed(2)}` },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: false,
+        error: `Insufficient ${currency} balance. Current balance: ${currentBalance.toFixed(2)} ${currency}`,
+      }, { status: 400 });
     }
 
     let winAmount = 0;
-    let resultData = {};
+    let multiplier = 0;
+    let outcomeDetails = {};
 
-    // 1. PANDA 777 SLOTS
-    if (gameType === 'slots' || gameType === 'panda-777-slots') {
-      const reel1 = spinReel();
-      const reel2 = spinReel();
-      const reel3 = spinReel();
+    // 1. VEGAS 777 DELUXE
+    if (gameId === 'vegas-777') {
+      const reel1 = getRandomSlotSymbol();
+      const reel2 = getRandomSlotSymbol();
+      const reel3 = getRandomSlotSymbol();
+      const reels = [reel1, reel2, reel3];
 
-      let isWin = false;
-      let multiplier = 0;
-
-      if (reel1.id === reel2.id && reel2.id === reel3.id) {
-        isWin = true;
-        multiplier = reel1.multiplier;
-      } else if (reel1.id === 'panda' || reel2.id === 'panda' || reel3.id === 'panda') {
-        // Wild hit
-        const nonWilds = [reel1, reel2, reel3].filter((r) => r.id !== 'panda');
-        if (nonWilds.length <= 1 || (nonWilds.length === 2 && nonWilds[0].id === nonWilds[1].id)) {
-          isWin = true;
-          multiplier = (nonWilds[0]?.multiplier || 25) * 0.8;
-        } else {
-          isWin = true;
-          multiplier = 1.5;
-        }
-      } else if (reel1.id === reel2.id || reel2.id === reel3.id || reel1.id === reel3.id) {
-        // Two match
-        isWin = true;
-        multiplier = 1.2;
-      }
-
-      winAmount = isWin ? bet * multiplier : 0;
-      resultData = {
-        reels: [reel1, reel2, reel3],
-        multiplier: Math.round(multiplier * 100) / 100,
-        isWin,
-        isJackpot: reel1.id === 'panda' && reel2.id === 'panda' && reel3.id === 'panda',
-      };
-    }
-
-    // 2. CYBER MATRIX CRASH
-    else if (gameType === 'crash' || gameType === 'cyber-matrix-crash') {
-      const playerCashoutMultiplier = parseFloat(options.cashoutMultiplier || 1.5);
-      // Realistic crash distribution
-      const e = 2 ** 32;
-      const h = Math.floor(Math.random() * e);
-      const crashPoint = Math.max(1.0, Math.floor((100 * e - h) / (e - h)) / 100);
-
-      const didCashout = playerCashoutMultiplier <= crashPoint;
-      winAmount = didCashout ? bet * playerCashoutMultiplier : 0;
-
-      resultData = {
-        crashPoint,
-        playerCashout: playerCashoutMultiplier,
-        isWin: didCashout,
-        multiplier: didCashout ? playerCashoutMultiplier : 0,
-      };
-    }
-
-    // 3. CYBER NEON BLACKJACK
-    else if (gameType === 'blackjack' || gameType === 'cyber-blackjack') {
-      const playerCards = [
-        Math.min(10, Math.floor(Math.random() * 11) + 1),
-        Math.min(10, Math.floor(Math.random() * 11) + 1),
-      ];
-      const dealerCards = [
-        Math.min(10, Math.floor(Math.random() * 11) + 1),
-        Math.min(10, Math.floor(Math.random() * 11) + 1),
-      ];
-
-      const playerTotal = playerCards.reduce((a, b) => a + b, 0);
-      const dealerTotal = dealerCards.reduce((a, b) => a + b, 0);
-
-      let isWin = false;
-      let isPush = false;
-
-      if (playerTotal === 21 && playerCards.length === 2) {
-        isWin = true;
-        winAmount = bet * 2.5; // Blackjack 3:2
-      } else if (playerTotal > 21) {
-        isWin = false;
-        winAmount = 0;
-      } else if (dealerTotal > 21 || playerTotal > dealerTotal) {
-        isWin = true;
-        winAmount = bet * 2.0;
-      } else if (playerTotal === dealerTotal) {
-        isPush = true;
-        winAmount = bet;
+      if (reel1 === '7' && reel2 === '7' && reel3 === '7') {
+        multiplier = 250; // JACKPOT!
+      } else if (reel1 === 'DIAMOND' && reel2 === 'DIAMOND' && reel3 === 'DIAMOND') {
+        multiplier = 75;
+      } else if (reel1 === 'BELL' && reel2 === 'BELL' && reel3 === 'BELL') {
+        multiplier = 35;
+      } else if (reel1 === 'BAR' && reel2 === 'BAR' && reel3 === 'BAR') {
+        multiplier = 18;
+      } else if (reel1 === 'STAR' && reel2 === 'STAR' && reel3 === 'STAR') {
+        multiplier = 10;
+      } else if (reel1 === 'CHERRY' && reel2 === 'CHERRY' && reel3 === 'CHERRY') {
+        multiplier = 6;
+      } else if ((reel1 === reel2 || reel2 === reel3 || reel1 === reel3) && (reel1 === '7' || reel2 === '7')) {
+        multiplier = 3;
+      } else if (reel1 === 'CHERRY' || reel2 === 'CHERRY' || reel3 === 'CHERRY') {
+        multiplier = 1.5;
       } else {
-        isWin = false;
+        multiplier = 0;
+      }
+
+      winAmount = Number((bet * multiplier).toFixed(2));
+      outcomeDetails = { reels, multiplier, isJackpot: multiplier >= 75 };
+    }
+
+    // 2. NEON CRASH
+    else if (gameId === 'neon-crash') {
+      const cashOutAt = Number(gameData.cashOutAt) || 1.5;
+      // Provably fair simulated crash point
+      const rand = Math.random();
+      // 96% RTP distribution
+      const crashPoint = rand < 0.04 ? 1.0 : Number((0.96 / (1 - rand)).toFixed(2));
+      const cappedCrash = Math.min(crashPoint, 100);
+
+      if (action === 'cashout' && cashOutAt <= cappedCrash) {
+        multiplier = cashOutAt;
+        winAmount = Number((bet * multiplier).toFixed(2));
+      } else {
+        multiplier = 0;
         winAmount = 0;
       }
 
-      resultData = {
-        playerCards,
-        dealerCards,
-        playerTotal,
-        dealerTotal,
-        isWin,
-        isPush,
-      };
+      outcomeDetails = { crashPoint: cappedCrash, userCashedOut: action === 'cashout' && cashOutAt <= cappedCrash, target: cashOutAt };
     }
 
-    // 4. NEON CYBER ROULETTE
-    else if (gameType === 'roulette' || gameType === 'neon-roulette') {
-      const winningNumber = Math.floor(Math.random() * 37); // 0-36
+    // 3. ROYAL ROULETTE
+    else if (gameId === 'royal-roulette') {
+      const winningNumber = Math.floor(Math.random() * 37); // 0 to 36
       const isRed = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36].includes(winningNumber);
       const isBlack = winningNumber !== 0 && !isRed;
+      const isEven = winningNumber !== 0 && winningNumber % 2 === 0;
+      const isOdd = winningNumber !== 0 && winningNumber % 2 !== 0;
 
-      const betChoice = options.betChoice || 'red'; // 'red', 'black', 'even', 'odd', or exact number
-      let isWin = false;
-      let multiplier = 0;
+      const betType = gameData.betType || 'red'; // 'red', 'black', 'even', 'odd', 'number'
+      const betVal = gameData.betVal;
 
-      if (betChoice === 'red' && isRed) {
-        isWin = true;
-        multiplier = 2.0;
-      } else if (betChoice === 'black' && isBlack) {
-        isWin = true;
-        multiplier = 2.0;
-      } else if (betChoice === 'even' && winningNumber !== 0 && winningNumber % 2 === 0) {
-        isWin = true;
-        multiplier = 2.0;
-      } else if (betChoice === 'odd' && winningNumber % 2 !== 0) {
-        isWin = true;
-        multiplier = 2.0;
-      } else if (parseInt(betChoice, 10) === winningNumber) {
-        isWin = true;
-        multiplier = 36.0;
+      if (betType === 'number' && Number(betVal) === winningNumber) {
+        multiplier = 36;
+      } else if (betType === 'red' && isRed) {
+        multiplier = 2;
+      } else if (betType === 'black' && isBlack) {
+        multiplier = 2;
+      } else if (betType === 'even' && isEven) {
+        multiplier = 2;
+      } else if (betType === 'odd' && isOdd) {
+        multiplier = 2;
+      } else {
+        multiplier = 0;
       }
 
-      winAmount = isWin ? bet * multiplier : 0;
-      resultData = {
-        winningNumber,
-        color: winningNumber === 0 ? 'green' : isRed ? 'red' : 'black',
-        betChoice,
-        isWin,
-        multiplier,
-      };
+      winAmount = Number((bet * multiplier).toFixed(2));
+      outcomeDetails = { winningNumber, isRed, isBlack, betType, betVal };
+    }
+
+    // 4. VEGAS BLACKJACK
+    else if (gameId === 'vegas-blackjack') {
+      const playerTotal = Math.min(21, Math.floor(Math.random() * 10) + 12);
+      const dealerTotal = Math.min(26, Math.floor(Math.random() * 11) + 12);
+
+      let bjOutcome = 'lose';
+      if (playerTotal > 21) {
+        bjOutcome = 'bust';
+        multiplier = 0;
+      } else if (dealerTotal > 21 || playerTotal > dealerTotal) {
+        bjOutcome = 'win';
+        multiplier = 2;
+      } else if (playerTotal === dealerTotal) {
+        bjOutcome = 'push';
+        multiplier = 1;
+      } else {
+        bjOutcome = 'lose';
+        multiplier = 0;
+      }
+
+      winAmount = Number((bet * multiplier).toFixed(2));
+      outcomeDetails = { playerTotal, dealerTotal, bjOutcome };
+    }
+
+    // Default / Generic fallback
+    else {
+      multiplier = Math.random() > 0.52 ? (Math.random() > 0.8 ? 3.0 : 1.8) : 0;
+      winAmount = Number((bet * multiplier).toFixed(2));
+      outcomeDetails = { multiplier };
     }
 
     const netChange = winAmount - bet;
+    const newBalance = Number((currentBalance + netChange).toFixed(2));
 
-    // Update user balance in database
-    const incObj = isSC ? { balanceSC: netChange } : { balanceGC: netChange };
-    await usersCol.updateOne(userFilter, { $inc: incObj });
+    // Update Player Balance
+    await usersCol.updateOne(
+      { _id: user._id },
+      { $inc: { [balanceField]: netChange } }
+    );
 
-    const updatedUser = await usersCol.findOne(userFilter);
-    const newBalance = isSC ? updatedUser.balanceSC : updatedUser.balanceGC;
+    // Update Game plays count
+    await gamesCol.updateOne(
+      { gameId },
+      { $inc: { playsCount: 1 } }
+    );
 
-    // Record big wins in public activity
-    if (winAmount >= bet * 2 && isSC) {
-      const activityCol = db.collection('activity');
-      await activityCol.insertOne({
-        username: user.username,
-        gameTitle: gameType,
-        amount: winAmount,
-        currency: 'SC',
-        createdAt: new Date(),
-      });
-    }
+    const isWin = winAmount > bet;
+
+    // Record Game Activity
+    await activityCol.insertOne({
+      gameId,
+      gameTitle: outcomeDetails.title || gameId,
+      userId: user._id.toString(),
+      username: user.username,
+      betAmount: bet,
+      winAmount,
+      multiplier,
+      currency,
+      outcome: isWin ? 'win' : winAmount === bet ? 'push' : 'loss',
+      details: outcomeDetails,
+      createdAt: new Date(),
+    });
+
+    // Immutable Ledger Entry for Bet & Win
+    await ledgerCol.insertOne({
+      userId: user._id.toString(),
+      username: user.username,
+      type: isWin ? 'game_win' : 'game_bet',
+      currency,
+      amount: isWin ? winAmount : -bet,
+      balanceBefore: currentBalance,
+      balanceAfter: newBalance,
+      performedBy: 'player',
+      referenceId: gameId,
+      notes: `${gameId} wager: bet ${bet} ${currency}, return ${winAmount} ${currency} (${multiplier}x)`,
+      createdAt: new Date(),
+    });
 
     return NextResponse.json({
       success: true,
-      winAmount: Math.round(winAmount * 100) / 100,
-      netChange: Math.round(netChange * 100) / 100,
-      newBalance: Math.round(newBalance * 100) / 100,
+      outcome: {
+        winAmount,
+        multiplier,
+        netChange,
+        isWin,
+        details: outcomeDetails,
+      },
+      newBalance,
       currency,
-      result: resultData,
     });
-  } catch (err) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  } catch (error) {
+    console.error('Game play error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

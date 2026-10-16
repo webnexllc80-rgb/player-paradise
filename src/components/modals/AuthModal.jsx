@@ -1,266 +1,1118 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import {
   X,
-  Mail,
   Lock,
+  Mail,
   User,
+  Gift,
+  Eye,
+  EyeOff,
+  MapPin,
   Sparkles,
   AlertCircle,
   CheckCircle2,
-  Eye,
-  EyeOff,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck,
+  Zap,
+  TrendingUp,
+  Coins
 } from 'lucide-react';
+import { getOrCreateDeviceId } from '@/lib/deviceClient';
 
 export default function AuthModal({
   isOpen,
   onClose,
   initialTab = 'login',
+  onAuthSuccess,
   onSuccess,
 }) {
   const [tab, setTab] = useState(initialTab);
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [showReferralInput, setShowReferralInput] = useState(false);
+  const [state, setState] = useState('CA');
+  const [ageVerified, setAgeVerified] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  useEffect(() => {
+    setTab(initialTab);
+    setErrorMsg(null);
+  }, [initialTab, isOpen]);
+
+  // Android Native Back Button Support for APK & Mobile Browser
+  useEffect(() => {
+    if (isOpen) {
+      window.history.pushState({ vegasAuthModalOpen: true }, '');
+      const handlePopState = () => {
+        onClose();
+      };
+      window.addEventListener('popstate', handlePopState);
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+      };
+    }
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccessMsg('');
+    setErrorMsg(null);
     setLoading(true);
 
     try {
-      const endpoint = tab === 'login' ? '/api/auth/login' : '/api/auth/register';
-      const body =
-        tab === 'login'
-          ? { identifier: email || username, password }
-          : { username, email, password };
-
-      const res = await fetch(endpoint, {
+      const deviceId = getOrCreateDeviceId();
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': deviceId,
+        },
+        body: JSON.stringify({ identifier, password, deviceId }),
       });
+
       const data = await res.json();
+      setLoading(false);
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Authentication failed. Please check your credentials.');
-      }
-
-      setSuccessMsg(data.message || 'Success! Welcome to Players Paradise Hub.');
-      setTimeout(() => {
+      if (data.success) {
+        if (onAuthSuccess) onAuthSuccess(data.user);
         if (onSuccess) onSuccess(data.user);
         onClose();
-      }, 700);
-    } catch (err) {
-      setError(err.message);
-    } finally {
+      } else {
+        setErrorMsg(data.error || 'Invalid credentials.');
+      }
+    } catch {
       setLoading(false);
+      setErrorMsg('Login connection failed. Please try again.');
     }
   };
 
-  const autofillDemo = (role) => {
-    if (role === 'admin') {
-      setEmail('admin@playersparadisehub.com');
-      setPassword('Paradise@2026!');
-      setTab('login');
-    } else {
-      setEmail('player@demo.com');
-      setPassword('Player@2026!');
-      setTab('login');
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (!ageVerified) {
+      setErrorMsg('You must certify that you are 18+ and a US resident.');
+      return;
+    }
+
+    setErrorMsg(null);
+    setLoading(true);
+
+    try {
+      const deviceId = getOrCreateDeviceId();
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': deviceId,
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+          referralCode: referralCode.trim(),
+          state,
+          ageVerified: true,
+          deviceId,
+        }),
+      });
+
+      const data = await res.json();
+      setLoading(false);
+
+      if (data.success) {
+        if (onAuthSuccess) onAuthSuccess(data.user);
+        if (onSuccess) onSuccess(data.user);
+        onClose();
+      } else {
+        setErrorMsg(data.error || 'Registration failed.');
+      }
+    } catch {
+      setLoading(false);
+      setErrorMsg('Registration failed. Please try again.');
     }
   };
+
+  const US_STATES = [
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA',
+    'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY',
+    'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN',
+    'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
+  ];
 
   return (
-    <div className="cyber-modal-overlay">
-      <div className="relative w-full max-w-md rounded-3xl border border-[var(--chrome-border)] bg-[var(--bg-deep)] p-6 md:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.8)] overflow-hidden">
-        {/* Glow ambient */}
-        <div className="absolute top-0 right-0 w-48 h-48 bg-[var(--neon-cyan)]/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-[var(--neon-purple)]/15 rounded-full blur-3xl pointer-events-none" />
-
-        {/* Close Button */}
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        backgroundColor: 'rgba(5, 2, 14, 0.92)',
+        backdropFilter: 'blur(18px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '14px',
+        animation: 'fadeIn 0.25s ease-out',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* Main Split-Screen Architecture Modal Container */}
+      <div
+        className="modal-scrollable"
+        style={{
+          width: '100%',
+          maxWidth: '820px',
+          backgroundColor: '#0E0A24',
+          borderRadius: '26px',
+          border: '1px solid rgba(0, 240, 255, 0.4)',
+          boxShadow: '0 30px 80px rgba(0, 0, 0, 0.95), 0 0 45px rgba(0, 240, 255, 0.2), inset 0 0 25px rgba(224, 38, 216, 0.1)',
+          position: 'relative',
+          color: '#F8FAFC',
+          maxHeight: '94vh',
+          display: 'flex',
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* Absolute Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 w-9 h-9 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors z-20"
+          type="button"
+          aria-label="Close modal"
+          style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: '50%',
+            width: '34px',
+            height: '34px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#D1CADB',
+            cursor: 'pointer',
+            zIndex: 30,
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.2s ease',
+          }}
+          className="hover:scale-105"
         >
-          <X size={18} />
+          <X size={17} />
         </button>
 
-        {/* Modal Brand Logo Header */}
-        <div className="text-center space-y-2 mb-6 relative z-10">
+        {/* ======================================================== */}
+        {/* LEFT COLUMN: VIP EXPERIENCE & SHOWCASE (Desktop Only)     */}
+        {/* ======================================================== */}
+        <div
+          className="hidden md:flex"
+          style={{
+            width: '42%',
+            background: 'linear-gradient(160deg, #160D38 0%, #0A051A 100%)',
+            borderRight: '1px solid rgba(0, 240, 255, 0.22)',
+            padding: '32px 28px',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Subtle Ambient Glows */}
           <div
-            className="relative w-16 h-16 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)]"
-            style={{ position: 'relative', width: '64px', height: '64px', minWidth: '64px', margin: '0 auto' }}
-          >
-            <Image src="/logo.png" alt="Players Paradise Hub" fill className="object-cover" />
-          </div>
-          <h2 className="font-heading font-black text-xl text-white">
-            PLAYERS <span className="text-[var(--neon-cyan)]">PARADISE</span>
-          </h2>
-          <p className="text-xs text-slate-400">
-            {tab === 'login' ? 'Sign in to access your game credentials and wallet' : 'Create an account & claim 100% Match Bonus + 10,000 GC'}
-          </p>
-        </div>
-
-        {/* Tab Switcher */}
-        <div className="grid grid-cols-2 p-1 rounded-xl bg-slate-900 border border-slate-800 mb-5 relative z-10">
-          <button
-            type="button"
-            onClick={() => {
-              setTab('login');
-              setError('');
+            style={{
+              position: 'absolute',
+              top: '-10%',
+              left: '-20%',
+              width: '260px',
+              height: '260px',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(0, 240, 255, 0.25) 0%, transparent 70%)',
+              pointerEvents: 'none',
+              filter: 'blur(30px)',
             }}
-            className={`py-2 text-xs font-heading font-bold rounded-lg transition-all ${
-              tab === 'login'
-                ? 'bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 text-black shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            SIGN IN
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTab('register');
-              setError('');
+          />
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '-10%',
+              right: '-10%',
+              width: '240px',
+              height: '240px',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(224, 38, 216, 0.25) 0%, transparent 70%)',
+              pointerEvents: 'none',
+              filter: 'blur(30px)',
             }}
-            className={`py-2 text-xs font-heading font-bold rounded-lg transition-all ${
-              tab === 'register'
-                ? 'bg-gradient-to-r from-[var(--neon-purple)] to-pink-500 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
+          />
+
+          {/* Top Brand Showcase */}
+          <div style={{ position: 'relative', zIndex: 2 }}>
+            <img
+              src="/images/logo.png"
+              alt="Players Paradise Hub"
+              style={{
+                height: '56px',
+                width: 'auto',
+                maxHeight: '60px',
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 0 16px rgba(0, 240, 255, 0.6)) drop-shadow(0 0 24px rgba(224, 38, 216, 0.45))',
+                marginBottom: '16px',
+              }}
+            />
+
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: 'rgba(0, 240, 255, 0.12)',
+                border: '1px solid rgba(0, 240, 255, 0.4)',
+                borderRadius: '9999px',
+                padding: '4px 12px',
+                marginBottom: '14px',
+              }}
+            >
+              <Sparkles size={12} color="#00F0FF" />
+              <span
+                style={{
+                  fontFamily: 'Lexend, sans-serif',
+                  fontSize: '10px',
+                  fontWeight: 900,
+                  color: '#00F0FF',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                PREMIER SWEEPSTAKES LOUNGE
+              </span>
+            </div>
+
+            <h3
+              style={{
+                fontFamily: 'Lexend, sans-serif',
+                fontSize: '22px',
+                fontWeight: 900,
+                color: '#FFFFFF',
+                lineHeight: 1.25,
+                margin: '0 0 10px 0',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Experience True <span style={{ color: '#00F0FF' }}>Sovereign Tier</span> Gaming.
+            </h3>
+
+            <p
+              style={{
+                fontSize: '12px',
+                color: '#BDB4CB',
+                lineHeight: 1.5,
+                margin: 0,
+                fontFamily: 'Lexend, sans-serif',
+              }}
+            >
+              Join thousands of VIP players playing official Fire Kirin, Orion Stars, and Ultra Panda sweepstakes games with 100% legal cash prizes.
+            </p>
+          </div>
+
+          {/* Center VIP Perks List */}
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 2,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              margin: '22px 0',
+              backgroundColor: 'rgba(7, 5, 20, 0.6)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '16px',
+              padding: '16px',
+              backdropFilter: 'blur(10px)',
+            }}
           >
-            CREATE ACCOUNT
-          </button>
-        </div>
-
-        {/* Status Alerts */}
-        {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-950/60 border border-red-500/50 flex items-center gap-2 text-xs text-red-200">
-            <AlertCircle size={16} className="text-red-400 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/50 flex items-center gap-2 text-xs text-emerald-200">
-            <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-3.5 relative z-10">
-          {tab === 'register' && (
-            <div>
-              <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1">
-                USERNAME
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. cyber_player"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="cyber-input pl-10"
-                />
-                <User size={16} className="absolute left-3.5 top-3.5 text-slate-500" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                  border: '1px solid rgba(0, 240, 255, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Gift size={15} color="#00F0FF" />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: '11.5px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#FFFFFF' }}>
+                  $3.00 Instant Freeplay
+                </p>
+                <p style={{ margin: 0, fontSize: '10px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+                  Credited immediately on signup
+                </p>
               </div>
             </div>
-          )}
 
-          <div>
-            <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1">
-              {tab === 'login' ? 'EMAIL OR USERNAME' : 'EMAIL ADDRESS'}
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                required
-                placeholder={tab === 'login' ? 'player@example.com' : 'yourname@gmail.com'}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="cyber-input pl-10"
-              />
-              <Mail size={16} className="absolute left-3.5 top-3.5 text-slate-500" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(224, 38, 216, 0.15)',
+                  border: '1px solid rgba(224, 38, 216, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Zap size={15} color="#E026D8" />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: '11.5px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#FFFFFF' }}>
+                  Instant Cash Redemptions
+                </p>
+                <p style={{ margin: 0, fontSize: '10px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+                  Direct to Cash App &amp; Crypto
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                  border: '1px solid rgba(0, 240, 255, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Coins size={15} color="#00F0FF" />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: '11.5px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#FFFFFF' }}>
+                  50% VIP Referral Share
+                </p>
+                <p style={{ margin: 0, fontSize: '10px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
+                  Weekly automated royalty payouts
+                </p>
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1">
-              PASSWORD
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="cyber-input pl-10 pr-10"
+          {/* Bottom Live Player Stat Strip */}
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingTop: '12px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#10B981',
+                  boxShadow: '0 0 10px #10B981',
+                }}
               />
-              <Lock size={16} className="absolute left-3.5 top-3.5 text-slate-500" />
+              <span style={{ fontSize: '11px', fontFamily: 'Lexend, sans-serif', fontWeight: 700, color: '#FFFFFF' }}>
+                $2,450,000+
+              </span>
+            </div>
+            <span style={{ fontSize: '10.5px', fontFamily: 'Lexend, sans-serif', color: '#8E849E' }}>
+              Redeemed in 2026
+            </span>
+          </div>
+        </div>
+
+        {/* ======================================================== */}
+        {/* RIGHT COLUMN: INTERACTIVE FORM (Sign In / Register)      */}
+        {/* ======================================================== */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            overflowY: 'auto',
+          }}
+          className="modal-scrollable p-4 sm:p-7"
+        >
+          <div>
+            {/* Mobile Header Banner (Visible only on <768px) */}
+            <div className="md:hidden" style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <img
+                src="/images/logo.png"
+                alt="Players Paradise Hub"
+                style={{
+                  height: '46px',
+                  width: 'auto',
+                  maxHeight: '50px',
+                  objectFit: 'contain',
+                  margin: '0 auto 8px auto',
+                  display: 'block',
+                  filter: 'drop-shadow(0 0 14px rgba(0, 240, 255, 0.55)) drop-shadow(0 0 20px rgba(224, 38, 216, 0.4))',
+                }}
+              />
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: 'rgba(0, 240, 255, 0.12)',
+                  border: '1px solid rgba(0, 240, 255, 0.35)',
+                  borderRadius: '9999px',
+                  padding: '3px 10px',
+                  marginBottom: '4px',
+                }}
+              >
+                <Sparkles size={11} color="#00F0FF" />
+                <span style={{ fontSize: '9.5px', fontFamily: 'Lexend, sans-serif', fontWeight: 900, color: '#00F0FF' }}>
+                  $3.00 FREEPLAY INSTANT SIGNUP BONUS
+                </span>
+              </div>
+            </div>
+
+            {/* Desktop Form Heading */}
+            <div style={{ marginBottom: '18px' }}>
+              <h2
+                style={{
+                  fontFamily: 'Lexend, sans-serif',
+                  fontSize: '22px',
+                  fontWeight: 900,
+                  color: '#FFFFFF',
+                  margin: '0 0 4px 0',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {tab === 'login' ? 'Welcome Back, Player' : 'Create Sovereign Vault'}
+              </h2>
+              <p
+                style={{
+                  fontSize: '12px',
+                  color: '#A69FB3',
+                  margin: 0,
+                  fontFamily: 'Lexend, sans-serif',
+                }}
+              >
+                {tab === 'login'
+                  ? 'Enter your credentials to access your balances & sweepstakes games.'
+                  : 'Get started in under 30 seconds with immediate $3 Freeplay access.'}
+              </p>
+            </div>
+
+            {/* Segmented Switcher Pill: SIGN IN vs REGISTER */}
+            <div
+              style={{
+                display: 'flex',
+                backgroundColor: '#070514',
+                borderRadius: '12px',
+                padding: '4px',
+                marginBottom: '16px',
+                border: '1px solid rgba(0, 240, 255, 0.25)',
+                position: 'relative',
+              }}
+            >
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-3.5 text-slate-500 hover:text-white"
+                onClick={() => {
+                  setTab('login');
+                  setErrorMsg(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '9px 0',
+                  borderRadius: '9px',
+                  border: 'none',
+                  backgroundColor: tab === 'login' ? '#00F0FF' : 'transparent',
+                  color: tab === 'login' ? '#070514' : '#9A91A8',
+                  fontFamily: 'Lexend, sans-serif',
+                  fontSize: '11.5px',
+                  fontWeight: 900,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: tab === 'login' ? '0 0 20px rgba(0, 240, 255, 0.45)' : 'none',
+                }}
               >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                SIGN IN
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab('register');
+                  setErrorMsg(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '9px 0',
+                  borderRadius: '9px',
+                  border: 'none',
+                  backgroundColor: tab === 'register' ? '#00F0FF' : 'transparent',
+                  color: tab === 'register' ? '#070514' : '#9A91A8',
+                  fontFamily: 'Lexend, sans-serif',
+                  fontSize: '11.5px',
+                  fontWeight: 900,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: tab === 'register' ? '0 0 20px rgba(0, 240, 255, 0.45)' : 'none',
+                }}
+              >
+                REGISTER
               </button>
             </div>
+
+            {/* Error Banner */}
+            {errorMsg && (
+              <div
+                style={{
+                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.45)',
+                  color: '#FCA5A5',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontFamily: 'Lexend, sans-serif',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  lineHeight: 1.35,
+                }}
+              >
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* ======================================================== */}
+            {/* TAB: LOGIN FORM                                          */}
+            {/* ======================================================== */}
+            {tab === 'login' ? (
+              <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '10.5px',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 800,
+                      color: '#C8C1D4',
+                      marginBottom: '5px',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    USERNAME OR EMAIL
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <User
+                      size={16}
+                      color="#00F0FF"
+                      style={{ position: 'absolute', top: '13px', left: '14px', opacity: 0.85 }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Enter username or email address"
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      required
+                      autoFocus
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#070514',
+                        border: '1px solid rgba(0, 240, 255, 0.28)',
+                        borderRadius: '12px',
+                        padding: '12px 14px 12px 42px',
+                        color: '#FFFFFF',
+                        fontSize: '13px',
+                        fontFamily: 'Lexend, sans-serif',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#00F0FF';
+                        e.target.style.boxShadow = '0 0 16px rgba(0, 240, 255, 0.3)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = 'rgba(0, 240, 255, 0.28)';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                    <label
+                      style={{
+                        fontSize: '10.5px',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontWeight: 800,
+                        color: '#C8C1D4',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      PASSWORD
+                    </label>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <Lock
+                      size={16}
+                      color="#00F0FF"
+                      style={{ position: 'absolute', top: '13px', left: '14px', opacity: 0.85 }}
+                    />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#070514',
+                        border: '1px solid rgba(0, 240, 255, 0.28)',
+                        borderRadius: '12px',
+                        padding: '12px 42px 12px 42px',
+                        color: '#FFFFFF',
+                        fontSize: '13px',
+                        fontFamily: 'Lexend, sans-serif',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#00F0FF';
+                        e.target.style.boxShadow = '0 0 16px rgba(0, 240, 255, 0.3)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = 'rgba(0, 240, 255, 0.28)';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      style={{
+                        position: 'absolute',
+                        top: '11px',
+                        right: '12px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#8E849E',
+                        cursor: 'pointer',
+                        padding: '4px',
+                      }}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Login Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    background: 'linear-gradient(135deg, #E026D8 0%, #00F0FF 100%)',
+                    color: '#FFFFFF',
+                    fontFamily: 'Lexend, sans-serif',
+                    fontWeight: 900,
+                    fontSize: '13px',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    padding: '13px 0',
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 22px rgba(0, 240, 255, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    marginTop: '6px',
+                    transition: 'all 0.2s ease',
+                    opacity: loading ? 0.75 : 1,
+                  }}
+                  className="hover:scale-[1.01]"
+                >
+                  <span>{loading ? 'AUTHENTICATING...' : 'ENTER SOVEREIGN VAULT'}</span>
+                  {!loading && <ArrowRight size={16} />}
+                </button>
+              </form>
+            ) : (
+              /* ======================================================== */
+              /* TAB: REGISTRATION FORM                                   */
+              /* ======================================================== */
+              <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+                {/* 2-Column Grid: Username & Email */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '10px',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontWeight: 800,
+                        color: '#C8C1D4',
+                        marginBottom: '4px',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      USERNAME
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <User
+                        size={14}
+                        color="#00F0FF"
+                        style={{ position: 'absolute', top: '12px', left: '12px', opacity: 0.85 }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Choose username"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        required
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#070514',
+                          border: '1px solid rgba(0, 240, 255, 0.28)',
+                          borderRadius: '11px',
+                          padding: '10px 12px 10px 36px',
+                          color: '#FFFFFF',
+                          fontSize: '12.5px',
+                          fontFamily: 'Lexend, sans-serif',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '10px',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontWeight: 800,
+                        color: '#C8C1D4',
+                        marginBottom: '4px',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      EMAIL ADDRESS
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <Mail
+                        size={14}
+                        color="#00F0FF"
+                        style={{ position: 'absolute', top: '12px', left: '12px', opacity: 0.85 }}
+                      />
+                      <input
+                        type="email"
+                        placeholder="name@domain.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#070514',
+                          border: '1px solid rgba(0, 240, 255, 0.28)',
+                          borderRadius: '11px',
+                          padding: '10px 12px 10px 36px',
+                          color: '#FFFFFF',
+                          fontSize: '12.5px',
+                          fontFamily: 'Lexend, sans-serif',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Password Field (Full Width) */}
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '10px',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 800,
+                      color: '#C8C1D4',
+                      marginBottom: '4px',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    PASSWORD
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <Lock
+                      size={14}
+                      color="#00F0FF"
+                      style={{ position: 'absolute', top: '12px', left: '12px', opacity: 0.85 }}
+                    />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        backgroundColor: '#070514',
+                        border: '1px solid rgba(0, 240, 255, 0.28)',
+                        borderRadius: '11px',
+                        padding: '10px 36px 10px 36px',
+                        color: '#FFFFFF',
+                        fontSize: '12.5px',
+                        fontFamily: 'Lexend, sans-serif',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#8E849E',
+                        cursor: 'pointer',
+                        padding: '2px',
+                      }}
+                    >
+                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Referral Code Expandable Switch */}
+                <div>
+                  {!showReferralInput && !referralCode ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowReferralInput(true)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#00F0FF',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '2px 0',
+                      }}
+                    >
+                      <Sparkles size={13} />
+                      <span>+ Have a VIP Referral or Agent Code?</span>
+                    </button>
+                  ) : (
+                    <div>
+                      <label
+                        style={{
+                          display: 'block',
+                          fontSize: '10px',
+                          fontFamily: 'Lexend, sans-serif',
+                          fontWeight: 800,
+                          color: '#C8C1D4',
+                          marginBottom: '4px',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        REFERRAL CODE (OPTIONAL)
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <Sparkles
+                          size={14}
+                          color="#00F0FF"
+                          style={{ position: 'absolute', top: '12px', left: '12px', opacity: 0.85 }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="e.g. V1-ROYAL7"
+                          value={referralCode}
+                          onChange={(e) => setReferralCode(e.target.value)}
+                          style={{
+                            width: '100%',
+                            backgroundColor: '#070514',
+                            border: '1px solid rgba(0, 240, 255, 0.28)',
+                            borderRadius: '11px',
+                            padding: '10px 12px 10px 36px',
+                            color: '#FFFFFF',
+                            fontSize: '12.5px',
+                            fontFamily: 'Lexend, sans-serif',
+                            outline: 'none',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 18+ Certification Checkbox */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '2px' }}>
+                  <input
+                    type="checkbox"
+                    id="ageVerifyCheckModal"
+                    checked={ageVerified}
+                    onChange={(e) => setAgeVerified(e.target.checked)}
+                    style={{
+                      accentColor: '#00F0FF',
+                      cursor: 'pointer',
+                      width: '16px',
+                      height: '16px',
+                      marginTop: '1px',
+                      flexShrink: 0,
+                    }}
+                    required
+                  />
+                  <label
+                    htmlFor="ageVerifyCheckModal"
+                    style={{
+                      fontSize: '10.5px',
+                      color: '#B3A9C0',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      lineHeight: 1.4,
+                      fontFamily: 'Lexend, sans-serif',
+                    }}
+                  >
+                    I certify that I am at least 18 years old (21+ where applicable) and accept the Terms of Service.
+                  </label>
+                </div>
+
+                {/* Registration Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    background: 'linear-gradient(135deg, #E026D8 0%, #00F0FF 100%)',
+                    color: '#FFFFFF',
+                    fontFamily: 'Lexend, sans-serif',
+                    fontWeight: 900,
+                    fontSize: '12.5px',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    padding: '12.5px 0',
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 22px rgba(0, 240, 255, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    marginTop: '4px',
+                    transition: 'all 0.2s ease',
+                    opacity: loading ? 0.75 : 1,
+                  }}
+                  className="hover:scale-[1.01]"
+                >
+                  <span>{loading ? 'CREATING SOVEREIGN VAULT...' : 'CLAIM $3 FREEPLAY & JOIN'}</span>
+                  {!loading && <ArrowRight size={16} />}
+                </button>
+              </form>
+            )}
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-3 mt-2 rounded-xl font-heading font-black text-sm tracking-wider flex items-center justify-center gap-2 transition-all ${
-              tab === 'login' ? 'cyber-btn-cyan' : 'cyber-btn-purple'
-            } ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+          {/* Bottom Switcher Footer */}
+          <div
+            style={{
+              paddingTop: '16px',
+              marginTop: '16px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              textAlign: 'center',
+            }}
           >
-            {loading ? (
-              <span>VERIFYING...</span>
-            ) : tab === 'login' ? (
-              <>
-                <span>SIGN IN NOW</span>
-                <ArrowRight size={16} />
-              </>
+            {tab === 'login' ? (
+              <p style={{ fontSize: '11.5px', color: '#9A91A8', margin: 0, fontFamily: 'Lexend, sans-serif' }}>
+                New to Players Paradise Hub?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('register');
+                    setErrorMsg(null);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#00F0FF',
+                    fontFamily: 'Lexend, sans-serif',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    padding: '0 4px',
+                  }}
+                >
+                  Create Account &amp; Claim $3 Freeplay
+                </button>
+              </p>
             ) : (
-              <>
-                <Sparkles size={16} />
-                <span>START PLAYING</span>
-              </>
+              <p style={{ fontSize: '11.5px', color: '#9A91A8', margin: 0, fontFamily: 'Lexend, sans-serif' }}>
+                Already registered?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('login');
+                    setErrorMsg(null);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#00F0FF',
+                    fontFamily: 'Lexend, sans-serif',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    padding: '0 4px',
+                  }}
+                >
+                  Sign In to Sovereign Vault
+                </button>
+              </p>
             )}
-          </button>
-        </form>
-
-        {/* Demo Fast-Fill Shortcuts */}
-        <div className="mt-5 pt-4 border-t border-slate-800 text-center relative z-10">
-          <p className="text-[11px] text-slate-400 mb-2">QUICK TEST LOGINS:</p>
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => autofillDemo('player')}
-              className="text-[10px] font-bold px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-            >
-              🎮 Demo Player ($550 SC)
-            </button>
-            <button
-              type="button"
-              onClick={() => autofillDemo('admin')}
-              className="text-[10px] font-bold px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-500/40 transition-colors"
-            >
-              👑 Super Admin
-            </button>
           </div>
         </div>
       </div>
