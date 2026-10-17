@@ -58,6 +58,7 @@ import {
   Copy,
   Flame,
   Tag,
+  Paperclip
 } from 'lucide-react';
 import FinanceDepositsView from '@/components/admin/FinanceDepositsView';
 import FinanceRedemptionsView from '@/components/admin/FinanceRedemptionsView';
@@ -181,7 +182,7 @@ export default function AdminPortal({ initialTab }) {
   const [games, setGames] = useState([]);
   const [newGame, setNewGame] = useState({
     title: '',
-    provider: 'Vegas One Studio',
+    provider: 'Players Paradise Studio',
     thumbnail: '/images/vegas-777.webp',
     badge: 'HOT',
     url: '',
@@ -258,10 +259,13 @@ export default function AdminPortal({ initialTab }) {
   const [activeChatConv, setActiveChatConv] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatReplyText, setChatReplyText] = useState('');
+  const [chatAttachedImage, setChatAttachedImage] = useState(null);
+  const [isUploadingChatImage, setIsUploadingChatImage] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [chatFilterTab, setChatFilterTab] = useState('all');
   const [isSendingChat, setIsSendingChat] = useState(false);
   const chatMessagesEndRef = useRef(null);
+  const adminChatFileInputRef = useRef(null);
 
   // Push Notifications & Omnichannel Broadcast state
   const [pushTitle, setPushTitle] = useState('');
@@ -1399,7 +1403,7 @@ export default function AdminPortal({ initialTab }) {
             }`}
           style={{ flex: 1 }}
         >
-          {/* TAB 1: OVERVIEW (COMMAND CENTER) - Ultra-Luxurious Vegas One Marquee Architecture */}
+          {/* TAB 1: OVERVIEW (COMMAND CENTER) - Ultra-Luxurious Players Paradise Marquee Architecture */}
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6 sm:gap-8 w-full" style={{ fontFamily: 'var(--font-lexend, Lexend), sans-serif' }}>
               {/* Header Hero Card matching casino theme */}
@@ -1442,7 +1446,7 @@ export default function AdminPortal({ initialTab }) {
                       </span>
                     </div>
                     <p className="text-xs sm:text-[13px] text-[#9A91A8] mt-1.5 leading-relaxed m-0 font-medium">
-                      Real-time Vegas One cashier velocity, player liquidity, and sweepstakes platform activity overview
+                      Real-time Players Paradise cashier velocity, player liquidity, and sweepstakes platform activity overview
                     </p>
                   </div>
                 </div>
@@ -2121,7 +2125,7 @@ export default function AdminPortal({ initialTab }) {
                               setGames(prev => [d.game || { ...newGame, id: d.gameId }, ...prev]);
                               setNewGame({
                                 title: '',
-                                provider: 'Vegas One Studio',
+                                provider: 'Players Paradise Studio',
                                 thumbnail: '/images/vegas-777.webp',
                                 badge: 'HOT',
                                 url: '',
@@ -2160,7 +2164,7 @@ export default function AdminPortal({ initialTab }) {
                             <label className="block text-[11px] font-bold text-gray-300 mb-1 uppercase tracking-wider">Provider / Studio</label>
                             <input
                               type="text"
-                              placeholder="e.g. Orion Stars, Juwa, Vegas One"
+                              placeholder="e.g. Orion Stars, Juwa, Players Paradise"
                               value={newGame.provider}
                               onChange={(e) => setNewGame({ ...newGame, provider: e.target.value })}
                               className="w-full rounded-xl px-3.5 py-2.5 text-white text-xs outline-none transition-all"
@@ -2450,7 +2454,7 @@ export default function AdminPortal({ initialTab }) {
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-gray-400 mt-0.5">{g.provider || 'Vegas One Studio'}</div>
+                                <div className="text-[11px] text-gray-400 mt-0.5">{g.provider || 'Players Paradise Studio'}</div>
                                 <div className="text-[10px] text-gray-500 font-mono mt-0.5">Plays: {g.playsCount?.toLocaleString() || 0}</div>
                               </div>
                             </div>
@@ -2497,7 +2501,7 @@ export default function AdminPortal({ initialTab }) {
                                   onClick={() => setEditingGame({
                                     id: g.id || g._id,
                                     title: g.title || '',
-                                    provider: g.provider || 'Vegas One Studio',
+                                    provider: g.provider || 'Players Paradise Studio',
                                     thumbnail: g.thumbnail || '/images/vegas-777.webp',
                                     badge: g.badge || (g.isHot ? 'HOT' : ''),
                                     url: g.url || '',
@@ -2601,7 +2605,7 @@ export default function AdminPortal({ initialTab }) {
                                 </td>
                                 <td className="py-3 px-4">
                                   <div className="font-bold text-white text-sm hover:text-[#00F0FF] transition-colors">{g.title}</div>
-                                  <div className="text-[11px] text-gray-400 mt-0.5">{g.provider || 'Vegas One Studio'}</div>
+                                  <div className="text-[11px] text-gray-400 mt-0.5">{g.provider || 'Players Paradise Studio'}</div>
                                 </td>
                                 <td className="py-3 px-4">
                                   {badgeUpper === 'HOT' && (
@@ -2707,7 +2711,7 @@ export default function AdminPortal({ initialTab }) {
                                       onClick={() => setEditingGame({
                                         id: g.id || g._id,
                                         title: g.title || '',
-                                        provider: g.provider || 'Vegas One Studio',
+                                        provider: g.provider || 'Players Paradise Studio',
                                         thumbnail: g.thumbnail || '/images/vegas-777.webp',
                                         badge: g.badge || (g.isHot ? 'HOT' : ''),
                                         url: g.url || '',
@@ -3212,7 +3216,7 @@ export default function AdminPortal({ initialTab }) {
             });
 
             const cannedReplies = [
-              "👋 Hello! How may Vegas One Concierge assist you today?",
+              "👋 Hello! How may Players Paradise Concierge assist you today?",
               "✅ Your deposit has been confirmed and credited to your wallet!",
               "⏳ Your withdrawal request is currently being reviewed by finance.",
               "📸 Please provide a clear screenshot receipt of your transfer.",
@@ -3222,21 +3226,24 @@ export default function AdminPortal({ initialTab }) {
             const handleSendChatMessage = async (e, directText) => {
               if (e && e.preventDefault) e.preventDefault();
               const text = (directText !== undefined ? directText : chatReplyText).trim();
-              if (!text || !activeChatConv || isSendingChat) return;
+              const imagePayload = directText !== undefined ? null : chatAttachedImage;
+              if ((!text && !imagePayload) || !activeChatConv || isSendingChat) return;
 
               setIsSendingChat(true);
               const optimisticMsg = {
                 id: `temp_${Date.now()}`,
                 conversationId: activeChatConv._id,
                 userId: activeChatConv.userId,
-                username: user?.username || 'Vegas One Support',
+                username: user?.username || 'Players Paradise Support',
                 senderRole: 'staff',
                 text: text,
+                imageUrl: imagePayload || null,
                 read: true,
                 createdAt: new Date().toISOString(),
               };
               setChatMessages(prev => [...prev, optimisticMsg]);
               setChatReplyText('');
+              setChatAttachedImage(null);
 
               try {
                 await fetch('/api/chat', {
@@ -3247,6 +3254,7 @@ export default function AdminPortal({ initialTab }) {
                     targetUserId: activeChatConv.userId,
                     targetUsername: activeChatConv.username,
                     text: text,
+                    imageUrl: imagePayload || null,
                   }),
                 });
                 const res = await fetch(`/api/chat?conversationId=${activeChatConv._id}`);
@@ -3525,7 +3533,7 @@ export default function AdminPortal({ initialTab }) {
                           <div className="flex items-center justify-center my-1">
                             <span className="px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-[10px] text-gray-400 font-medium flex items-center gap-1.5">
                               <ShieldCheck size={12} className="text-cyan-400" />
-                              Immutable Vegas One Support Session
+                              Immutable Players Paradise Support Session
                             </span>
                           </div>
 
@@ -3550,7 +3558,7 @@ export default function AdminPortal({ initialTab }) {
                                     <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[10px] font-black uppercase mt-1 border shadow-sm">
                                       {isStaff ? (
                                         <div className="w-full h-full rounded-lg bg-gradient-to-tr from-cyan-400 to-cyan-600 text-black flex items-center justify-center font-black">
-                                          V1
+                                          PP
                                         </div>
                                       ) : (
                                         <div className="w-full h-full rounded-lg bg-gradient-to-tr from-purple-600/50 to-pink-600/40 text-purple-200 border-white/20 flex items-center justify-center font-black">
@@ -3565,7 +3573,17 @@ export default function AdminPortal({ initialTab }) {
                                         ? 'bg-gradient-to-r from-cyan-500 to-cyan-400 text-slate-950 font-semibold rounded-tr-none shadow-[0_4px_15px_rgba(0,240,255,0.2)]'
                                         : 'bg-[#181238] text-gray-100 border border-white/10 rounded-tl-none shadow-md'
                                         }`}>
-                                        {m.text}
+                                        {m.imageUrl && (
+                                          <div className="mb-2 overflow-hidden rounded-xl">
+                                            <img
+                                              src={m.imageUrl}
+                                              alt="Attachment"
+                                              onClick={() => window.open(m.imageUrl, '_blank')}
+                                              className="max-h-60 max-w-full rounded-xl object-cover cursor-pointer hover:opacity-90 border border-white/20 shadow-md transition"
+                                            />
+                                          </div>
+                                        )}
+                                        {m.text && <p className="break-words">{m.text}</p>}
                                       </div>
                                       <div className={`flex items-center gap-1.5 mt-1 text-[10px] text-gray-500 font-mono ${isStaff ? 'justify-end' : 'justify-start'}`}>
                                         <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -3602,6 +3620,75 @@ export default function AdminPortal({ initialTab }) {
                           ))}
                         </div>
 
+                        {/* Pending Image Attachment in Admin */}
+                        {chatAttachedImage && (
+                          <div className="px-3 py-2 bg-[#0c0820] border-t border-cyan-500/20 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <img
+                                src={chatAttachedImage}
+                                alt="Attachment preview"
+                                className="w-10 h-10 rounded-lg object-cover border border-cyan-400 shrink-0"
+                              />
+                              <span className="text-[11px] text-slate-300 truncate font-mono">
+                                Image ready to send to {activeChatConv.username}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setChatAttachedImage(null)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-rose-400 transition"
+                              title="Remove attachment"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Hidden Admin Chat File Input */}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          ref={adminChatFileInputRef}
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setIsUploadingChatImage(true);
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const img = new window.Image();
+                              img.onload = () => {
+                                const maxDim = 1200;
+                                let w = img.width;
+                                let h = img.height;
+                                if (w > maxDim || h > maxDim) {
+                                  if (w > h) {
+                                    h = Math.round((h * maxDim) / w);
+                                    w = maxDim;
+                                  } else {
+                                    w = Math.round((w * maxDim) / h);
+                                    h = maxDim;
+                                  }
+                                }
+                                const canvas = document.createElement('canvas');
+                                canvas.width = w;
+                                canvas.height = h;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, w, h);
+                                setChatAttachedImage(canvas.toDataURL('image/jpeg', 0.82));
+                                setIsUploadingChatImage(false);
+                              };
+                              img.onerror = () => {
+                                setChatAttachedImage(event.target.result);
+                                setIsUploadingChatImage(false);
+                              };
+                              img.src = event.target.result;
+                            };
+                            reader.readAsDataURL(file);
+                            e.target.value = '';
+                          }}
+                        />
+
                         {/* Reply Input Form */}
                         <form
                           onSubmit={handleSendChatMessage}
@@ -3610,6 +3697,20 @@ export default function AdminPortal({ initialTab }) {
                           }}
                           className="p-3 bg-[#0a071c] border-t border-white/10 flex items-center gap-2 transition-all duration-150"
                         >
+                          <button
+                            type="button"
+                            onClick={() => adminChatFileInputRef.current?.click()}
+                            disabled={isUploadingChatImage || isSendingChat}
+                            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-cyan-300 border border-white/10 transition shrink-0"
+                            title="Attach screenshot or photo"
+                          >
+                            {isUploadingChatImage ? (
+                              <RefreshCw size={15} className="animate-spin text-cyan-400" />
+                            ) : (
+                              <Paperclip size={15} />
+                            )}
+                          </button>
+
                           <input
                             type="text"
                             placeholder={`Reply to ${activeChatConv.username}...`}
@@ -3619,8 +3720,8 @@ export default function AdminPortal({ initialTab }) {
                           />
                           <button
                             type="submit"
-                            disabled={!chatReplyText.trim() || isSendingChat}
-                            className="btn-gold py-2.5 px-5 text-xs font-black flex items-center gap-1.5 shadow-md disabled:opacity-50 transition"
+                            disabled={(!chatReplyText.trim() && !chatAttachedImage) || isSendingChat}
+                            className="btn-gold py-2.5 px-5 text-xs font-black flex items-center gap-1.5 shadow-md disabled:opacity-50 transition shrink-0"
                           >
                             {isSendingChat ? (
                               <RefreshCw size={13} className="animate-spin" />
@@ -3644,7 +3745,7 @@ export default function AdminPortal({ initialTab }) {
                           </div>
 
                           <h3 className="text-2xl font-black text-white tracking-wide mb-2">
-                            Vegas One Concierge Terminal
+                            Players Paradise Concierge Terminal
                           </h3>
                           <p className="text-xs text-gray-400 leading-relaxed mb-6">
                             Select an active player inquiry from the left to start live messaging, review tickets, or view player 360° profiles.
@@ -3962,15 +4063,15 @@ export default function AdminPortal({ initialTab }) {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-cyan-400 to-purple-500 flex items-center justify-center text-[10px] font-black text-black">
-                              V1
+                              PP
                             </div>
-                            <span className="text-[11px] font-bold text-gray-300">VEGAS ONE VIP</span>
+                            <span className="text-[11px] font-bold text-gray-300">PLAYERS PARADISE VIP</span>
                           </div>
                           <span className="text-[10px] text-gray-500 font-mono">now</span>
                         </div>
                         <div>
                           <p className="text-xs font-black text-white line-clamp-1">
-                            {pushTitle || '⚡ FLASH DROP: Free $10 SC on Vegas One!'}
+                            {pushTitle || '⚡ FLASH DROP: Free $10 SC on Players Paradise!'}
                           </p>
                           <p className="text-[11px] text-gray-300 line-clamp-3 leading-relaxed mt-0.5">
                             {pushBody || 'Log in now to claim your exclusive VIP loyalty bonus. Tap here to open your player wallet!'}
@@ -4226,7 +4327,7 @@ export default function AdminPortal({ initialTab }) {
                         <label className="text-[11px] font-bold text-gray-300 block mb-1 uppercase">Staff Email *</label>
                         <input
                           type="email"
-                          placeholder="alex@vegasone.games"
+                          placeholder="staff@playersparadisehub.com"
                           value={newStaff.email}
                           onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value })}
                           className="w-full bg-[#070514] border border-white/15 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none transition"
@@ -5107,7 +5208,7 @@ export default function AdminPortal({ initialTab }) {
                           <label className="text-[11px] font-bold text-gray-300 block mb-1 uppercase">Identifier ($Cashtag or Address) *</label>
                           <input
                             type="text"
-                            placeholder="e.g. $VegasOnePay or pay@vegasone.games"
+                            placeholder="e.g. $ParadisePay or pay@playersparadisehub.com"
                             value={newMethod.accountDetails}
                             onChange={(e) => setNewMethod({ ...newMethod, accountDetails: e.target.value })}
                             className="w-full bg-[#070514] border border-white/15 rounded-xl p-2.5 text-xs text-white font-mono outline-none focus:border-[#00F0FF] transition"
@@ -5123,7 +5224,7 @@ export default function AdminPortal({ initialTab }) {
                           </label>
                           <input
                             type="url"
-                            placeholder="e.g. https://cash.app/$VegasOnePay"
+                            placeholder="e.g. https://cash.app/$ParadisePay"
                             value={newMethod.paymentUrl}
                             onChange={(e) => setNewMethod({ ...newMethod, paymentUrl: e.target.value })}
                             className="w-full bg-[#070514] border border-white/15 rounded-xl p-2.5 text-xs text-white outline-none focus:border-[#00F0FF] transition"
@@ -6536,7 +6637,7 @@ export default function AdminPortal({ initialTab }) {
                     </label>
                     <input
                       type="url"
-                      placeholder="https://cash.app/$VegasOnePay"
+                      placeholder="https://cash.app/$ParadisePay"
                       value={editGatewayModal.data.paymentUrl || ''}
                       onChange={(e) => setEditGatewayModal(prev => ({
                         ...prev,

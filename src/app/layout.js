@@ -1,4 +1,5 @@
 import './globals.css';
+import GlobalLiveChat from '@/components/chat/GlobalLiveChat';
 
 export const metadata = {
   title: 'Players Paradise Hub | Official Cyber Gaming & Sweeps Hub',
@@ -29,6 +30,7 @@ export default function RootLayout({ children }) {
       </head>
       <body className="antialiased selection:bg-[var(--neon-cyan)] selection:text-black">
         {children}
+        <GlobalLiveChat />
       </body>
     </html>
   );

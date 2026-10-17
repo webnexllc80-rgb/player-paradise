@@ -155,7 +155,7 @@ export default function SubscriptionPromoModal({
         <div style={{ textAlign: 'center', marginBottom: '16px' }}>
           <img
             src="/images/logo.png"
-            alt="Vegas One"
+            alt="Players Paradise"
             style={{
               height: '72px',
               width: 'auto',

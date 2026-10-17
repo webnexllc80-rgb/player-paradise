@@ -7,7 +7,7 @@ export async function GET() {
     const db = await getDb();
     const settings = await db.collection('system_settings').findOne({ key: 'general' });
     const defaultSettings = {
-      siteName: 'Vegas One',
+      siteName: 'Players Paradise',
       welcomeBonusPercent: 300,
       welcomeBonusMax: 7500,
       welcomeBonusSpins: 150,

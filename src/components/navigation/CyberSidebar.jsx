@@ -20,7 +20,8 @@ import {
   ChevronRight,
   Flame,
   Sparkles,
-  Crown
+  Crown,
+  Users
 } from 'lucide-react';
 
 export default function CyberSidebar({
@@ -44,10 +45,10 @@ export default function CyberSidebar({
     { label: 'Deposit Funds', path: '/deposit', icon: Wallet },
     { label: 'Redeem Cashout', path: '/withdraw', icon: Receipt },
     { label: 'Daily Spin', path: '/spin-wheel', icon: Gift, glow: true },
+    { label: 'Refer & Earn', path: '/referral', icon: Users, badge: 'REWARDS', glow: true },
     { label: 'Ledger History', path: '/ledger', icon: Receipt },
     { label: 'Promotions & VIP', path: '/promotions', icon: Crown },
     { label: 'Download App', path: '/download-app', icon: Download, badge: 'APK / iOS' },
-    { label: 'Live 24/7 Chat', action: onOpenChat, icon: MessageSquare },
     { label: 'How To Play', path: '/how-to-play', icon: HelpCircle },
   ];
 

@@ -1,4 +1,4 @@
-// Geo-compliance and access verification for Vegas One
+// Geo-compliance and access verification for Players Paradise
 // All states and regions are unrestricted and permitted.
 
 export const RESTRICTED_US_STATES = [];

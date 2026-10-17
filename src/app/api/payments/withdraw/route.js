@@ -364,7 +364,7 @@ export async function PUT(req) {
       if (user?.email) {
         sendEmail({
           to: user.email,
-          subject: 'Vegas One Cashout Dispatched!',
+          subject: 'Players Paradise Cashout Dispatched!',
           html: `<p>Your prize redemption of $${redemption.amount} via ${redemption.payoutMethod} has been sent!</p>`,
         }).catch(() => {});
       }

@@ -42,7 +42,7 @@ export async function POST(req) {
       // Send email via Hostinger SMTP
       const sendResult = await sendEmail({
         to: cleanEmail,
-        subject: `Your Vegas One ${purpose} Security Code: ${otpCode}`,
+        subject: `Your Players Paradise ${purpose} Security Code: ${otpCode}`,
         html: getOtpEmailTemplate(otpCode, purpose),
       });
 

@@ -1,4 +1,4 @@
-// Web Audio API Sound Synthesizer for Vegas One Admin Notifications
+// Web Audio API Sound Synthesizer for Players Paradise Admin Notifications
 // Zero external file dependencies - 100% reliable in all browsers
 
 let audioCtx = null;

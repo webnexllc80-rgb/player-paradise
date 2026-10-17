@@ -111,8 +111,8 @@ export async function GET(req) {
     return NextResponse.json({
       success: true,
       stats: {
-        referralCode: user.referralCode || '',
-        referralLink: `https://vegasone.games/ref/${user.referralCode || ''}`,
+        referralCode: user.referralCode || user.username || '',
+        referralLink: `https://playersparadisehub.com/register?ref=${user.referralCode || user.username || ''}`,
         commissionRate: user.affiliateRate || 50,
         totalReferrals: referredUsers.length,
         activeDepositors: referredUsers.filter(u => (u.totalDeposited || 0) > 0).length,

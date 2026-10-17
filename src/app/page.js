@@ -33,9 +33,6 @@ import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
 import Panda777SlotsModal from '@/components/games/Panda777SlotsModal';
 import CyberCrashModal from '@/components/games/CyberCrashModal';
 
-// Chat
-import LiveChatWidget from '@/components/chat/LiveChatWidget';
-
 import {
   Gamepad2,
   Sparkles,
@@ -235,15 +232,15 @@ export default function HomePage() {
               </div>
 
               {/* Search Bar */}
-              <div className="relative w-full md:w-72">
+              <div className="relative w-full md:w-80">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
                 <input
                   type="text"
                   placeholder="Search Ultra Panda, Fire Kirin..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="cyber-input pl-9 py-2 text-xs"
+                  className="w-full bg-[#060917]/95 border border-[var(--neon-cyan)]/30 rounded-xl !pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--neon-cyan)] focus:shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all font-sans"
                 />
-                <Search size={15} className="absolute left-3 top-2.5 text-slate-500" />
               </div>
             </div>
 
@@ -354,12 +351,6 @@ export default function HomePage() {
         onBalanceUpdated={loadUser}
       />
 
-      {/* Floating 24/7 Live Support Chat */}
-      <LiveChatWidget
-        user={user}
-        isOpen={chatOpen}
-        onToggle={() => setChatOpen(!chatOpen)}
-      />
 
       {/* Modals */}
       <AuthModal

@@ -157,7 +157,7 @@ export async function PUT(req) {
       if (user?.email) {
         sendEmail({
           to: user.email,
-          subject: 'Vegas One - KYC Verified!',
+          subject: 'Players Paradise - KYC Verified!',
           html: `<p>Hi ${user.username}, your US identity verification has been approved! You can now request instant cash prize redemptions.</p>`,
         }).catch(() => {});
       }

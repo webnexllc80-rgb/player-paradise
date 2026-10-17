@@ -278,7 +278,7 @@ export async function PUT(req) {
       // Send confirmation email
       sendEmail({
         to: user.email,
-        subject: `Deposit Confirmed: ${creditedSC} SC credited to your Vegas One wallet!`,
+        subject: `Deposit Confirmed: ${creditedSC} SC credited to your Players Paradise wallet!`,
         html: `<p>Hi ${user.username}, your deposit of $${deposit.amount} via ${deposit.methodName} was verified and ${creditedSC} SC (+ ${creditedGC.toLocaleString()} GC) was credited to your account. Best of luck at the tables!</p>`,
       }).catch(() => {});
 

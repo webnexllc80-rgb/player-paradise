@@ -60,20 +60,20 @@ export default function CyberNavbar({
   return (
     <header className="sticky top-0 z-30 w-full h-16 border-b border-[var(--chrome-border)]/60 bg-[var(--bg-deep)]/90 backdrop-blur-xl px-4 flex items-center justify-between gap-3">
       {/* Left side: Hamburger toggle & brand emblem on mobile */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <button
           onClick={onToggleSidebar}
-          className="p-2 rounded-xl bg-slate-900/80 border border-slate-700/60 text-slate-300 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)] transition-colors lg:hidden"
+          className="p-2 rounded-xl bg-slate-900/80 border border-slate-700/60 text-slate-300 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)] transition-colors lg:hidden shrink-0"
         >
           <Menu size={20} />
         </button>
 
         <div
           onClick={() => router.push('/')}
-          className="flex items-center gap-2 cursor-pointer lg:hidden"
+          className="flex items-center gap-2 cursor-pointer lg:hidden shrink-0"
         >
           <div
-            className="relative w-8 h-8 rounded-lg overflow-hidden border border-[var(--neon-cyan)]"
+            className="relative w-8 h-8 rounded-lg overflow-hidden border border-[var(--neon-cyan)] shrink-0"
             style={{ position: 'relative', width: '32px', height: '32px', minWidth: '32px', flexShrink: 0 }}
           >
             <Image src="/logo.png" alt="Logo" fill className="object-cover" />
@@ -83,14 +83,14 @@ export default function CyberNavbar({
           </span>
         </div>
 
-        {/* Global Progressive Cyber Jackpot (Tablet & Desktop) */}
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-slate-900 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
+        {/* Global Progressive Cyber Jackpot (Wide Desktop Only) */}
+        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-slate-900 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.15)] shrink-0">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
           </span>
           <span className="text-[10px] font-heading font-bold text-amber-400 tracking-wider">
-            GLOBAL JACKPOT:
+            JACKPOT:
           </span>
           <span className="font-mono font-bold text-xs text-white tracking-wider">
             ${jackpot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -99,17 +99,17 @@ export default function CyberNavbar({
       </div>
 
       {/* Right side: Balances & User Actions */}
-      <div className="flex items-center gap-2 md:gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         {user ? (
           <>
             {/* Live Single Wallet Balance Chip */}
             <Link
               href="/deposit"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 hover:border-emerald-400 shadow-inner group transition-all"
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 hover:border-emerald-400 shadow-inner group transition-all shrink-0"
               title="Player Wallet Balance (Click to Deposit)"
             >
-              <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-500 text-black uppercase tracking-wider">
-                BALANCE
+              <span className="text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-500 text-black uppercase tracking-wider">
+                BAL
               </span>
               <span className="font-mono font-bold text-xs sm:text-sm text-emerald-400 group-hover:text-emerald-300">
                 ${Number(user.balance ?? user.balanceSC ?? 0).toFixed(2)}
@@ -119,17 +119,17 @@ export default function CyberNavbar({
             {/* Deposit Direct Action */}
             <Link
               href="/deposit"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 text-black text-xs font-heading font-black shadow-[0_0_12px_rgba(16,185,129,0.35)] hover:scale-102 active:scale-98 transition-all"
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 text-black text-xs font-heading font-black shadow-[0_0_12px_rgba(16,185,129,0.35)] hover:scale-102 active:scale-98 transition-all shrink-0"
               title="Deposit Funds"
             >
               <Plus size={14} strokeWidth={3} />
               <span className="hidden sm:inline">DEPOSIT</span>
             </Link>
 
-            {/* Redeem Cashout Direct Action */}
+            {/* Redeem Cashout Direct Action (Wide screen only, also in sidebar & profile) */}
             <Link
               href="/withdraw"
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+              className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors shrink-0"
               title="Redeem Winnings"
             >
               <ArrowUpRight size={14} className="text-[var(--neon-cyan)]" />
@@ -141,26 +141,26 @@ export default function CyberNavbar({
               <button
                 type="button"
                 onClick={onOpenSpinWheel}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-amber-300 text-xs font-bold transition-all shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-amber-300 text-xs font-bold transition-all shadow-[0_0_12px_rgba(245,158,11,0.25)] shrink-0"
                 title="Daily Free Spin Wheel (Win up to $50)"
               >
                 <Gift size={14} className="text-amber-400 animate-bounce" />
-                <span className="hidden lg:inline">Daily Spin</span>
+                <span className="hidden 2xl:inline">Daily Spin</span>
               </button>
             )}
           </>
         ) : (
           /* Guest Actions */
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => onOpenAuth('login')}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition-all"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition-all shrink-0"
             >
               LOG IN
             </button>
             <button
               onClick={() => onOpenAuth('register')}
-              className="cyber-btn-cyan text-xs py-1.5 px-3.5 font-bold"
+              className="cyber-btn-cyan text-xs py-1.5 px-3 sm:px-3.5 font-bold shrink-0"
             >
               <Sparkles size={13} />
               <span>PLAY NOW</span>
@@ -171,10 +171,10 @@ export default function CyberNavbar({
         {/* Daily Mystery Gift Button */}
         <button
           onClick={onOpenDailyBonus}
-          className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-purple-600/20 border border-amber-500/40 text-amber-300 hover:border-amber-400 hover:scale-105 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+          className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-purple-600/20 border border-amber-500/40 text-amber-300 hover:border-amber-400 hover:scale-105 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)] shrink-0"
           title="Daily Mystery Reward"
         >
-          <Gift size={18} />
+          <Gift size={16} />
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400"></span>
         </button>
@@ -183,10 +183,10 @@ export default function CyberNavbar({
         {user && (
           <button
             onClick={onOpenNotifications}
-            className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-slate-700/70 text-slate-300 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)] transition-colors"
+            className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-900/80 border border-slate-700/70 text-slate-300 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)] transition-colors shrink-0"
             title="Notifications"
           >
-            <Bell size={18} />
+            <Bell size={16} />
             {unreadNotifsCount > 0 && (
               <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(244,63,94,0.6)]">
                 {unreadNotifsCount}
@@ -195,21 +195,21 @@ export default function CyberNavbar({
           </button>
         )}
 
-        {/* Sound toggle */}
+        {/* Sound toggle (Desktop) */}
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
-          className="hidden sm:flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/80 border border-slate-700/70 text-slate-400 hover:text-white transition-colors"
+          className="hidden xl:flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-900/80 border border-slate-700/70 text-slate-400 hover:text-white transition-colors shrink-0"
           title={soundEnabled ? 'Mute Audio' : 'Enable Audio'}
         >
-          {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
         </button>
 
         {/* User Profile Menu */}
         {user && (
-          <div className="relative" ref={profileRef}>
+          <div className="relative shrink-0" ref={profileRef}>
             <button
               onClick={() => setProfileOpen(!profileOpen)}
-              className="flex items-center gap-2 p-1.5 rounded-xl bg-slate-900/80 border border-slate-700/70 hover:border-[var(--neon-cyan)] transition-all"
+              className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-700/70 hover:border-[var(--neon-cyan)] transition-all shrink-0"
             >
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--neon-cyan)] to-[var(--neon-purple)] flex items-center justify-center text-black font-bold text-xs uppercase shadow-sm">
                 {user.username ? user.username.charAt(0) : 'P'}

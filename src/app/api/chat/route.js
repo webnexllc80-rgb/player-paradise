@@ -79,7 +79,8 @@ export async function GET(req) {
         userId: m.userId,
         username: m.username,
         senderRole: m.senderRole,
-        text: m.text,
+        text: m.text || '',
+        imageUrl: m.imageUrl || null,
         read: m.read,
         createdAt: m.createdAt,
       })),
@@ -94,14 +95,14 @@ export async function POST(req) {
   try {
     const session = await getSessionUser();
     const body = await req.json();
-    const { text, conversationId, targetUsername, targetUserId, guestId, guestName } = body;
+    const { text, imageUrl, conversationId, targetUsername, targetUserId, guestId, guestName } = body;
 
     if (!session && !guestId) {
       return NextResponse.json({ success: false, error: 'Unauthorized. Please provide a guest session or login.' }, { status: 401 });
     }
 
-    if (!text || !text.trim()) {
-      return NextResponse.json({ success: false, error: 'Message cannot be empty.' }, { status: 400 });
+    if ((!text || !text.trim()) && !imageUrl) {
+      return NextResponse.json({ success: false, error: 'Message text or image attachment required.' }, { status: 400 });
     }
 
     const isStaff =
@@ -146,7 +147,8 @@ export async function POST(req) {
       username: senderUsername,
       senderRole,
       staffName,
-      text: text.trim(),
+      text: (text || '').trim(),
+      imageUrl: imageUrl || null,
       read: false,
       isGuest: !session,
       createdAt: new Date(),
