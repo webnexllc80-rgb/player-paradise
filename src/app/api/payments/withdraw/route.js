@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 
@@ -106,7 +106,7 @@ export async function POST(req) {
     const redemptionsCol = db.collection('redemptions');
     const ledgerCol = db.collection('ledger');
 
-    const user = await usersCol.findOne({ _id: new ObjectId(session.userId) });
+    const user = await usersCol.findOne(getUserFilter(session));
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
     }

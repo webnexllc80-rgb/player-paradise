@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 
@@ -95,7 +95,7 @@ export async function POST(req) {
     const settingsCol = db.collection('system_settings');
 
     const [user, settings] = await Promise.all([
-      usersCol.findOne({ _id: new ObjectId(session.userId) }),
+      usersCol.findOne(getUserFilter(session)),
       settingsCol.findOne({ key: 'general' }),
     ]);
 

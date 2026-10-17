@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
 export async function GET(req) {
@@ -97,7 +97,7 @@ export async function GET(req) {
     }
 
     // Player stats
-    const user = await usersCol.findOne({ _id: new ObjectId(session.userId) });
+    const user = await usersCol.findOne(getUserFilter(session));
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
@@ -142,7 +142,7 @@ export async function POST(req) {
     const usersCol = db.collection('users');
     const ledgerCol = db.collection('ledger');
 
-    const user = await usersCol.findOne({ _id: new ObjectId(session.userId) });
+    const user = await usersCol.findOne(getUserFilter(session));
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }

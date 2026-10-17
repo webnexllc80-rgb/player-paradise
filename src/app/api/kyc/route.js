@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 
@@ -94,7 +94,7 @@ export async function POST(req) {
     const res = await kycCol.insertOne(newKyc);
 
     await usersCol.updateOne(
-      { _id: new ObjectId(session.userId) },
+      getUserFilter(session),
       { $set: { kycStatus: 'pending' } }
     );
 

@@ -116,3 +116,36 @@ export function hasPermission(role, section) {
   const allowed = ROLE_PERMISSIONS[role] || [];
   return allowed.includes(section);
 }
+
+export function toMongoId(id) {
+  if (!id) return id;
+  const str = String(id);
+  if (/^[0-9a-fA-F]{24}$/.test(str)) {
+    try {
+      const { ObjectId } = require('mongodb');
+      return new ObjectId(str);
+    } catch {}
+  }
+  return id;
+}
+
+export function getUserFilter(sessionUser) {
+  if (!sessionUser) return { _id: null };
+  const uid = typeof sessionUser === 'object' ? sessionUser.userId : sessionUser;
+  const strId = String(uid || '');
+  const or = [];
+  if (strId) {
+    or.push({ _id: strId });
+    if (/^[0-9a-fA-F]{24}$/.test(strId)) {
+      try {
+        const { ObjectId } = require('mongodb');
+        or.push({ _id: new ObjectId(strId) });
+      } catch {}
+    }
+  }
+  if (typeof sessionUser === 'object') {
+    if (sessionUser.username) or.push({ username: sessionUser.username });
+    if (sessionUser.email) or.push({ email: sessionUser.email });
+  }
+  return or.length > 0 ? { $or: or } : { _id: strId };
+}

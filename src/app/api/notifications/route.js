@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendPushNotification } from '@/lib/fcm';
 
@@ -198,9 +198,8 @@ export async function PUT(req) {
     );
 
     if (session?.userId) {
-      const { ObjectId } = await import('mongodb');
       await usersCol.updateOne(
-        { _id: new ObjectId(session.userId) },
+        getUserFilter(session),
         { $set: { isSubscribed: true } }
       );
     }
