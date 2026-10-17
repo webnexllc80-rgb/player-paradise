@@ -29,9 +29,10 @@ export async function GET(req) {
           name: m.name,
           type: m.type || 'custom',
           tag: m.tag || 'Instant',
-          accountDetails: m.accountDetails || m.cashtag || m.address || m.details || '',
-          cashtag: m.accountDetails || m.cashtag || '',
-          details: m.accountDetails || m.details || '',
+          tagName: m.tagName || m.accountDetails || m.cashtag || m.address || '',
+          accountDetails: m.accountDetails || m.tagName || m.cashtag || m.address || '',
+          cashtag: m.accountDetails || m.tagName || m.cashtag || '',
+          details: m.accountDetails || m.tagName || m.details || '',
           instructions: m.instructions || '',
           paymentUrl: m.paymentUrl || '',
           qrCode: m.qrCode || '',
@@ -59,20 +60,24 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 403 });
     }
 
+    const body = await req.json();
     const {
       name,
       type = 'custom',
       accountDetails,
+      tagName: rawTagName,
       instructions,
       paymentUrl = '',
       qrCode = '',
       minDeposit = 10,
       maxDeposit = 5000,
       tag = 'Instant',
-    } = await req.json();
+    } = body;
 
-    if (!name || !accountDetails) {
-      return NextResponse.json({ success: false, error: 'Name and Account Details are required.' }, { status: 400 });
+    const finalTag = (rawTagName || accountDetails || '').trim();
+
+    if (!name || !finalTag) {
+      return NextResponse.json({ success: false, error: 'Name and Tag Name / Cashtag are required.' }, { status: 400 });
     }
 
     const db = await getDb();
@@ -87,7 +92,8 @@ export async function POST(req) {
       name,
       type: type || 'custom',
       tag: tag || 'Instant',
-      accountDetails,
+      tagName: finalTag,
+      accountDetails: finalTag,
       instructions: instructions || 'Send payment and upload proof.',
       paymentUrl: paymentUrl ? paymentUrl.trim() : '',
       qrCode: finalQr,
@@ -117,11 +123,13 @@ export async function PUT(req) {
       return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 403 });
     }
 
+    const body = await req.json();
     const {
       id,
       name,
       type,
       accountDetails,
+      tagName,
       instructions,
       paymentUrl,
       qrCode,
@@ -129,7 +137,7 @@ export async function PUT(req) {
       maxDeposit,
       isActive,
       tag,
-    } = await req.json();
+    } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'Method ID is required.' }, { status: 400 });
@@ -141,7 +149,11 @@ export async function PUT(req) {
     const updateFields = {};
     if (name !== undefined) updateFields.name = name;
     if (type !== undefined) updateFields.type = type;
-    if (accountDetails !== undefined) updateFields.accountDetails = accountDetails;
+    if (accountDetails !== undefined || tagName !== undefined) {
+      const val = (tagName !== undefined ? tagName : accountDetails).trim();
+      updateFields.accountDetails = val;
+      updateFields.tagName = val;
+    }
     if (instructions !== undefined) updateFields.instructions = instructions;
     if (paymentUrl !== undefined) updateFields.paymentUrl = paymentUrl.trim();
     if (qrCode !== undefined) {

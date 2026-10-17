@@ -12,6 +12,10 @@ import {
   Clock,
   AlertTriangle,
   ArrowRight,
+  Eye,
+  Download,
+  Image as ImageIcon,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function FinanceRedemptionsView({
@@ -25,6 +29,7 @@ export default function FinanceRedemptionsView({
   const [statusFilter, setStatusFilter] = useState('all');
   const [copiedId, setCopiedId] = useState(null);
   const [rejectModal, setRejectModal] = useState({ open: false, item: null, reason: '' });
+  const [previewModal, setPreviewModal] = useState(null);
   const [processingId, setProcessingId] = useState(null);
 
   const handleCopy = (text, id) => {
@@ -41,6 +46,7 @@ export default function FinanceRedemptionsView({
       !q ||
       r.username?.toLowerCase().includes(q) ||
       r.destinationAddress?.toLowerCase().includes(q) ||
+      r.destinationTag?.toLowerCase().includes(q) ||
       r.payoutMethod?.toLowerCase().includes(q) ||
       r.amount?.toString().includes(q);
     return matchesStatus && matchesSearch;
@@ -52,7 +58,7 @@ export default function FinanceRedemptionsView({
 
   const handleConfirmReject = async () => {
     if (!rejectModal.item) return;
-    const reason = rejectModal.reason.trim() || 'Redemption rejected. Coins refunded to balance.';
+    const reason = rejectModal.reason.trim() || 'Cashout request rejected. Please check requirements.';
     await onReject(rejectModal.item.id, reason);
     setRejectModal({ open: false, item: null, reason: '' });
   };
@@ -131,7 +137,7 @@ export default function FinanceRedemptionsView({
             <Search size={14} className="text-gray-400 shrink-0" />
             <input
               type="text"
-              placeholder="Search player, address..."
+              placeholder="Search player, tag, address..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none p-0 border-none"
@@ -177,8 +183,9 @@ export default function FinanceRedemptionsView({
                   <th className="p-4">Time &amp; Date</th>
                   <th className="p-4">Player</th>
                   <th className="p-4">Redeem Amount</th>
-                  <th className="p-4">Payout Method</th>
-                  <th className="p-4">Destination Address</th>
+                  <th className="p-4">Payout Method &amp; Tag</th>
+                  <th className="p-4">Game Win Proof</th>
+                  <th className="p-4">Payout QR Code</th>
                   <th className="p-4">Status</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
@@ -186,6 +193,7 @@ export default function FinanceRedemptionsView({
               <tbody className="divide-y divide-white/5">
                 {filtered.map((r) => {
                   const isPending = r.status === 'pending';
+                  const displayTag = r.destinationTag || r.destinationAddress;
                   return (
                     <tr
                       key={r.id}
@@ -232,28 +240,98 @@ export default function FinanceRedemptionsView({
                         </div>
                       </td>
 
-                      <td className="p-4 whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-white/10 border border-white/15 text-gray-300">
-                          {r.payoutMethod || 'Direct'}
-                        </span>
+                      <td className="p-4">
+                        <div className="space-y-1">
+                          <span className="inline-block px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-white/10 border border-white/15 text-gray-300">
+                            {r.payoutMethod || 'Direct'}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-amber-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-lg text-xs max-w-[160px] truncate select-all">
+                              {displayTag || 'N/A'}
+                            </span>
+                            {displayTag && (
+                              <button
+                                onClick={() => handleCopy(displayTag, r.id)}
+                                className="p-1 rounded-lg bg-white/5 hover:bg-white/15 text-gray-400 hover:text-white transition"
+                                title="Copy Tag"
+                              >
+                                {copiedId === r.id ? (
+                                  <CheckCheck size={12} className="text-emerald-400" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
+                      {/* Game Win Proof Column */}
                       <td className="p-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-amber-300 bg-black/40 border border-white/10 px-2 py-1 rounded-lg text-xs max-w-[180px] truncate select-all">
-                            {r.destinationAddress}
-                          </span>
+                        {r.gameScreenshot ? (
                           <button
-                            onClick={() => handleCopy(r.destinationAddress, r.id)}
-                            className="p-1 rounded-lg bg-white/5 hover:bg-white/15 text-gray-400 hover:text-white transition"
+                            type="button"
+                            onClick={() =>
+                              setPreviewModal({
+                                url: r.gameScreenshot,
+                                title: `Game Winning Screenshot — @${r.username}`,
+                                filename: `gamewin_${r.username || 'proof'}.png`,
+                              })
+                            }
+                            className="group relative w-12 h-12 rounded-xl overflow-hidden border border-purple-500/40 hover:border-purple-300 transition bg-black/50 block shadow-md"
+                            title="Click to view full game screenshot"
                           >
-                            {copiedId === r.id ? (
-                              <CheckCheck size={13} className="text-emerald-400" />
-                            ) : (
-                              <Copy size={13} />
-                            )}
+                            <img
+                              src={r.gameScreenshot}
+                              alt="Game Win Proof"
+                              className="w-full h-full object-cover group-hover:scale-110 transition duration-300"
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white">
+                              <Eye size={14} />
+                            </div>
                           </button>
-                        </div>
+                        ) : (
+                          <span className="text-[11px] text-gray-500 italic">No image</span>
+                        )}
+                      </td>
+
+                      {/* Payout QR Code Column */}
+                      <td className="p-4">
+                        {r.qrCodeImage ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewModal({
+                                  url: r.qrCodeImage,
+                                  title: `Payout QR Code — @${r.username}`,
+                                  filename: `payout_qr_${r.username || 'proof'}.png`,
+                                })
+                              }
+                              className="group relative w-12 h-12 rounded-xl overflow-hidden border border-[#00F0FF]/40 hover:border-[#00F0FF] transition bg-black/50 block shadow-md"
+                              title="Click to view full payout QR"
+                            >
+                              <img
+                                src={r.qrCodeImage}
+                                alt="Payout QR"
+                                className="w-full h-full object-cover group-hover:scale-110 transition duration-300"
+                              />
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-[#00F0FF]">
+                                <Eye size={14} />
+                              </div>
+                            </button>
+                            <a
+                              href={r.qrCodeImage}
+                              download={`payout_qr_${r.username || 'tag'}.png`}
+                              title="Download QR Code"
+                              className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white transition"
+                            >
+                              <Download size={13} />
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-gray-500 italic">No QR</span>
+                        )}
                       </td>
 
                       <td className="p-4 whitespace-nowrap">
@@ -268,10 +346,17 @@ export default function FinanceRedemptionsView({
                             DISPATCHED
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-black uppercase bg-red-500/15 text-red-400 border border-red-500/30">
-                            <X size={12} strokeWidth={3} />
-                            REJECTED
-                          </span>
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-black uppercase bg-red-500/15 text-red-400 border border-red-500/30">
+                              <X size={12} strokeWidth={3} />
+                              REJECTED
+                            </span>
+                            {r.adminNote && (
+                              <p className="text-[10px] text-red-300/80 max-w-[140px] truncate" title={r.adminNote}>
+                                {r.adminNote}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </td>
 
@@ -296,7 +381,7 @@ export default function FinanceRedemptionsView({
                               className="px-3 py-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-black text-xs flex items-center gap-1 transition active:scale-95"
                             >
                               <X size={13} strokeWidth={3} />
-                              <span>Reject &amp; Refund</span>
+                              <span>Reject</span>
                             </button>
                           </div>
                         ) : (
@@ -314,6 +399,7 @@ export default function FinanceRedemptionsView({
           <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {filtered.map((r) => {
               const isPending = r.status === 'pending';
+              const displayTag = r.destinationTag || r.destinationAddress;
               return (
                 <div
                   key={r.id}
@@ -371,23 +457,90 @@ export default function FinanceRedemptionsView({
                     </div>
 
                     <div className="flex items-center justify-between pt-1 border-t border-white/5">
-                      <span className="text-[11px] text-gray-400 font-bold">Address:</span>
+                      <span className="text-[11px] text-gray-400 font-bold">Tag / Address:</span>
                       <div className="flex items-center gap-1">
-                        <span className="font-mono text-amber-300 text-xs select-all truncate max-w-[160px]">
-                          {r.destinationAddress}
+                        <span className="font-mono text-amber-300 text-xs select-all truncate max-w-[150px]">
+                          {displayTag || 'N/A'}
                         </span>
-                        <button
-                          onClick={() => handleCopy(r.destinationAddress, r.id)}
-                          className="p-1 rounded bg-white/10 text-gray-300 hover:text-white"
-                        >
-                          {copiedId === r.id ? (
-                            <CheckCheck size={12} className="text-emerald-400" />
-                          ) : (
-                            <Copy size={12} />
-                          )}
-                        </button>
+                        {displayTag && (
+                          <button
+                            onClick={() => handleCopy(displayTag, r.id)}
+                            className="p-1 rounded bg-white/10 text-gray-300 hover:text-white"
+                          >
+                            {copiedId === r.id ? (
+                              <CheckCheck size={12} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
+
+                    {/* Mobile Screenshots Section */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                      <div>
+                        <span className="text-[10px] text-gray-400 block mb-1 font-bold">Game Win:</span>
+                        {r.gameScreenshot ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPreviewModal({
+                                url: r.gameScreenshot,
+                                title: `Game Winning Screenshot — @${r.username}`,
+                                filename: `gamewin_${r.username || 'proof'}.png`,
+                              })
+                            }
+                            className="w-full h-16 rounded-lg overflow-hidden border border-purple-500/40 relative block bg-black/40"
+                          >
+                            <img src={r.gameScreenshot} alt="Game Win" className="w-full h-full object-cover" />
+                          </button>
+                        ) : (
+                          <div className="w-full h-16 rounded-lg border border-dashed border-white/10 flex items-center justify-center text-[10px] text-gray-500">
+                            No Win Proof
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-gray-400 block mb-1 font-bold">Payout QR:</span>
+                        {r.qrCodeImage ? (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewModal({
+                                  url: r.qrCodeImage,
+                                  title: `Payout QR Code — @${r.username}`,
+                                  filename: `payout_qr_${r.username || 'proof'}.png`,
+                                })
+                              }
+                              className="w-full h-16 rounded-lg overflow-hidden border border-[#00F0FF]/40 relative block bg-black/40"
+                            >
+                              <img src={r.qrCodeImage} alt="Payout QR" className="w-full h-full object-cover" />
+                            </button>
+                            <a
+                              href={r.qrCodeImage}
+                              download={`payout_qr_${r.username || 'tag'}.png`}
+                              className="absolute bottom-1 right-1 p-1 bg-black/80 rounded-md text-white hover:text-[#00F0FF]"
+                              title="Download QR"
+                            >
+                              <Download size={11} />
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="w-full h-16 rounded-lg border border-dashed border-white/10 flex items-center justify-center text-[10px] text-gray-500">
+                            No QR Code
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {r.adminNote && (
+                      <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[11px] text-red-300">
+                        <strong>Rejection Note:</strong> {r.adminNote}
+                      </div>
+                    )}
                   </div>
 
                   {isPending && (
@@ -410,7 +563,7 @@ export default function FinanceRedemptionsView({
                         className="w-full py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-black text-xs flex items-center justify-center gap-1 active:scale-95"
                       >
                         <X size={13} strokeWidth={3} />
-                        <span>Reject &amp; Refund</span>
+                        <span>Reject</span>
                       </button>
                     </div>
                   )}
@@ -428,7 +581,7 @@ export default function FinanceRedemptionsView({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-red-400">
                 <AlertTriangle size={20} />
-                <h3 className="text-base font-black text-white">Reject &amp; Refund Cashout</h3>
+                <h3 className="text-base font-black text-white">Reject Cashout Request</h3>
               </div>
               <button
                 onClick={() => setRejectModal({ open: false, item: null, reason: '' })}
@@ -441,15 +594,14 @@ export default function FinanceRedemptionsView({
             <p className="text-xs text-gray-400">
               Rejecting cashout of{' '}
               <strong className="text-purple-300">${rejectModal.item?.amount} SC</strong> for{' '}
-              <strong className="text-white">{rejectModal.item?.username}</strong>. Coins will be refunded
-              to player balance.
+              <strong className="text-white">{rejectModal.item?.username}</strong>. Please provide a note explaining the reason:
             </p>
 
             <textarea
               rows={3}
               value={rejectModal.reason}
               onChange={(e) => setRejectModal({ ...rejectModal, reason: e.target.value })}
-              placeholder="Enter reason for rejection (e.g. Invalid Cashtag or KYC required)..."
+              placeholder="Enter reason for rejection (e.g. Invalid game score screenshot or tag)..."
               className="w-full p-3 rounded-xl bg-black/50 border border-white/15 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-400"
             />
 
@@ -464,8 +616,55 @@ export default function FinanceRedemptionsView({
                 onClick={handleConfirmReject}
                 className="px-5 py-2 rounded-xl bg-red-500 hover:bg-red-400 text-white text-xs font-black shadow-lg shadow-red-500/30"
               >
-                Refund Coins &amp; Reject
+                Confirm Rejection &amp; Send Note
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-Screen Proof / QR Preview Modal */}
+      {previewModal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setPreviewModal(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full bg-[#0E0A24] border border-[#00F0FF]/40 rounded-3xl p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-sm font-black text-white flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#00F0FF]" />
+                {previewModal.title || 'Proof Preview'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewModal(null)}
+                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="max-h-[75vh] overflow-auto flex items-center justify-center bg-black/50 rounded-2xl p-2 border border-white/5">
+              <img
+                src={previewModal.url}
+                alt="Full Preview"
+                className="max-h-[70vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-gray-400 font-mono">
+                Click outside to close preview
+              </span>
+              <a
+                href={previewModal.url}
+                download={previewModal.filename || 'preview.png'}
+                className="px-4 py-2 rounded-xl bg-[#00F0FF] hover:bg-cyan-300 text-black text-xs font-black flex items-center gap-1.5 transition shadow-lg shadow-cyan-500/25"
+              >
+                <Download size={14} />
+                <span>Save Image</span>
+              </a>
             </div>
           </div>
         </div>

@@ -33,6 +33,7 @@ export default function FinanceDepositsView({
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'pending' | 'approved' | 'rejected'
   const [copiedId, setCopiedId] = useState(null);
   const [rejectModal, setRejectModal] = useState({ open: false, deposit: null, reason: '' });
+  const [previewImage, setPreviewImage] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
 
   const handleCopy = (text, id) => {
@@ -213,7 +214,8 @@ export default function FinanceDepositsView({
                   <th className="p-4">Deposit Amount</th>
                   <th className="p-4">Coins to Credit (SC &amp; GC)</th>
                   <th className="p-4">Payment Method</th>
-                  <th className="p-4">Cashtag / Reference</th>
+                  <th className="p-4">Player Tag &amp; Email</th>
+                  <th className="p-4">Proof Screenshot</th>
                   <th className="p-4">Status</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
@@ -354,27 +356,55 @@ export default function FinanceDepositsView({
                         </span>
                       </td>
 
-                      {/* Cashtag / Reference */}
+                      {/* Player Tag & Email */}
                       <td className="p-4">
-                        {note ? (
+                        <div className="flex flex-col gap-1 min-w-[130px]">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-amber-300 bg-black/40 border border-white/10 px-2 py-1 rounded-lg text-xs max-w-[140px] truncate select-all">
-                              {note}
+                            <span className="font-mono text-amber-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-lg text-xs max-w-[140px] truncate select-all font-bold">
+                              {d.playerTagName || note || 'No tag'}
                             </span>
                             <button
-                              onClick={() => handleCopy(note, d.id)}
+                              onClick={() => handleCopy(d.playerTagName || note, d.id)}
                               className="p-1 rounded-lg bg-white/5 hover:bg-white/15 text-gray-400 hover:text-white transition"
-                              title="Copy Cashtag"
+                              title="Copy Tag"
                             >
                               {copiedId === d.id ? (
-                                <CheckCheck size={13} className="text-emerald-400" />
+                                <CheckCheck size={12} className="text-emerald-400" />
                               ) : (
-                                <Copy size={13} />
+                                <Copy size={12} />
                               )}
                             </button>
                           </div>
+                          {d.playerPaymentEmail && (
+                            <span className="text-[10.5px] text-gray-400 truncate max-w-[150px] font-mono">
+                              {d.playerPaymentEmail}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Payment Proof Screenshot */}
+                      <td className="p-4">
+                        {d.proofImage ? (
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={d.proofImage}
+                              alt="Receipt"
+                              onClick={() => setPreviewImage({ url: d.proofImage, title: `${d.username} Payment Receipt` })}
+                              className="w-11 h-11 object-cover rounded-xl border border-white/20 hover:border-emerald-400 transition cursor-pointer shadow-md"
+                              title="Click to zoom screenshot"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setPreviewImage({ url: d.proofImage, title: `${d.username} Payment Receipt` })}
+                              className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10.5px] text-cyan-400 font-bold border border-white/10 flex items-center gap-1 transition cursor-pointer"
+                            >
+                              <Eye size={12} />
+                              <span>View</span>
+                            </button>
+                          </div>
                         ) : (
-                          <span className="text-gray-500 italic text-[11px]">None provided</span>
+                          <span className="text-gray-500 italic text-[11px]">No receipt</span>
                         )}
                       </td>
 
@@ -669,6 +699,52 @@ export default function FinanceDepositsView({
               >
                 Confirm Rejection
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-Screen Payment Receipt Preview Modal */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full bg-[#0E0A24] border border-[#00F0FF]/40 rounded-3xl p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-sm font-black text-white flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#00F0FF]" />
+                {previewImage.title || 'Payment Receipt Proof'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="max-h-[75vh] overflow-auto flex items-center justify-center bg-black/50 rounded-2xl p-2 border border-white/5">
+              <img
+                src={previewImage.url}
+                alt="Receipt Full Preview"
+                className="max-h-[70vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-gray-400 font-mono">
+                Click outside to close preview
+              </span>
+              <a
+                href={previewImage.url}
+                download="payment_proof.png"
+                className="px-4 py-2 rounded-xl bg-[#00F0FF] hover:bg-cyan-300 text-black text-xs font-black flex items-center gap-1.5 transition shadow-lg shadow-cyan-500/25"
+              >
+                <span>Save Image</span>
+              </a>
             </div>
           </div>
         </div>

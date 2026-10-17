@@ -49,7 +49,9 @@ export async function GET(req) {
           username: d.username,
           amount: d.amount,
           methodName: d.methodName,
-          senderNote: d.senderNote || '',
+          playerTagName: d.playerTagName || d.senderNote || '',
+          playerPaymentEmail: d.playerPaymentEmail || '',
+          senderNote: d.senderNote || d.playerTagName || '',
           proofImage: d.proofImage || null,
           txHash: d.txHash || '',
           bonusType,
@@ -78,7 +80,17 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Unauthorized. Please login.' }, { status: 401 });
     }
 
-    const { amount, methodId, methodName, senderNote, proofImage, txHash } = await req.json();
+    const body = await req.json();
+    const {
+      amount,
+      methodId,
+      methodName,
+      playerTagName,
+      playerPaymentEmail,
+      senderNote,
+      proofImage,
+      txHash,
+    } = body;
 
     const depositAmount = Number(amount);
     if (!depositAmount || depositAmount < 5) {
@@ -87,6 +99,15 @@ export async function POST(req) {
 
     if (!methodName) {
       return NextResponse.json({ success: false, error: 'Payment method is required.' }, { status: 400 });
+    }
+
+    const tagName = (playerTagName || senderNote || '').trim();
+    if (!tagName) {
+      return NextResponse.json({ success: false, error: 'Your payment tag name / handle is required.' }, { status: 400 });
+    }
+
+    if (!proofImage) {
+      return NextResponse.json({ success: false, error: 'Payment proof screenshot is required.' }, { status: 400 });
     }
 
     const db = await getDb();
@@ -99,8 +120,15 @@ export async function POST(req) {
       settingsCol.findOne({ key: 'general' }),
     ]);
 
-    // Check whether player is claiming Welcome Bonus or Regular Bonus
-    const hasClaimedWelcome = Boolean(user?.welcomeBonusClaimed || (user?.totalDeposited && user.totalDeposited > 0));
+    // Check whether player is claiming Welcome Bonus (first deposit) or Regular Bonus (repeat reload)
+    const approvedDepositsCount = await depositsCol.countDocuments({
+      userId: session.userId,
+      status: 'approved',
+    });
+    const hasClaimedWelcome = Boolean(
+      approvedDepositsCount > 0 || user?.welcomeBonusClaimed || (user?.totalDeposited && user.totalDeposited > 0)
+    );
+
     const bonusType = hasClaimedWelcome ? 'regular' : 'welcome';
     const bonusPercent = hasClaimedWelcome
       ? Number(settings?.regularBonusPercent ?? 50)
@@ -119,7 +147,9 @@ export async function POST(req) {
       amount: depositAmount,
       methodId: methodId || 'custom',
       methodName,
-      senderNote: senderNote || '',
+      playerTagName: tagName,
+      playerPaymentEmail: (playerPaymentEmail || user?.email || '').trim(),
+      senderNote: tagName,
       proofImage: proofImage || null,
       txHash: txHash || '',
       bonusType,
@@ -142,9 +172,10 @@ export async function POST(req) {
         totalSC,
         bonusSC,
         bonusType,
+        bonusPercent,
         totalGC,
       },
-      message: 'Deposit submitted successfully! Our financial desk is verifying your transaction.',
+      message: `Deposit of $${depositAmount.toFixed(2)} with ${bonusPercent}% bonus (${totalSC} SC total) submitted! Verification in progress.`,
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
