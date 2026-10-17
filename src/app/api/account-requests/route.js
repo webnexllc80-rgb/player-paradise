@@ -68,7 +68,22 @@ export async function POST(req) {
     const usersCol = db.collection('users');
     const ledgerCol = db.collection('ledger');
 
-    const user = await usersCol.findOne({ email: userEmail });
+    let user = null;
+    if (session?.userId) {
+      try {
+        user = await usersCol.findOne({ _id: new ObjectId(session.userId) });
+      } catch (_) {}
+    }
+    if (!user) {
+      user = await usersCol.findOne({
+        $or: [
+          { email: userEmail },
+          { email: { $regex: new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+          { username: userName },
+          { username: { $regex: new RegExp(`^${userName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        ],
+      });
+    }
     if (!user) {
       return NextResponse.json({ success: false, message: 'User not found.' }, { status: 404 });
     }

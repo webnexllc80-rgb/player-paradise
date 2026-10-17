@@ -2,8 +2,77 @@
 // Zero external file dependencies - 100% reliable in all browsers
 
 let audioCtx = null;
+let isUnlocked = false;
 
-function getAudioContext() {
+// Generate simple fallback beep data URL (WAV)
+function getFallbackBeepDataUrl() {
+  const sampleRate = 8000;
+  const duration = 0.3;
+  const numSamples = Math.floor(sampleRate * duration);
+  const buffer = new Uint8Array(44 + numSamples);
+
+  // RIFF header
+  const writeString = (offset, str) => {
+    for (let i = 0; i < str.length; i++) buffer[offset + i] = str.charCodeAt(i);
+  };
+  const writeUint32 = (offset, value) => {
+    buffer[offset] = value & 0xff;
+    buffer[offset + 1] = (value >> 8) & 0xff;
+    buffer[offset + 2] = (value >> 16) & 0xff;
+    buffer[offset + 3] = (value >> 24) & 0xff;
+  };
+  const writeUint16 = (offset, value) => {
+    buffer[offset] = value & 0xff;
+    buffer[offset + 1] = (value >> 8) & 0xff;
+  };
+
+  writeString(0, 'RIFF');
+  writeUint32(4, 36 + numSamples);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  writeUint32(16, 16);
+  writeUint16(20, 1); // PCM
+  writeUint16(22, 1); // Mono
+  writeUint32(24, sampleRate);
+  writeUint32(28, sampleRate);
+  writeUint16(32, 1);
+  writeUint16(34, 8); // 8-bit
+  writeString(36, 'data');
+  writeUint32(40, numSamples);
+
+  // Generate pleasant 880Hz / 1320Hz double chime
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const freq = t < 0.12 ? 880 : 1320;
+    const decay = Math.exp(-t * 6);
+    const sample = Math.sin(2 * Math.PI * freq * t) * decay;
+    buffer[44 + i] = Math.floor((sample * 0.5 + 0.5) * 255);
+  }
+
+  let binary = '';
+  for (let i = 0; i < buffer.length; i++) {
+    binary += String.fromCharCode(buffer[i]);
+  }
+  return 'data:audio/wav;base64,' + (typeof btoa !== 'undefined' ? btoa(binary) : '');
+}
+
+let fallbackAudioInstance = null;
+function playFallbackAudio(volume = 0.7) {
+  try {
+    if (typeof window === 'undefined') return;
+    if (!fallbackAudioInstance) {
+      const dataUri = getFallbackBeepDataUrl();
+      fallbackAudioInstance = new Audio(dataUri);
+    }
+    fallbackAudioInstance.volume = Math.max(0.1, Math.min(1, volume));
+    fallbackAudioInstance.currentTime = 0;
+    fallbackAudioInstance.play().catch(() => {});
+  } catch (e) {
+    console.warn('Fallback audio failed:', e);
+  }
+}
+
+export function getAudioContext() {
   if (typeof window === 'undefined') return null;
   if (!audioCtx) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -11,10 +80,36 @@ function getAudioContext() {
       audioCtx = new AudioContextClass();
     }
   }
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
-  }
   return audioCtx;
+}
+
+export function isAudioContextUnlocked() {
+  if (!audioCtx) return false;
+  return audioCtx.state === 'running';
+}
+
+export function unlockAudioContext() {
+  if (typeof window === 'undefined') return;
+  const ctx = getAudioContext();
+  if (ctx) {
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        isUnlocked = true;
+      }).catch(() => {});
+    } else if (ctx.state === 'running') {
+      isUnlocked = true;
+    }
+  }
+}
+
+// Auto-register window listener to unlock on first click/touch/keydown
+if (typeof window !== 'undefined') {
+  const events = ['click', 'touchstart', 'keydown', 'pointerdown'];
+  const handleFirstInteraction = () => {
+    unlockAudioContext();
+    events.forEach(e => window.removeEventListener(e, handleFirstInteraction, true));
+  };
+  events.forEach(e => window.addEventListener(e, handleFirstInteraction, { once: true, capture: true }));
 }
 
 export const AVAILABLE_TUNES = [
@@ -62,19 +157,7 @@ export const AVAILABLE_TUNES = [
   },
 ];
 
-export function unlockAudioContext() {
-  const ctx = getAudioContext();
-  if (ctx && ctx.state === 'suspended') {
-    ctx.resume().catch(() => {});
-  }
-}
-
-export function playTune(tuneId = 'chaching', volume = 0.7) {
-  if (typeof window === 'undefined') return;
-  const ctx = getAudioContext();
-  if (!ctx) return;
-
-  const masterVol = Math.max(0.01, Math.min(1, volume));
+function synthesizeTune(ctx, tuneId, masterVol) {
   const now = ctx.currentTime;
 
   switch (tuneId) {
@@ -134,7 +217,6 @@ export function playTune(tuneId = 'chaching', volume = 0.7) {
     }
 
     case 'jackpot': {
-      // Ascending arpeggio: C5 (523.25), E5 (659.25), G5 (783.99), C6 (1046.50)
       const notes = [
         { freq: 523.25, time: 0, dur: 0.18 },
         { freq: 659.25, time: 0.12, dur: 0.18 },
@@ -160,15 +242,14 @@ export function playTune(tuneId = 'chaching', volume = 0.7) {
     }
 
     case 'bell': {
-      // Crisp Crystal Bell
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
 
       osc1.type = 'sine';
       osc2.type = 'sine';
-      osc1.frequency.setValueAtTime(880, now); // A5
-      osc2.frequency.setValueAtTime(1760, now); // A6 overtone
+      osc1.frequency.setValueAtTime(880, now);
+      osc2.frequency.setValueAtTime(1760, now);
 
       gain.gain.setValueAtTime(0.5 * masterVol, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
@@ -185,7 +266,6 @@ export function playTune(tuneId = 'chaching', volume = 0.7) {
     }
 
     case 'marimba': {
-      // Warm marimba chord (Ding - Dong)
       const chords = [
         { freqs: [659.25, 987.77], time: 0, dur: 0.3 },
         { freqs: [880, 1318.5], time: 0.16, dur: 0.6 },
@@ -209,7 +289,6 @@ export function playTune(tuneId = 'chaching', volume = 0.7) {
     }
 
     case 'arcade': {
-      // 8-Bit jump/coin chirp
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'square';
@@ -226,7 +305,6 @@ export function playTune(tuneId = 'chaching', volume = 0.7) {
     }
 
     case 'radar': {
-      // High-tech cyber double beep
       [0, 0.15].forEach(timeOffset => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -256,5 +334,35 @@ export function playTune(tuneId = 'chaching', volume = 0.7) {
       osc.stop(now + 0.4);
       break;
     }
+  }
+}
+
+export function playTune(tuneId = 'chaching', volume = 0.7) {
+  if (typeof window === 'undefined') return;
+  const masterVol = Math.max(0.01, Math.min(1, volume));
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) {
+      playFallbackAudio(masterVol);
+      return;
+    }
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        try {
+          synthesizeTune(ctx, tuneId, masterVol);
+        } catch {
+          playFallbackAudio(masterVol);
+        }
+      }).catch(() => {
+        playFallbackAudio(masterVol);
+      });
+    } else {
+      synthesizeTune(ctx, tuneId, masterVol);
+    }
+  } catch (err) {
+    console.warn('Web Audio synthesis error, falling back to HTML5 Audio:', err);
+    playFallbackAudio(masterVol);
   }
 }

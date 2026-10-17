@@ -85,7 +85,24 @@ export default function AdminPortal({ initialTab }) {
     return tab;
   };
 
-  const [activeTab, setActiveTab] = useState(() => normalizeTab(initialTab));
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'admin' && parts[1]) {
+        return normalizeTab(parts[1]);
+      }
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab');
+      if (tabParam) return normalizeTab(tabParam);
+    }
+    return normalizeTab(initialTab);
+  });
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(normalizeTab(initialTab));
+    }
+  }, [initialTab]);
 
   // Audio Chime & Notifications State
   const [audioAlertsEnabled, setAudioAlertsEnabled] = useState(true);
@@ -628,6 +645,20 @@ export default function AdminPortal({ initialTab }) {
           coinCashouts: pendingCoinCashouts.length,
         };
         isInitialLoadRef.current = false;
+
+        // If there are pending requests when admin opens the portal, alert staff immediately!
+        if (pendingReqs.length > 0) {
+          const newest = pendingReqs[0];
+          playAdminChime();
+          setActiveAlertToast({
+            type: 'account',
+            title: `Pending Game Request (${pendingReqs.length})`,
+            message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
+            subtext: newest?.transferAmount > 0 ? `Load Amount: $${newest?.transferAmount} SC (Escrow Frozen)` : 'Ready to issue credentials',
+            targetTab: newest?.transferAmount > 0 ? 'coins_allotment' : 'account_requests',
+            targetSubTab: newest?.transferAmount > 0 ? 'loads' : undefined,
+          });
+        }
         return;
       }
 
@@ -670,7 +701,7 @@ export default function AdminPortal({ initialTab }) {
           targetSubTab: 'cashouts',
         });
       }
-      // 4. Check for incoming new game account / load requests (Coins Allotment)
+      // 4. Check for incoming new game account / load requests
       else if (pendingReqs.length > (prevCountsRef.current.requests || 0)) {
         const newest = pendingReqs[0];
         playAdminChime();
@@ -679,8 +710,8 @@ export default function AdminPortal({ initialTab }) {
           title: 'New Game Request!',
           message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
           subtext: newest?.transferAmount > 0 ? `Load Amount: $${newest?.transferAmount} SC (Escrow Frozen)` : 'Ready to issue credentials',
-          targetTab: 'coins_allotment',
-          targetSubTab: 'loads',
+          targetTab: newest?.transferAmount > 0 ? 'coins_allotment' : 'account_requests',
+          targetSubTab: newest?.transferAmount > 0 ? 'loads' : undefined,
         });
       }
 
