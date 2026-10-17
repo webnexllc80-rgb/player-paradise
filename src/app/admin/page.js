@@ -414,14 +414,17 @@ export default function AdminPortal({ initialTab }) {
     }
   };
 
-  // Account Requests state
+  // Account Requests state (strictly ACCOUNT_CREATION)
   const [accountRequests, setAccountRequests] = useState([]);
   const [accountReqFilter, setAccountReqFilter] = useState('PENDING');
   const [approvalModal, setApprovalModal] = useState({ open: false, request: null, username: '', password: '' });
   const [submittingApproval, setSubmittingApproval] = useState(false);
 
+  // Coin Load Requests state (strictly COIN_LOAD for Coins Allotment desk & badges)
+  const [coinLoadRequests, setCoinLoadRequests] = useState([]);
+
   const fetchAccountRequests = () => {
-    fetch(`/api/account-requests?status=${accountReqFilter}`)
+    fetch(`/api/account-requests?type=ACCOUNT_CREATION&status=${accountReqFilter}`)
       .then(r => r.json())
       .then(d => { if (d.success) setAccountRequests(d.accountRequests || []); })
       .catch(() => { });
@@ -604,22 +607,24 @@ export default function AdminPortal({ initialTab }) {
 
   // Persistent background sync: deposits, redemptions, and game account requests are ALWAYS monitored
   // so admins get instant chime + toast notifications no matter which tab they are currently viewing!
-  const prevCountsRef = React.useRef({ requests: 0, deposits: 0, redemptions: 0 });
+  const prevCountsRef = React.useRef({ requests: 0, deposits: 0, redemptions: 0, coinLoads: 0, coinCashouts: 0 });
   const isInitialLoadRef = React.useRef(true);
 
   const syncRequestsAndAlerts = async () => {
     if (!user) return;
     try {
-      const [depRes, withRes, reqRes] = await Promise.all([
+      const [depRes, withRes, reqRes, loadRes] = await Promise.all([
         fetch('/api/payments/deposit?status=all'),
         fetch('/api/payments/withdraw?status=all'),
-        fetch('/api/account-requests?status=all'),
+        fetch('/api/account-requests?type=ACCOUNT_CREATION&status=all'),
+        fetch('/api/account-requests?type=COIN_LOAD&status=all'),
       ]);
 
-      const [depData, withData, reqData] = await Promise.all([
+      const [depData, withData, reqData, loadData] = await Promise.all([
         depRes.json(),
         withRes.json(),
         reqRes.json(),
+        loadRes.json(),
       ]);
 
       if (depData.success) {
@@ -631,10 +636,14 @@ export default function AdminPortal({ initialTab }) {
       if (reqData.success) {
         setAccountRequests(reqData.accountRequests || []);
       }
+      if (loadData.success) {
+        setCoinLoadRequests(loadData.accountRequests || []);
+      }
 
       const pendingDeps = (depData.deposits || []).filter(d => d.status === 'pending');
       const pendingWith = (withData.redemptions || []).filter(r => r.status === 'pending');
       const pendingReqs = (reqData.accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING');
+      const pendingCoinLoads = (loadData.accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING');
       const pendingCoinCashouts = (withData.redemptions || []).filter(r => r.status === 'pending_coin' || r.stage === 'coin_verification');
 
       if (isInitialLoadRef.current) {
@@ -642,21 +651,32 @@ export default function AdminPortal({ initialTab }) {
           deposits: pendingDeps.length,
           redemptions: pendingWith.length,
           requests: pendingReqs.length,
+          coinLoads: pendingCoinLoads.length,
           coinCashouts: pendingCoinCashouts.length,
         };
         isInitialLoadRef.current = false;
 
-        // If there are pending requests when admin opens the portal, alert staff immediately!
-        if (pendingReqs.length > 0) {
+        // If there are pending coin loads on initial load, alert staff
+        if (pendingCoinLoads.length > 0) {
+          const newest = pendingCoinLoads[0];
+          playAdminChime();
+          setActiveAlertToast({
+            type: 'coin_load',
+            title: `Pending Coin Loads (${pendingCoinLoads.length})`,
+            message: `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'}`,
+            subtext: `From ${newest?.userName || 'Player'} • Escrow Frozen in Wallet`,
+            targetTab: 'coins_allotment',
+            targetSubTab: 'loads',
+          });
+        } else if (pendingReqs.length > 0) {
           const newest = pendingReqs[0];
           playAdminChime();
           setActiveAlertToast({
             type: 'account',
-            title: `Pending Game Request (${pendingReqs.length})`,
+            title: `Pending Account Request (${pendingReqs.length})`,
             message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
-            subtext: newest?.transferAmount > 0 ? `Load Amount: $${newest?.transferAmount} SC (Escrow Frozen)` : 'Ready to issue credentials',
-            targetTab: newest?.transferAmount > 0 ? 'coins_allotment' : 'account_requests',
-            targetSubTab: newest?.transferAmount > 0 ? 'loads' : undefined,
+            subtext: 'Ready to issue credentials',
+            targetTab: 'account_requests',
           });
         }
         return;
@@ -688,7 +708,20 @@ export default function AdminPortal({ initialTab }) {
           targetSubTab: 'redemptions',
         });
       }
-      // 3. Check for incoming coin cashout proof verifications (Stage 1 Coins Allotment Desk)
+      // 3. Check for incoming coin load requests (Coins Allotment Desk)
+      else if (pendingCoinLoads.length > (prevCountsRef.current.coinLoads || 0)) {
+        const newest = pendingCoinLoads[0];
+        playAdminChime();
+        setActiveAlertToast({
+          type: 'coin_load',
+          title: 'New Coin Load Request!',
+          message: `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'}`,
+          subtext: `From ${newest?.userName || 'Player'} • Escrow Frozen in Wallet`,
+          targetTab: 'coins_allotment',
+          targetSubTab: 'loads',
+        });
+      }
+      // 4. Check for incoming coin cashout proof verifications (Stage 1 Coins Allotment Desk)
       else if (pendingCoinCashouts.length > (prevCountsRef.current.coinCashouts || 0)) {
         const newest = pendingCoinCashouts[0];
         playAdminChime();
@@ -701,17 +734,16 @@ export default function AdminPortal({ initialTab }) {
           targetSubTab: 'cashouts',
         });
       }
-      // 4. Check for incoming new game account / load requests
+      // 5. Check for incoming new game account creation requests (Account Requests Desk)
       else if (pendingReqs.length > (prevCountsRef.current.requests || 0)) {
         const newest = pendingReqs[0];
         playAdminChime();
         setActiveAlertToast({
           type: 'account',
-          title: 'New Game Request!',
+          title: 'New Account Creation Request!',
           message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
-          subtext: newest?.transferAmount > 0 ? `Load Amount: $${newest?.transferAmount} SC (Escrow Frozen)` : 'Ready to issue credentials',
-          targetTab: newest?.transferAmount > 0 ? 'coins_allotment' : 'account_requests',
-          targetSubTab: newest?.transferAmount > 0 ? 'loads' : undefined,
+          subtext: 'Ready to issue credentials',
+          targetTab: 'account_requests',
         });
       }
 
@@ -719,6 +751,7 @@ export default function AdminPortal({ initialTab }) {
         deposits: pendingDeps.length,
         redemptions: pendingWith.length,
         requests: pendingReqs.length,
+        coinLoads: pendingCoinLoads.length,
         coinCashouts: pendingCoinCashouts.length,
       };
     } catch (err) {
@@ -956,7 +989,7 @@ export default function AdminPortal({ initialTab }) {
       id: 'account_requests',
       label: 'Account Requests',
       icon: Key,
-      badge: accountRequests.filter(r => r.status === 'PENDING').length,
+      badge: (accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING').length,
       category: 'Operations',
     },
     {
@@ -965,7 +998,7 @@ export default function AdminPortal({ initialTab }) {
       icon: Coins,
       badge: (
         (redemptions || []).filter(r => r.status === 'pending_coin' || r.stage === 'coin_verification').length +
-        (accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING').length
+        (coinLoadRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING').length
       ),
       category: 'Operations',
     },

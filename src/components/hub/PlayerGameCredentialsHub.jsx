@@ -143,6 +143,8 @@ export default function PlayerGameAccountsHub({
         body: JSON.stringify({
           gameTitle,
           gameId,
+          requestType: 'ACCOUNT_CREATION',
+          transferAmount: 0,
           userEmail: user.email,
           userName: user.username,
         }),

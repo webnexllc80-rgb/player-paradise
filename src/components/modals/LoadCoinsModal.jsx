@@ -74,6 +74,7 @@ export default function LoadCoinsModal({
         body: JSON.stringify({
           gameTitle,
           gameId,
+          requestType: 'COIN_LOAD',
           transferAmount: amt,
           userEmail: user.email,
           userName: user.username,

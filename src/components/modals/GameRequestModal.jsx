@@ -54,6 +54,8 @@ export default function GameRequestModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameTitle: selectedGame,
+          requestType: 'ACCOUNT_CREATION',
+          transferAmount: 0,
           userEmail: user.email,
           userName: user.username,
         }),

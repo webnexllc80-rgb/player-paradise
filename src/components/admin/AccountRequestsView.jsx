@@ -34,7 +34,14 @@ export default function AccountRequestsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const filtered = requests.filter((r) => {
+  // Strictly filter only account creation requests (never show coin loads here)
+  const accountCreationOnly = requests.filter(
+    (r) =>
+      r.requestType === 'ACCOUNT_CREATION' ||
+      (!r.requestType && (!r.transferAmount || Number(r.transferAmount) <= 0))
+  );
+
+  const filtered = accountCreationOnly.filter((r) => {
     const matchesFilter =
       filter === 'ALL' ? true : (r.status || '').toUpperCase() === filter.toUpperCase();
     const q = searchQuery.toLowerCase().trim();
@@ -47,8 +54,8 @@ export default function AccountRequestsView({
     return matchesFilter && matchesSearch;
   });
 
-  const pendingCount = requests.filter((r) => (r.status || '').toUpperCase() === 'PENDING').length;
-  const readyCount = requests.filter((r) => (r.status || '').toUpperCase() === 'READY').length;
+  const pendingCount = accountCreationOnly.filter((r) => (r.status || '').toUpperCase() === 'PENDING').length;
+  const readyCount = accountCreationOnly.filter((r) => (r.status || '').toUpperCase() === 'READY').length;
 
   const formatRelativeTime = (dateStr) => {
     if (!dateStr) return '';

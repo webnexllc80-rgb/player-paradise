@@ -36,7 +36,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
   const [cashoutFilter, setCashoutFilter] = useState('all');
 
   // Modals State
-  const [approveLoadModal, setApproveLoadModal] = useState({ open: false, item: null, username: '', password: '' });
+  const [approveLoadModal, setApproveLoadModal] = useState({ open: false, item: null, username: '', password: '', transferAmount: 0 });
   const [rejectLoadModal, setRejectLoadModal] = useState({ open: false, item: null, reason: '' });
   const [rejectCashoutModal, setRejectCashoutModal] = useState({ open: false, item: null, reason: '' });
   const [screenshotModal, setScreenshotModal] = useState({ open: false, src: null, title: '' });
@@ -54,7 +54,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
     setLoading(true);
     try {
       const [loadsRes, cashoutsRes] = await Promise.all([
-        fetch('/api/account-requests?status=all'),
+        fetch('/api/account-requests?type=COIN_LOAD&status=all'),
         fetch('/api/payments/withdraw?status=all'),
       ]);
 
@@ -80,11 +80,12 @@ export default function CoinOperationsDesk({ sessionUser }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Filtered Load Requests
+  // Filtered Load Requests (Strictly COIN_LOAD requests only)
   const pendingLoads = useMemo(() => {
     return loadRequests.filter(
       (r) =>
         r.status === 'PENDING' &&
+        (r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0) &&
         (loadSearch === '' ||
           r.userEmail?.toLowerCase().includes(loadSearch.toLowerCase()) ||
           r.userName?.toLowerCase().includes(loadSearch.toLowerCase()) ||
@@ -95,6 +96,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
   const historyLoads = useMemo(() => {
     return loadRequests.filter((r) => {
       if (r.status === 'PENDING') return false;
+      if (r.requestType !== 'COIN_LOAD' && (!r.transferAmount || Number(r.transferAmount) <= 0)) return false;
       if (loadFilter !== 'all') {
         if (loadFilter === 'approved' && r.status !== 'READY') return false;
         if (loadFilter === 'rejected' && r.status !== 'REJECTED' && r.status !== 'CANCELLED') return false;
@@ -154,13 +156,14 @@ export default function CoinOperationsDesk({ sessionUser }) {
           action: 'approve',
           username: approveLoadModal.username.trim() || approveLoadModal.item.userName,
           password: approveLoadModal.password.trim() || 'VegasWin777!',
+          transferAmount: Number(approveLoadModal.transferAmount),
         }),
       });
 
       const data = await res.json();
       if (data.success) {
         showAlert('success', data.message || 'Game load approved and balance deducted!');
-        setApproveLoadModal({ open: false, item: null, username: '', password: '' });
+        setApproveLoadModal({ open: false, item: null, username: '', password: '', transferAmount: 0 });
         fetchData();
       } else {
         showAlert('error', data.message || 'Failed to approve load.');
@@ -674,6 +677,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
                               item,
                               username: item.gameAccountUsername || item.userName || item.userEmail?.split('@')[0],
                               password: item.gameAccountPassword || 'VegasWin777!',
+                              transferAmount: Number(item.transferAmount || 0),
                             })
                           }
                           className="py-2.5 px-3 rounded-xl text-[#070514] font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all"
@@ -815,6 +819,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
                                     item,
                                     username: item.gameAccountUsername || item.userName || item.userEmail?.split('@')[0],
                                     password: item.gameAccountPassword || 'VegasWin777!',
+                                    transferAmount: Number(item.transferAmount || 0),
                                   })
                                 }
                                 style={{
@@ -1964,6 +1969,37 @@ export default function CoinOperationsDesk({ sessionUser }) {
             </div>
 
             <form onSubmit={handleApproveLoadSubmit} className="space-y-4">
+              {/* Editable Coin Amount Field */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-bold text-[#FBBF24] uppercase tracking-wider">
+                    Coins to Load / Deduct ($ SC) — Editable
+                  </label>
+                  <span className="text-[10.5px] text-gray-400">
+                    Requested: <strong className="text-white">${Number(approveLoadModal.item?.transferAmount || 0).toFixed(2)} SC</strong>
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-2.5 text-[#00F0FF] font-black text-sm">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={approveLoadModal.transferAmount}
+                    onChange={(e) => setApproveLoadModal({ ...approveLoadModal, transferAmount: e.target.value })}
+                    required
+                    className="w-full rounded-xl pl-8 pr-3.5 py-2.5 text-white font-mono font-black text-sm outline-none transition-all focus:border-[#00F0FF]"
+                    style={{
+                      backgroundColor: '#070514',
+                      border: '1.5px solid rgba(0, 240, 255, 0.45)',
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">
+                  You can adjust this coin load amount. Exactly this amount will be deducted from player's balance.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-[11px] font-bold text-gray-300 mb-1 uppercase tracking-wider">
                   Game Account Username / ID
@@ -2001,7 +2037,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => setApproveLoadModal({ open: false, item: null, username: '', password: '' })}
+                  onClick={() => setApproveLoadModal({ open: false, item: null, username: '', password: '', transferAmount: 0 })}
                   className="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
                 >
                   Cancel
