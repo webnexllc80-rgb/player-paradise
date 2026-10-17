@@ -6,21 +6,24 @@ import { getDb } from '@/lib/mongodb';
 export async function GET(req) {
   try {
     const session = await getSessionUser();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const conversationId = searchParams.get('conversationId');
+    const guestId = searchParams.get('guestId');
     const inbox = searchParams.get('inbox') === 'true';
+
+    // Must be either authenticated or have a persistent guestId
+    if (!session && !guestId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized. Please provide a guest session or login.' }, { status: 401 });
+    }
 
     const db = await getDb();
     const chatCol = db.collection('chat_messages');
 
     const isStaff =
-      session.role === ROLES.SUPER_ADMIN ||
-      session.role === ROLES.CHAT_SUPPORT ||
-      session.role === ROLES.OPERATION_ADMIN;
+      session &&
+      (session.role === ROLES.SUPER_ADMIN ||
+        session.role === ROLES.CHAT_SUPPORT ||
+        session.role === ROLES.OPERATION_ADMIN);
 
     // Staff Inbox list of conversations
     if (isStaff && inbox) {
@@ -48,8 +51,11 @@ export async function GET(req) {
       return NextResponse.json({ success: true, conversations: activeConvs });
     }
 
-    // Messages within a conversation
-    const targetConvId = isStaff && conversationId ? conversationId : session.userId;
+    // Messages within a conversation:
+    // Staff can view any conversationId.
+    // Logged in user views their own session.userId.
+    // Unauthenticated guest views their guestId.
+    const targetConvId = isStaff && conversationId ? conversationId : session ? session.userId : guestId;
 
     const messages = await chatCol
       .find({ conversationId: targetConvId })
@@ -68,7 +74,7 @@ export async function GET(req) {
     return NextResponse.json({
       success: true,
       messages: messages.map(m => ({
-        id: m._id.toString(),
+        id: m._id ? m._id.toString() : m.id,
         conversationId: m.conversationId,
         userId: m.userId,
         username: m.username,
@@ -83,37 +89,66 @@ export async function GET(req) {
   }
 }
 
-// POST: Send Chat Message (Append-Only. No Chat Delete is permitted!)
+// POST: Send Chat Message (Append-Only)
 export async function POST(req) {
   try {
     const session = await getSessionUser();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
+    const body = await req.json();
+    const { text, conversationId, targetUsername, targetUserId, guestId, guestName } = body;
 
-    const { text, conversationId, targetUsername, targetUserId } = await req.json();
+    if (!session && !guestId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized. Please provide a guest session or login.' }, { status: 401 });
+    }
 
     if (!text || !text.trim()) {
       return NextResponse.json({ success: false, error: 'Message cannot be empty.' }, { status: 400 });
     }
 
     const isStaff =
-      session.role === ROLES.SUPER_ADMIN ||
-      session.role === ROLES.CHAT_SUPPORT ||
-      session.role === ROLES.OPERATION_ADMIN;
-    const resolvedConvId = isStaff && conversationId ? conversationId : session.userId;
+      session &&
+      (session.role === ROLES.SUPER_ADMIN ||
+        session.role === ROLES.CHAT_SUPPORT ||
+        session.role === ROLES.OPERATION_ADMIN);
+
+    let resolvedConvId;
+    let senderUserId;
+    let senderUsername;
+    let senderRole = 'player';
+    let staffName = null;
+
+    if (isStaff) {
+      resolvedConvId = conversationId;
+      senderUserId = targetUserId || resolvedConvId;
+      senderUsername = targetUsername || 'Players Paradise Support';
+      senderRole = 'staff';
+      staffName = session.username;
+    } else if (session) {
+      resolvedConvId = session.userId;
+      senderUserId = session.userId;
+      senderUsername = session.username;
+      senderRole = 'player';
+    } else {
+      // Unauthenticated Guest
+      const cleanGuestId = String(guestId).trim();
+      resolvedConvId = cleanGuestId;
+      senderUserId = cleanGuestId;
+      const cleanSuffix = cleanGuestId.replace('guest_', '').slice(-4).toUpperCase();
+      senderUsername = guestName?.trim() || `Guest #${cleanSuffix}`;
+      senderRole = 'player';
+    }
 
     const db = await getDb();
     const chatCol = db.collection('chat_messages');
 
     const newMsg = {
       conversationId: resolvedConvId,
-      userId: isStaff ? (targetUserId || resolvedConvId) : session.userId,
-      username: isStaff ? (targetUsername || 'Vegas One Support') : session.username,
-      senderRole: isStaff ? 'staff' : 'player',
-      staffName: isStaff ? session.username : null,
+      userId: senderUserId,
+      username: senderUsername,
+      senderRole,
+      staffName,
       text: text.trim(),
       read: false,
+      isGuest: !session,
       createdAt: new Date(),
     };
 
@@ -122,7 +157,7 @@ export async function POST(req) {
     return NextResponse.json({
       success: true,
       message: {
-        id: res.insertedId.toString(),
+        id: res.insertedId ? res.insertedId.toString() : Math.random().toString(36).substring(2, 10),
         ...newMsg,
       },
     });
@@ -131,10 +166,10 @@ export async function POST(req) {
   }
 }
 
-// NOTE: Strict compliance policy: DELETE method is intentionally NOT implemented!
+// NOTE: Compliance policy: DELETE method is strictly disabled.
 export async function DELETE() {
   return NextResponse.json(
-    { success: false, error: 'Compliance Violation: Deletion of chat records is strictly disabled for Vegas One.' },
+    { success: false, error: 'Compliance Violation: Deletion of chat records is strictly disabled.' },
     { status: 405 }
   );
 }

@@ -10,17 +10,15 @@ export async function POST(req) {
   try {
     await ensureDbInitialized();
 
-    const { username, email, password, referralCode: inputRef, state = 'US', ageVerified, deviceId: rawDeviceId } = await req.json();
+    const body = await req.json();
+    const { username, email, password, referralCode: inputRef, state = 'US', ageVerified = true, deviceId: rawDeviceId } = body;
 
     if (!username || !email || !password) {
-      return NextResponse.json({ success: false, error: 'All fields are required.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Username, email, and password are required.' }, { status: 400 });
     }
 
-    if (!ageVerified) {
-      return NextResponse.json(
-        { success: false, error: 'You must confirm that you are at least 18 years old (21+ where applicable).' },
-        { status: 400 }
-      );
+    if (password.length < 6) {
+      return NextResponse.json({ success: false, error: 'Password must be at least 6 characters.' }, { status: 400 });
     }
 
     const cleanUsername = username.trim().toLowerCase();
@@ -32,43 +30,33 @@ export async function POST(req) {
 
     // Check duplicate username or email
     const existing = await usersCol.findOne({
-      $or: [{ email: cleanEmail }, { username: cleanUsername }],
+      $or: [
+        { email: cleanEmail },
+        { username: cleanUsername },
+        { email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },
+        { username: { $regex: new RegExp(`^${cleanUsername}$`, 'i') } },
+      ],
     });
 
     if (existing) {
       return NextResponse.json(
-        { success: false, error: 'Username or email is already registered.' },
+        { success: false, error: 'Username or email is already registered. Please log in instead.' },
         { status: 409 }
-      );
-    }
-
-    // 2. Device Restriction Check (Only 1 account per device)
-    const deviceOwner = await usersCol.findOne({
-      $or: [{ deviceId: deviceId }, { boundDevices: deviceId }],
-    });
-
-    if (deviceOwner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Security Restriction: Only 1 account is permitted per device. This device is already linked to account "${deviceOwner.username}". Multiple accounts are not allowed.`,
-        },
-        { status: 403 }
       );
     }
 
     // Check referrer if provided
     let referrer = null;
-    if (inputRef) {
+    if (inputRef && typeof inputRef === 'string') {
       referrer = await usersCol.findOne({ referralCode: inputRef.trim().toUpperCase() });
     }
 
     // Generate unique referral code for this new player
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
-    const myReferralCode = `V1-${randomSuffix}`;
+    const myReferralCode = `PP-${randomSuffix}`;
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const initialBonusSC = 5.0; // 5 Free Sweeps Coins
+    const initialBonusSC = 5.0; // 5 Free Sweeps Coins ($5.00)
     const initialBonusGC = 50000; // 50,000 Gold Coins
 
     const sessionVersion = Date.now().toString();
@@ -99,27 +87,29 @@ export async function POST(req) {
     };
 
     const insertRes = await usersCol.insertOne(newUser);
-    const userId = insertRes.insertedId.toString();
+    const userId = insertRes.insertedId ? insertRes.insertedId.toString() : newUser._id;
 
     // Record welcome bonus into Ledger
-    const ledgerCol = db.collection('ledger');
-    await ledgerCol.insertOne({
-      userId,
-      username: cleanUsername,
-      type: 'welcome_bonus',
-      currency: 'SC',
-      amount: initialBonusSC,
-      balanceBefore: 0,
-      balanceAfter: initialBonusSC,
-      performedBy: 'system',
-      notes: 'New account signup welcome bonus (5 SC + 50,000 GC)',
-      createdAt: new Date(),
-    });
+    try {
+      const ledgerCol = db.collection('ledger');
+      await ledgerCol.insertOne({
+        userId,
+        username: cleanUsername,
+        type: 'welcome_bonus',
+        currency: 'USD',
+        amount: initialBonusSC,
+        balanceBefore: 0,
+        balanceAfter: initialBonusSC,
+        performedBy: 'system',
+        notes: 'Sign-up welcome bonus ($5.00 wallet credit)',
+        createdAt: new Date(),
+      });
+    } catch {}
 
     // Send welcome email in background
     sendEmail({
       to: cleanEmail,
-      subject: 'Welcome to Vegas One - 5 Free SC Added to Your Wallet!',
+      subject: 'Welcome to Players Paradise - $5.00 Free Bonus Added!',
       html: getWelcomeEmailTemplate(cleanUsername),
     }).catch(() => {});
 
@@ -134,7 +124,7 @@ export async function POST(req) {
 
     const response = NextResponse.json({
       success: true,
-      message: 'Account registered successfully!',
+      message: 'Account registered successfully! Welcome bonus credited.',
       user: {
         userId,
         username: cleanUsername,
@@ -162,14 +152,15 @@ export async function POST(req) {
       maxAge: 7 * 24 * 3600,
     });
 
-    // Persist 10-year device ID cookie
-    response.cookies.set('v1_device_id', deviceId, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 315360000,
-    });
+    if (deviceId) {
+      response.cookies.set('v1_device_id', deviceId, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 315360000,
+      });
+    }
 
     return response;
   } catch (error) {

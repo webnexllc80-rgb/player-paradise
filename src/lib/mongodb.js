@@ -38,56 +38,105 @@ const fallbackStore = {
   games: [],
   ledger: [],
   chat: [],
+  chat_messages: [],
   notifications: [],
   paymentMethods: [],
+  system_settings: [],
   settings: [],
   kyc: [],
 };
+
+function matchDoc(doc, query) {
+  if (!query || Object.keys(query).length === 0) return true;
+
+  // Handle $or
+  if (Array.isArray(query.$or)) {
+    const orMatches = query.$or.some((subQuery) => matchDoc(doc, subQuery));
+    if (!orMatches) return false;
+  }
+
+  // Handle $and
+  if (Array.isArray(query.$and)) {
+    const andMatches = query.$and.every((subQuery) => matchDoc(doc, subQuery));
+    if (!andMatches) return false;
+  }
+
+  for (const [key, val] of Object.entries(query)) {
+    if (key === '$or' || key === '$and') continue;
+
+    const docVal = doc[key];
+
+    if (val instanceof RegExp) {
+      if (!val.test(String(docVal || ''))) return false;
+    } else if (val && typeof val === 'object' && !(val instanceof Date)) {
+      if (val.$regex) {
+        const regex = new RegExp(val.$regex, val.$options || 'i');
+        if (!regex.test(String(docVal || ''))) return false;
+      }
+      if (val.$ne !== undefined && docVal === val.$ne) return false;
+      if (Array.isArray(val.$in) && !val.$in.includes(docVal)) return false;
+      if (val.$nin && Array.isArray(val.$nin) && val.$nin.includes(docVal)) return false;
+      if (val.$gt !== undefined && !(docVal > val.$gt)) return false;
+      if (val.$gte !== undefined && !(docVal >= val.$gte)) return false;
+      if (val.$lt !== undefined && !(docVal < val.$lt)) return false;
+      if (val.$lte !== undefined && !(docVal <= val.$lte)) return false;
+    } else {
+      // Direct comparison with case-insensitive string fallback
+      if (docVal !== val) {
+        if (
+          typeof docVal === 'string' &&
+          typeof val === 'string' &&
+          docVal.toLowerCase() === val.toLowerCase()
+        ) {
+          // match case-insensitively
+        } else {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
 
 function createCollectionWrapper(name) {
   if (!fallbackStore[name]) fallbackStore[name] = [];
   const data = fallbackStore[name];
 
   return {
-    async find(query = {}) {
-      let filtered = data.filter((doc) => {
-        for (const key of Object.keys(query)) {
-          if (key === '$in' || key === '$or') continue;
-          if (query[key] instanceof RegExp) {
-            if (!query[key].test(String(doc[key] || ''))) return false;
-          } else if (doc[key] !== query[key]) {
-            return false;
-          }
-        }
-        return true;
-      });
+    find(query = {}) {
+      let filtered = data.filter((doc) => matchDoc(doc, query));
+      let limitCount = null;
 
-      return {
-        sort: (sortObj = {}) => ({
-          limit: (n) => ({
-            toArray: async () => filtered.slice(0, n),
-          }),
-          toArray: async () => filtered,
-        }),
-        limit: (n) => ({
-          toArray: async () => filtered.slice(0, n),
-        }),
-        toArray: async () => filtered,
+      const cursor = {
+        sort(sortObj = {}) {
+          const [key, dir] = Object.entries(sortObj)[0] || [];
+          if (key) {
+            filtered = [...filtered].sort((a, b) => {
+              const valA = a[key] instanceof Date ? a[key].getTime() : a[key];
+              const valB = b[key] instanceof Date ? b[key].getTime() : b[key];
+              if (valA < valB) return dir === 1 ? -1 : 1;
+              if (valA > valB) return dir === 1 ? 1 : -1;
+              return 0;
+            });
+          }
+          return cursor;
+        },
+        limit(n) {
+          limitCount = n;
+          return cursor;
+        },
+        async toArray() {
+          if (limitCount !== null) {
+            return filtered.slice(0, limitCount);
+          }
+          return filtered;
+        },
       };
+      return cursor;
     },
     async findOne(query = {}) {
-      return (
-        data.find((doc) => {
-          for (const key of Object.keys(query)) {
-            if (query[key] instanceof RegExp) {
-              if (!query[key].test(String(doc[key] || ''))) return false;
-            } else if (doc[key] !== query[key]) {
-              return false;
-            }
-          }
-          return true;
-        }) || null
-      );
+      return data.find((doc) => matchDoc(doc, query)) || null;
     },
     async insertOne(doc) {
       const inserted = {
@@ -107,9 +156,21 @@ function createCollectionWrapper(name) {
       data.push(...inserted);
       return { insertedIds: inserted.map((d) => d._id), acknowledged: true };
     },
-    async updateOne(filter, update) {
-      const doc = await this.findOne(filter);
-      if (!doc) return { matchedCount: 0, modifiedCount: 0 };
+    async updateOne(filter, update, options = {}) {
+      let doc = await this.findOne(filter);
+      if (!doc) {
+        if (options.upsert) {
+          const newDoc = {
+            _id: Math.random().toString(36).substring(2, 12),
+            ...(filter.key ? { key: filter.key } : filter),
+            createdAt: new Date(),
+          };
+          if (update.$set) Object.assign(newDoc, update.$set);
+          data.push(newDoc);
+          return { matchedCount: 0, modifiedCount: 1, upsertedId: newDoc._id, acknowledged: true };
+        }
+        return { matchedCount: 0, modifiedCount: 0 };
+      }
       if (update.$set) {
         Object.assign(doc, update.$set);
       }
@@ -118,15 +179,28 @@ function createCollectionWrapper(name) {
           doc[k] = (doc[k] || 0) + v;
         }
       }
+      if (update.$addToSet) {
+        for (const [k, v] of Object.entries(update.$addToSet)) {
+          if (!Array.isArray(doc[k])) doc[k] = [];
+          if (!doc[k].includes(v)) doc[k].push(v);
+        }
+      }
       return { matchedCount: 1, modifiedCount: 1, acknowledged: true };
     },
-    async deleteOne(filter) {
-      const idx = data.findIndex((doc) => {
-        for (const key of Object.keys(filter)) {
-          if (doc[key] !== filter[key]) return false;
+    async updateMany(filter, update) {
+      const docs = data.filter((doc) => matchDoc(doc, filter));
+      for (const doc of docs) {
+        if (update.$set) Object.assign(doc, update.$set);
+        if (update.$inc) {
+          for (const [k, v] of Object.entries(update.$inc)) {
+            doc[k] = (doc[k] || 0) + v;
+          }
         }
-        return true;
-      });
+      }
+      return { matchedCount: docs.length, modifiedCount: docs.length, acknowledged: true };
+    },
+    async deleteOne(filter) {
+      const idx = data.findIndex((doc) => matchDoc(doc, filter));
       if (idx !== -1) {
         data.splice(idx, 1);
         return { deletedCount: 1 };
@@ -134,9 +208,41 @@ function createCollectionWrapper(name) {
       return { deletedCount: 0 };
     },
     async countDocuments(query = {}) {
-      const res = await this.find(query);
-      const arr = await res.toArray();
-      return arr.length;
+      const filtered = data.filter((doc) => matchDoc(doc, query));
+      return filtered.length;
+    },
+    aggregate(pipeline = []) {
+      return {
+        async toArray() {
+          // Simple inbox grouping implementation for chat
+          const convMap = new Map();
+          for (const msg of data) {
+            const cid = msg.conversationId || msg.userId;
+            if (!convMap.has(cid)) {
+              convMap.set(cid, {
+                _id: cid,
+                username: msg.username,
+                userId: msg.userId,
+                lastMessage: msg.text,
+                lastSenderRole: msg.senderRole,
+                updatedAt: msg.createdAt,
+                unreadCount: msg.read === false && msg.senderRole === 'player' ? 1 : 0,
+              });
+            } else {
+              const existing = convMap.get(cid);
+              if (new Date(msg.createdAt) > new Date(existing.updatedAt)) {
+                existing.lastMessage = msg.text;
+                existing.lastSenderRole = msg.senderRole;
+                existing.updatedAt = msg.createdAt;
+              }
+              if (msg.read === false && msg.senderRole === 'player') {
+                existing.unreadCount++;
+              }
+            }
+          }
+          return Array.from(convMap.values());
+        },
+      };
     },
   };
 }

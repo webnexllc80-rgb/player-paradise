@@ -21,12 +21,18 @@ export async function POST(req) {
     const db = await getDb();
     const usersCol = db.collection('users');
 
+    // Case-insensitive lookup for email or username
     const user = await usersCol.findOne({
-      $or: [{ email: cleanId }, { username: cleanId }],
+      $or: [
+        { email: cleanId },
+        { username: cleanId },
+        { email: { $regex: new RegExp(`^${cleanId}$`, 'i') } },
+        { username: { $regex: new RegExp(`^${cleanId}$`, 'i') } },
+      ],
     });
 
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Invalid credentials.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Invalid credentials. User not found.' }, { status: 401 });
     }
 
     if (user.isBanned) {
@@ -35,46 +41,34 @@ export async function POST(req) {
 
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) {
-      return NextResponse.json({ success: false, error: 'Invalid credentials.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Invalid password. Please check your credentials.' }, { status: 401 });
     }
 
-    const isPlayer = !user.role || user.role === ROLES.PLAYER || user.role === 'player' || user.role === 'user';
+    const isStaff =
+      user.role === ROLES.SUPER_ADMIN ||
+      user.role === ROLES.FINANCIAL_MANAGER ||
+      user.role === ROLES.COIN_MANAGER ||
+      user.role === ROLES.CHAT_SUPPORT ||
+      user.role === ROLES.OPERATION_ADMIN;
 
-    // 1. Enforce: Only 1 account per physical device for players
-    if (isPlayer) {
-      const conflictingUser = await usersCol.findOne({
-        _id: { $ne: user._id },
-        role: { $in: [ROLES.PLAYER, 'user', 'player', null] },
-        $or: [{ deviceId: deviceId }, { boundDevices: deviceId }],
-      });
-
-      if (conflictingUser) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Security Restriction: Only 1 account is permitted per device. This device is already linked to account "${conflictingUser.username}". You cannot log into multiple accounts on the same device.`,
-          },
-          { status: 403 }
-        );
-      }
-    }
-
-    // 2. Bind device and update active session version
+    // Track active device and session version
     const sessionVersion = Date.now().toString();
-    const userId = user._id.toString();
+    const userId = user._id ? user._id.toString() : user.id;
 
-    await usersCol.updateOne(
-      { _id: user._id },
-      {
-        $set: {
-          deviceId: deviceId,
-          lastLoginDevice: deviceId,
-          sessionVersion,
-          lastLoginAt: new Date(),
-        },
-        $addToSet: { boundDevices: deviceId },
-      }
-    );
+    if (deviceId) {
+      await usersCol.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            deviceId: deviceId,
+            lastLoginDevice: deviceId,
+            sessionVersion,
+            lastLoginAt: new Date(),
+          },
+          $addToSet: { boundDevices: deviceId },
+        }
+      );
+    }
 
     const token = signToken({
       userId,
@@ -87,6 +81,7 @@ export async function POST(req) {
     const response = NextResponse.json({
       success: true,
       message: 'Login successful',
+      isAdmin: isStaff,
       user: {
         userId,
         username: user.username,
@@ -114,14 +109,15 @@ export async function POST(req) {
       maxAge: 7 * 24 * 3600,
     });
 
-    // Persist 10-year device ID cookie
-    response.cookies.set('v1_device_id', deviceId, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 315360000,
-    });
+    if (deviceId) {
+      response.cookies.set('v1_device_id', deviceId, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 315360000,
+      });
+    }
 
     return response;
   } catch (error) {

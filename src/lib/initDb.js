@@ -325,7 +325,9 @@ export async function ensureDbInitialized() {
     }
 
     console.log('Database initialization check completed successfully.');
+    return true;
   } catch (err) {
     console.error('Error during database initialization:', err);
+    return false;
   }
 }
