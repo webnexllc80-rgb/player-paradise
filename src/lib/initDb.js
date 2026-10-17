@@ -8,16 +8,15 @@ export async function ensureDbInitialized() {
 
     // 1. Ensure Super Admin and Staff accounts
     const usersCol = db.collection('users');
-    const existingAdmin = await usersCol.findOne({ role: ROLES.SUPER_ADMIN });
+    const adminPasswordHash = await bcrypt.hash('Paradise@2026!', 10);
+    const staffPasswordHash = await bcrypt.hash('Staff@2026!', 10);
+    const playerPasswordHash = await bcrypt.hash('Player@2026!', 10);
 
-    if (!existingAdmin) {
-      console.log('Seeding initial administrators and staff for Players Paradise Hub...');
-      const adminPasswordHash = await bcrypt.hash('Paradise@2026!', 10);
-      const staffPasswordHash = await bcrypt.hash('Staff@2026!', 10);
-      const playerPasswordHash = await bcrypt.hash('Player@2026!', 10);
-
-      await usersCol.insertMany([
-        {
+    // 1. Always ensure 'superadmin' exists and has active credentials
+    await usersCol.updateOne(
+      { username: 'superadmin' },
+      {
+        $set: {
           username: 'superadmin',
           email: 'admin@playersparadisehub.com',
           passwordHash: adminPasswordHash,
@@ -26,9 +25,40 @@ export async function ensureDbInitialized() {
           balanceGC: 10000000,
           kycStatus: 'approved',
           vipTier: 'Paradise Legend',
-          createdAt: new Date(),
+          isBanned: false,
+          updatedAt: new Date(),
         },
-        {
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    // 2. Also ensure 'admin' username works with identical Super Admin access
+    await usersCol.updateOne(
+      { username: 'admin' },
+      {
+        $set: {
+          username: 'admin',
+          email: 'admin@playersparadisehub.com',
+          passwordHash: adminPasswordHash,
+          role: ROLES.SUPER_ADMIN,
+          balanceSC: 50000.0,
+          balanceGC: 10000000,
+          kycStatus: 'approved',
+          vipTier: 'Paradise Legend',
+          isBanned: false,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    // 3. Ensure staff roles exist
+    await usersCol.updateOne(
+      { username: 'financemanager' },
+      {
+        $set: {
           username: 'financemanager',
           email: 'finance@playersparadisehub.com',
           passwordHash: staffPasswordHash,
@@ -37,9 +67,18 @@ export async function ensureDbInitialized() {
           balanceGC: 500000,
           kycStatus: 'approved',
           vipTier: 'Diamond Elite',
-          createdAt: new Date(),
+          isBanned: false,
+          updatedAt: new Date(),
         },
-        {
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    await usersCol.updateOne(
+      { username: 'coinmanager' },
+      {
+        $set: {
           username: 'coinmanager',
           email: 'coins@playersparadisehub.com',
           passwordHash: staffPasswordHash,
@@ -48,9 +87,18 @@ export async function ensureDbInitialized() {
           balanceGC: 250000,
           kycStatus: 'approved',
           vipTier: 'Gold Titan',
-          createdAt: new Date(),
+          isBanned: false,
+          updatedAt: new Date(),
         },
-        {
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+
+    await usersCol.updateOne(
+      { username: 'chatsupport' },
+      {
+        $set: {
           username: 'chatsupport',
           email: 'support@playersparadisehub.com',
           passwordHash: staffPasswordHash,
@@ -59,21 +107,13 @@ export async function ensureDbInitialized() {
           balanceGC: 100000,
           kycStatus: 'approved',
           vipTier: 'Silver Cyber',
-          createdAt: new Date(),
+          isBanned: false,
+          updatedAt: new Date(),
         },
-        {
-          username: 'demo_player',
-          email: 'player@demo.com',
-          passwordHash: playerPasswordHash,
-          role: ROLES.PLAYER,
-          balanceSC: 550.0,
-          balanceGC: 125000,
-          kycStatus: 'approved',
-          vipTier: 'Gold Titan',
-          createdAt: new Date(),
-        },
-      ]);
-    }
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true }
+    );
 
     // 2. Ensure Games catalog
     const gamesCol = db.collection('games');

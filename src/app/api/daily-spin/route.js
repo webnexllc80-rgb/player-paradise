@@ -8,13 +8,25 @@ export async function GET(req) {
   try {
     const session = await getSessionUser();
     if (!session || !session.userId) {
-      return NextResponse.json({ success: false, authenticated: false, message: 'Please log in to spin.' }, { status: 401 });
+      return NextResponse.json({
+        success: true,
+        authenticated: false,
+        canSpin: false,
+        slices: WHEEL_SLICES,
+        message: 'Please log in to spin.',
+      });
     }
 
     const db = await getDb();
     const user = await db.collection('users').findOne(getUserFilter(session));
     if (!user) {
-      return NextResponse.json({ success: false, message: 'User not found' }, { status: 404 });
+      return NextResponse.json({
+        success: true,
+        authenticated: false,
+        canSpin: false,
+        slices: WHEEL_SLICES,
+        message: 'User not found',
+      });
     }
 
     const now = new Date();
@@ -22,7 +34,7 @@ export async function GET(req) {
     let canSpin = true;
     let nextSpinAvailableAt = null;
 
-    if (lastSpin) {
+    if (lastSpin && !isNaN(lastSpin.getTime())) {
       const diffMs = now.getTime() - lastSpin.getTime();
       const twentyFourHoursMs = 24 * 60 * 60 * 1000;
       if (diffMs < twentyFourHoursMs) {
@@ -33,14 +45,21 @@ export async function GET(req) {
 
     return NextResponse.json({
       success: true,
+      authenticated: true,
       canSpin,
       slices: WHEEL_SLICES,
       nextSpinAvailableAt,
       lastDailySpin: user.lastDailySpin || null,
-      balance: Number(user.balanceSC || 0),
+      balance: Number(user.balanceSC ?? user.balance ?? 0),
     });
   } catch (err) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    console.error('Daily spin GET error:', err);
+    return NextResponse.json({
+      success: true,
+      canSpin: false,
+      slices: WHEEL_SLICES,
+      error: err.message,
+    });
   }
 }
 
@@ -64,7 +83,7 @@ export async function POST(req) {
     const now = new Date();
     const lastSpin = user.lastDailySpin ? new Date(user.lastDailySpin) : null;
 
-    if (lastSpin) {
+    if (lastSpin && !isNaN(lastSpin.getTime())) {
       const diffMs = now.getTime() - lastSpin.getTime();
       const twentyFourHoursMs = 24 * 60 * 60 * 1000;
       if (diffMs < twentyFourHoursMs) {
@@ -102,21 +121,22 @@ export async function POST(req) {
     const prizeAmount = selectedPrize.amount;
     const sliceIndex = selectedPrize.sliceIndex;
 
-    const oldBalance = Number(user.balanceSC || 0);
+    const oldBalance = Number(user.balanceSC ?? user.balance ?? 0);
     const newBalance = Number((oldBalance + prizeAmount).toFixed(2));
 
     // Update user balance and record spin timestamp
     await usersCol.updateOne(
       { _id: user._id },
       {
-        $inc: { balanceSC: prizeAmount },
+        $inc: { balanceSC: prizeAmount, balance: prizeAmount },
         $set: { lastDailySpin: now },
       }
     );
 
     // Record ledger entry
+    const userIdStr = user._id ? String(user._id) : (session.userId || 'unknown');
     await ledgerCol.insertOne({
-      userId: user._id.toString(),
+      userId: userIdStr,
       username: user.username,
       type: 'daily_spin_bonus',
       currency: 'USD',
@@ -137,6 +157,7 @@ export async function POST(req) {
       message: `Congratulations! You won $${prizeAmount.toFixed(2)} from the Daily Lucky Wheel!`,
     });
   } catch (err) {
+    console.error('Daily spin POST error:', err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
