@@ -2,12 +2,11 @@
 
 import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { Mail, Lock, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, User } from 'lucide-react';
+import { Mail, Lock, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, User, Loader2 } from 'lucide-react';
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTarget = searchParams.get('redirect');
 
@@ -15,10 +14,12 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMsg('');
     setLoading(true);
 
     try {
@@ -30,20 +31,24 @@ function LoginForm() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || data.message || 'Login failed. Please verify credentials.');
+        throw new Error(data.error || data.message || 'Login failed. Please verify your credentials.');
       }
 
-      // If user is admin/staff or redirect is /admin, go to /admin
-      if (data.isAdmin || redirectTarget === '/admin' || (data.user?.role && data.user.role !== 'player')) {
-        router.push('/admin');
-      } else if (redirectTarget) {
-        router.push(redirectTarget);
-      } else {
-        router.push('/');
-      }
+      const username = data.user?.username || identifier;
+      setSuccessMsg(`Welcome back, ${username}! Redirecting...`);
+
+      // Determine redirect destination
+      const destination =
+        data.isAdmin || redirectTarget === '/admin' || (data.user?.role && data.user.role !== 'player')
+          ? '/admin'
+          : redirectTarget || '/';
+
+      // Full-page location change guarantees cookies are sent and app state is refreshed
+      setTimeout(() => {
+        window.location.href = destination;
+      }, 700);
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
@@ -68,7 +73,7 @@ function LoginForm() {
             className="relative w-16 h-16 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)]"
             style={{ position: 'relative', width: '64px', height: '64px', minWidth: '64px', margin: '0 auto' }}
           >
-            <Image src="/logo.png" alt="Logo" fill className="object-cover" />
+            <Image src="/logo.png" alt="Logo" fill className="object-cover" priority />
           </div>
         </Link>
         <h1 className="font-heading font-black text-2xl text-white">
@@ -84,6 +89,13 @@ function LoginForm() {
         </div>
       )}
 
+      {successMsg && (
+        <div className="p-3.5 rounded-xl bg-emerald-950/70 border border-emerald-500/50 flex items-center gap-2.5 text-xs text-emerald-200 font-bold shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+          <CheckCircle2 size={18} className="text-emerald-400 shrink-0 animate-pulse" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-[11px] font-sub font-bold text-slate-300 mb-1">
@@ -93,6 +105,7 @@ function LoginForm() {
             <input
               type="text"
               required
+              disabled={loading || Boolean(successMsg)}
               placeholder="superadmin or player@example.com"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
@@ -109,6 +122,7 @@ function LoginForm() {
             <input
               type="password"
               required
+              disabled={loading || Boolean(successMsg)}
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -119,10 +133,22 @@ function LoginForm() {
 
         <button
           type="submit"
-          disabled={loading}
-          className="w-full cyber-btn-cyan py-3.5 rounded-xl font-heading font-black text-sm tracking-wider cursor-pointer"
+          disabled={loading || Boolean(successMsg)}
+          className="w-full cyber-btn-cyan py-3.5 rounded-xl font-heading font-black text-sm tracking-wider cursor-pointer flex items-center justify-center gap-2"
         >
-          {loading ? 'VERIFYING...' : 'SIGN IN NOW'}
+          {loading ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              <span>AUTHENTICATING...</span>
+            </>
+          ) : successMsg ? (
+            <>
+              <CheckCircle2 size={16} className="text-black" />
+              <span>LOGGED IN!</span>
+            </>
+          ) : (
+            <span>SIGN IN NOW</span>
+          )}
         </button>
       </form>
 
@@ -142,6 +168,7 @@ function LoginForm() {
           <div className="flex items-center justify-center gap-2">
             <button
               type="button"
+              disabled={loading}
               onClick={autofillAdmin}
               className="px-2.5 py-1.5 rounded-lg bg-purple-950/60 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
             >
@@ -150,6 +177,7 @@ function LoginForm() {
             </button>
             <button
               type="button"
+              disabled={loading}
               onClick={autofillDemo}
               className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-800 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
             >
