@@ -212,6 +212,9 @@ export default function AdminPortal({ initialTab }) {
   const [gameSearchQuery, setGameSearchQuery] = useState('');
   const [isAddGatewayModalOpen, setIsAddGatewayModalOpen] = useState(false);
   const [isAddStaffModalOpen, setIsAddStaffModalOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState(null);
+  const [isUpdatingStaff, setIsUpdatingStaff] = useState(false);
+  const [deletingStaffId, setDeletingStaffId] = useState(null);
 
   const handleGameImageFile = (file, callback) => {
     if (!file) return;
@@ -4488,23 +4491,97 @@ export default function AdminPortal({ initialTab }) {
                             </span>
                           </td>
                           <td className="p-3.5 text-right">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await fetch('/api/admin/staff', {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ staffId: s.id, isBanned: !s.isBanned }),
-                                });
-                                setStaffList(staffList.map(item => item.id === s.id ? { ...item, isBanned: !s.isBanned } : item));
-                              }}
-                              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition border ${s.isBanned
-                                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/35 text-emerald-300'
-                                : 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/35 text-rose-300'
+                            <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                              {/* Edit Staff Officer */}
+                              <button
+                                type="button"
+                                onClick={() => setEditingStaff({
+                                  id: s.id,
+                                  username: s.username,
+                                  email: s.email,
+                                  role: s.role,
+                                  isBanned: s.isBanned,
+                                  newPassword: '',
+                                })}
+                                className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition flex items-center gap-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-[#00F0FF] border border-cyan-500/30 cursor-pointer hover:scale-105 active:scale-95"
+                                title="Edit staff profile & role"
+                              >
+                                <Edit2 size={13} />
+                                <span>Edit</span>
+                              </button>
+
+                              {/* Suspend / Reactivate */}
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch('/api/admin/staff', {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ staffId: s.id, isBanned: !s.isBanned }),
+                                    });
+                                    const d = await res.json();
+                                    if (d.success) {
+                                      setStaffList(staffList.map(item => item.id === s.id ? { ...item, isBanned: !s.isBanned } : item));
+                                    } else {
+                                      alert(d.error || 'Failed to update status');
+                                    }
+                                  } catch (err) {
+                                    alert('Network error while updating status');
+                                  }
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition border cursor-pointer hover:scale-105 active:scale-95 ${s.isBanned
+                                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/35 text-emerald-300'
+                                  : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/35 text-amber-300'
+                                  }`}
+                                title={s.isBanned ? 'Reactivate staff access' : 'Suspend staff access'}
+                              >
+                                {s.isBanned ? '✓ Activate' : '✕ Suspend'}
+                              </button>
+
+                              {/* Delete Staff Officer */}
+                              <button
+                                type="button"
+                                disabled={deletingStaffId === s.id || s.username === user.username}
+                                onClick={async () => {
+                                  if (s.username === user.username) {
+                                    alert('Security Notice: You cannot delete your own Super Admin account.');
+                                    return;
+                                  }
+                                  if (!confirm(`Are you sure you want to permanently delete staff officer @${s.username}? This will remove all their system credentials permanently.`)) {
+                                    return;
+                                  }
+                                  setDeletingStaffId(s.id);
+                                  try {
+                                    const res = await fetch('/api/admin/staff', {
+                                      method: 'DELETE',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ staffId: s.id }),
+                                    });
+                                    const d = await res.json();
+                                    if (d.success) {
+                                      setStaffList(staffList.filter(item => item.id !== s.id));
+                                      alert(d.message || 'Staff officer deleted successfully');
+                                    } else {
+                                      alert(d.error || 'Failed to delete staff officer');
+                                    }
+                                  } catch (err) {
+                                    alert('Network error while deleting staff officer');
+                                  } finally {
+                                    setDeletingStaffId(null);
+                                  }
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition border flex items-center gap-1 cursor-pointer ${
+                                  s.username === user.username
+                                    ? 'opacity-30 cursor-not-allowed bg-gray-500/10 border-gray-500/20 text-gray-500'
+                                    : 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/35 text-rose-300 hover:scale-105 active:scale-95'
                                 }`}
-                            >
-                              {s.isBanned ? '✓ Reactivate' : '✕ Suspend'}
-                            </button>
+                                title={s.username === user.username ? 'Cannot delete yourself' : 'Permanently Delete Staff Officer'}
+                              >
+                                <Trash2 size={13} />
+                                <span>{deletingStaffId === s.id ? 'Deleting...' : 'Delete'}</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -4512,6 +4589,178 @@ export default function AdminPortal({ initialTab }) {
                   </table>
                 </div>
               </div>
+
+              {/* MODAL: EDIT STAFF OFFICER */}
+              {editingStaff && (
+                <div
+                  className="vegas-modal-overlay"
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    width: '100vw',
+                    height: '100vh',
+                    backgroundColor: 'rgba(5, 3, 15, 0.92)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    zIndex: 999999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '16px',
+                  }}
+                  onClick={() => setEditingStaff(null)}
+                >
+                  <div
+                    className="vegas-modal-card w-full max-w-lg p-5 sm:p-6 max-h-[90vh] overflow-y-auto modal-scrollable relative space-y-4"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      backgroundColor: '#0E0A24',
+                      background: 'linear-gradient(145deg, #0E0A24 0%, #150E36 100%)',
+                      border: '1px solid rgba(0, 240, 255, 0.45)',
+                      boxShadow: '0 30px 80px rgba(0, 0, 0, 0.98), 0 0 40px rgba(0, 240, 255, 0.25)',
+                      borderRadius: '20px',
+                    }}
+                  >
+                    <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-[#00F0FF]/15 border border-[#00F0FF]/30 flex items-center justify-center text-[#00F0FF]">
+                          <Edit2 size={16} />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-black text-white m-0">Edit Staff Officer: @{editingStaff.username}</h3>
+                          <p className="text-[11px] text-gray-400 m-0">Update credentials, role permissions, or reset password</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingStaff(null)}
+                        className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setIsUpdatingStaff(true);
+                        try {
+                          const res = await fetch('/api/admin/staff', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              staffId: editingStaff.id,
+                              username: editingStaff.username,
+                              email: editingStaff.email,
+                              role: editingStaff.role,
+                              isBanned: editingStaff.isBanned,
+                              newPassword: editingStaff.newPassword || undefined,
+                            }),
+                          });
+                          const d = await res.json();
+                          if (d.success) {
+                            alert(d.message || 'Staff officer updated successfully!');
+                            setStaffList(staffList.map(item => item.id === editingStaff.id ? {
+                              ...item,
+                              username: editingStaff.username,
+                              email: editingStaff.email,
+                              role: editingStaff.role,
+                              isBanned: editingStaff.isBanned,
+                            } : item));
+                            setEditingStaff(null);
+                          } else {
+                            alert(d.error || 'Failed to update staff officer');
+                          }
+                        } catch (err) {
+                          alert('Network error while updating staff');
+                        } finally {
+                          setIsUpdatingStaff(false);
+                        }
+                      }}
+                      className="space-y-3.5"
+                    >
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-300 block mb-1 uppercase">Username *</label>
+                        <input
+                          type="text"
+                          value={editingStaff.username}
+                          onChange={(e) => setEditingStaff({ ...editingStaff, username: e.target.value })}
+                          className="w-full bg-[#070514] border border-white/15 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none transition"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-300 block mb-1 uppercase">Staff Email *</label>
+                        <input
+                          type="email"
+                          value={editingStaff.email}
+                          onChange={(e) => setEditingStaff({ ...editingStaff, email: e.target.value })}
+                          className="w-full bg-[#070514] border border-white/15 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none transition"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-300 block mb-1 uppercase">
+                          Reset Password <span className="text-[10px] text-gray-400 normal-case font-normal">(Leave blank to keep current)</span>
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="Enter new password (optional)"
+                          value={editingStaff.newPassword || ''}
+                          onChange={(e) => setEditingStaff({ ...editingStaff, newPassword: e.target.value })}
+                          className="w-full bg-[#070514] border border-white/15 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none transition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-300 block mb-1 uppercase">Assigned Role *</label>
+                        <select
+                          value={editingStaff.role}
+                          onChange={(e) => setEditingStaff({ ...editingStaff, role: e.target.value })}
+                          className="w-full bg-[#070514] border border-white/15 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none cursor-pointer transition"
+                        >
+                          <option value="operation_admin">Operations Manager</option>
+                          <option value="financial_manager">Financial Manager</option>
+                          <option value="coin_manager">Coin Allotment Officer</option>
+                          <option value="chat_support">Live Chat Support Agent</option>
+                          <option value="super_admin">Super Admin</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-300 block mb-1 uppercase">Account Access Status *</label>
+                        <select
+                          value={editingStaff.isBanned ? 'banned' : 'active'}
+                          onChange={(e) => setEditingStaff({ ...editingStaff, isBanned: e.target.value === 'banned' })}
+                          className="w-full bg-[#070514] border border-white/15 focus:border-[#00F0FF] rounded-xl px-3 py-2.5 text-xs text-white outline-none cursor-pointer transition"
+                        >
+                          <option value="active">Active (Full Credentials On-Duty)</option>
+                          <option value="banned">Suspended (Access Blocked)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setEditingStaff(null)}
+                          className="px-4 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-white transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isUpdatingStaff}
+                          className="py-2.5 px-6 text-xs font-black uppercase tracking-wider rounded-xl cursor-pointer bg-gradient-to-r from-[#00F0FF] to-[#E026D8] text-black shadow-[0_0_20px_rgba(0,240,255,0.35)] hover:scale-[1.02] active:scale-[0.98] transition"
+                        >
+                          <span>{isUpdatingStaff ? 'Saving...' : 'Update Staff Officer'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
