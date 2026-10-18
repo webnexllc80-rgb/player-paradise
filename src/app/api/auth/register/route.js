@@ -45,10 +45,17 @@ export async function POST(req) {
       );
     }
 
-    // Check referrer if provided
+    // Check referrer if provided (matches referralCode OR username)
     let referrer = null;
     if (inputRef && typeof inputRef === 'string') {
-      referrer = await usersCol.findOne({ referralCode: inputRef.trim().toUpperCase() });
+      const cleanRef = inputRef.trim();
+      referrer = await usersCol.findOne({
+        $or: [
+          { referralCode: cleanRef.toUpperCase() },
+          { username: cleanRef.toLowerCase() },
+          { username: cleanRef },
+        ],
+      });
     }
 
     // Generate unique referral code for this new player

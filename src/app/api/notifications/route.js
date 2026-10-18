@@ -41,15 +41,39 @@ export async function GET(req) {
       });
     }
 
-    // Player view: notifications broadcast to all or specific user
-    const query = session
-      ? { $or: [{ target: 'all' }, { userId: session.userId }] }
-      : { target: 'all' };
+    // Player view: notifications broadcast to all, or targeted to user by id, username, or email
+    const emailParam = searchParams.get('email');
+    const targetConditions = [{ target: 'all' }];
+
+    if (session?.userId) {
+      targetConditions.push({ userId: session.userId });
+      targetConditions.push({ userId: session.userId.toString() });
+    }
+    if (session?.username) {
+      targetConditions.push({ username: session.username.toLowerCase() });
+      targetConditions.push({ username: session.username });
+    }
+    if (session?.email) {
+      targetConditions.push({ email: session.email.toLowerCase().trim() });
+    }
+    if (emailParam) {
+      const cleanEmail = emailParam.toLowerCase().trim();
+      targetConditions.push({ email: cleanEmail });
+      try {
+        const uDoc = await db.collection('users').findOne({ email: cleanEmail });
+        if (uDoc) {
+          targetConditions.push({ userId: uDoc._id.toString() });
+          targetConditions.push({ username: uDoc.username });
+        }
+      } catch {}
+    }
+
+    const query = { $or: targetConditions };
 
     const items = await notifsCol
       .find(query)
       .sort({ createdAt: -1 })
-      .limit(20)
+      .limit(30)
       .toArray();
 
     return NextResponse.json({
@@ -59,6 +83,7 @@ export async function GET(req) {
         title: n.title,
         message: n.message,
         type: n.type || 'promo',
+        read: Boolean(n.read),
         createdAt: n.createdAt,
       })),
     });
@@ -208,6 +233,42 @@ export async function PUT(req) {
       success: true,
       message: 'Successfully subscribed to VIP Broadcasts & Chrome Push Notifications!',
     });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// PATCH: Mark user notifications as read
+export async function PATCH(req) {
+  try {
+    const session = await getSessionUser();
+    const body = await req.json().catch(() => ({}));
+    const email = (session?.email || body.email || '').toLowerCase().trim();
+    const userId = session?.userId ? session.userId.toString() : null;
+
+    if (!email && !userId) {
+      return NextResponse.json({ success: false, error: 'User identification required.' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const notifsCol = db.collection('notifications');
+
+    const filterConditions = [];
+    if (userId) {
+      filterConditions.push({ userId });
+    }
+    if (email) {
+      filterConditions.push({ email });
+    }
+
+    if (filterConditions.length > 0) {
+      await notifsCol.updateMany(
+        { $or: filterConditions },
+        { $set: { read: true, readAt: new Date() } }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: 'Notifications marked as read.' });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

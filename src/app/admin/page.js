@@ -315,6 +315,7 @@ export default function AdminPortal({ initialTab }) {
     regularBonusMax: 2500,
     regularBonusTitle: 'REGULAR BONUS',
     regularBonusSubtitle: 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.',
+    referralBonusPercent: 20,
   });
   const [savingBonusSettings, setSavingBonusSettings] = useState(false);
   const [bonusSaveMessage, setBonusSaveMessage] = useState(null);
@@ -398,6 +399,7 @@ export default function AdminPortal({ initialTab }) {
           regularBonusPercent: Number(sysSettings?.regularBonusPercent ?? 50),
           regularBonusTitle: sysSettings?.regularBonusTitle || 'REGULAR BONUS',
           regularBonusSubtitle: sysSettings?.regularBonusSubtitle || 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.',
+          referralBonusPercent: Number(sysSettings?.referralBonusPercent ?? 20),
         }),
       });
       const data = await res.json();
@@ -4591,7 +4593,7 @@ export default function AdminPortal({ initialTab }) {
                 </div>
 
                 <form onSubmit={handleSaveBonusSettings} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     {/* Welcome Bonus Card */}
                     <div className="bg-[#070514] border border-cyan-500/30 p-5 rounded-xl space-y-4">
                       <div className="flex items-center justify-between">
@@ -4693,6 +4695,46 @@ export default function AdminPortal({ initialTab }) {
                           className="w-full bg-[#0E0A24] border border-white/10 rounded-lg px-3 py-2 text-white text-xs leading-relaxed"
                           required
                         />
+                      </div>
+                    </div>
+
+                    {/* Referral Bonus Card */}
+                    <div className="bg-[#070514] border border-amber-500/30 p-5 rounded-xl space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">
+                          3. Referral Bonus (Friend 1st Deposit)
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold uppercase">
+                          Auto Wallet Credit
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-gray-300 block mb-1">Referral Reward Match %</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={sysSettings?.referralBonusPercent ?? 20}
+                            onChange={(e) => setSysSettings(prev => ({ ...prev, referralBonusPercent: e.target.value }))}
+                            className="w-full bg-[#0E0A24] border border-white/10 rounded-lg px-3 py-2 text-white font-black text-sm pr-7"
+                            required
+                          />
+                          <span className="absolute right-2.5 top-2 text-xs font-bold text-gray-400">%</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
+                          When a player refers a friend who makes their 1st deposit, this % is credited straight to the inviter&apos;s wallet balance immediately upon approval.
+                        </p>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200/90 space-y-1">
+                        <div className="font-bold text-amber-300 flex items-center gap-1.5 text-xs">
+                          <span>🔔 Instant Notification &amp; Ledger Audit</span>
+                        </div>
+                        <p className="text-[10px] text-amber-200/70 leading-relaxed">
+                          The inviter receives an instant in-app notification confirming their referral bonus amount, and the transaction is recorded to the ledger.
+                        </p>
                       </div>
                     </div>
                   </div>

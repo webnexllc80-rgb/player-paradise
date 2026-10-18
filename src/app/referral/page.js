@@ -229,7 +229,7 @@ export default function ReferralPage() {
                       Your Referral Code
                     </span>
                     <span className="text-[10px] text-amber-300 font-mono font-bold bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30">
-                      50% BONUS
+                      {stats?.commissionRate ?? 20}% BONUS
                     </span>
                   </div>
                   <div className="flex items-center gap-2 bg-[#060312] p-2 rounded-xl border border-slate-800">

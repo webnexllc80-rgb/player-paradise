@@ -277,32 +277,117 @@ export async function PUT(req) {
         createdAt: new Date(),
       });
 
-      // 4. Check Affiliate Commission (50% commission if first deposit!)
-      if (user.referredBy && (!user.totalDeposited || user.totalDeposited === 0)) {
-        const referrer = await usersCol.findOne({ username: user.referredBy });
+      // 4. Dynamic Referral Bonus Engine: Trigger on Referred Friend's First Approved Deposit
+      const approvedCount = await depositsCol.countDocuments({
+        userId: deposit.userId,
+        status: 'approved',
+      });
+
+      const isFirstDeposit = approvedCount <= 1 && !user.referralRewardPaid;
+
+      if (user.referredBy && isFirstDeposit) {
+        const refIdentifier = String(user.referredBy).trim();
+        const referrer = await usersCol.findOne({
+          $or: [
+            { username: refIdentifier.toLowerCase() },
+            { username: refIdentifier },
+            { referralCode: refIdentifier.toUpperCase() },
+            { referralCode: refIdentifier },
+          ],
+        });
+
         if (referrer) {
-          const commissionSC = Number((deposit.amount * 0.50).toFixed(2)); // 50% referral bonus based on cash amount
-          await usersCol.updateOne(
-            { _id: referrer._id },
-            {
-              $inc: {
-                affiliateCommissionsUnpaid: commissionSC,
-                affiliateCommissionsEarned: commissionSC,
-              },
+          const settingsCol = db.collection('system_settings');
+          const sysSettings = await settingsCol.findOne({ key: 'general' });
+          const referralPercent = Number(sysSettings?.referralBonusPercent ?? 20);
+          const bonusSC = Number(((deposit.amount * referralPercent) / 100).toFixed(2));
+
+          if (bonusSC > 0) {
+            const refOldSC = Number(referrer.balanceSC || 0);
+            const refNewSC = Number((refOldSC + bonusSC).toFixed(2));
+
+            // A. Credit Referrer Wallet Directly
+            await usersCol.updateOne(
+              { _id: referrer._id },
+              {
+                $inc: {
+                  balanceSC: bonusSC,
+                  totalReferralRewards: bonusSC,
+                  affiliateCommissionsEarned: bonusSC,
+                },
+              }
+            );
+
+            // B. Record in Ledger
+            await ledgerCol.insertOne({
+              userId: referrer._id.toString(),
+              username: referrer.username,
+              type: 'referral_bonus',
+              currency: 'SC',
+              amount: bonusSC,
+              balanceBefore: refOldSC,
+              balanceAfter: refNewSC,
+              performedBy: session.username,
+              staffRole: session.role,
+              referenceId: deposit._id.toString(),
+              notes: `Referral Bonus: ${referralPercent}% bonus ($${bonusSC.toFixed(2)} SC) credited to wallet from @${user.username}'s first deposit ($${deposit.amount}).`,
+              createdAt: new Date(),
+            });
+
+            // C. In-App Notification to Referrer
+            const notifTitle = `🎁 Referral Bonus: +$${bonusSC.toFixed(2)} SC!`;
+            const notifMessage = `Congratulations! Your referred friend @${user.username} made their first deposit ($${deposit.amount}). You received a ${referralPercent}% referral bonus of $${bonusSC.toFixed(2)} SC directly into your wallet!`;
+
+            await db.collection('notifications').insertOne({
+              userId: referrer._id.toString(),
+              username: referrer.username,
+              email: referrer.email,
+              target: 'user',
+              title: notifTitle,
+              message: notifMessage,
+              type: 'bonus',
+              amount: bonusSC,
+              read: false,
+              createdAt: new Date(),
+            });
+
+            // D. Email Notification to Referrer
+            if (referrer.email) {
+              sendEmail({
+                to: referrer.email,
+                subject: `🎁 $${bonusSC.toFixed(2)} SC Referral Bonus Added to Your Wallet!`,
+                html: `
+                  <div style="background-color: #070514; color: #FFFFFF; padding: 32px 20px; font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 500px; margin: auto; border-radius: 16px; border: 1px solid rgba(0, 240, 255, 0.4); text-align: center;">
+                    <img src="https://playersparadisehub.com/logo.png" alt="Players Paradise" style="height: 48px; margin-bottom: 12px;" />
+                    <h1 style="color: #00F0FF; margin: 0; font-size: 20px; font-weight: 900;">PLAYERS PARADISE</h1>
+                    <p style="color: #E026D8; font-size: 11px; margin: 4px 0 20px 0; text-transform: uppercase; letter-spacing: 2px;">Referral Reward Earned</p>
+                    <div style="background: #0E0A24; border: 1px solid rgba(0, 240, 255, 0.2); border-radius: 12px; padding: 20px; text-align: left; margin: 20px 0;">
+                      <h2 style="font-size: 16px; margin: 0 0 10px 0; color: #10B981;">+$${bonusSC.toFixed(2)} SC Credited to Your Wallet</h2>
+                      <p style="font-size: 13px; color: #CBD5E1; line-height: 1.6; margin: 0;">
+                        Your referred friend <b>@${user.username}</b> made their first deposit of <b>$${deposit.amount}</b>. Based on our <b>${referralPercent}%</b> referral rate, your bonus has been credited straight into your wallet!
+                      </p>
+                    </div>
+                    <a href="https://playersparadisehub.com/wallet" style="display: inline-block; background: linear-gradient(135deg, #00F0FF 0%, #E026D8 100%); color: #070514; font-weight: 900; padding: 12px 28px; border-radius: 9999px; text-decoration: none; font-size: 13px;">
+                      VIEW WALLET &amp; PLAY
+                    </a>
+                  </div>
+                `,
+              }).catch(() => {});
             }
-          );
-          await ledgerCol.insertOne({
-            userId: referrer._id.toString(),
-            username: referrer.username,
-            type: 'referral_bonus',
-            currency: 'SC',
-            amount: commissionSC,
-            balanceBefore: referrer.balanceSC || 0,
-            balanceAfter: (referrer.balanceSC || 0) + commissionSC,
-            performedBy: 'system',
-            notes: `50% referral commission from player ${user.username}'s first deposit ($${deposit.amount})`,
-            createdAt: new Date(),
-          });
+
+            // E. Mark Player So Bonus Cannot Be Claimed Multiple Times
+            await usersCol.updateOne(
+              { _id: user._id },
+              {
+                $set: {
+                  referralRewardPaid: true,
+                  referralRewardAmount: bonusSC,
+                  referralRewardPaidAt: new Date(),
+                  referredByUserId: referrer._id.toString(),
+                },
+              }
+            );
+          }
         }
       }
 

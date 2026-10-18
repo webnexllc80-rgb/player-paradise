@@ -12,6 +12,9 @@ export async function GET(req) {
 
     const db = await getDb();
     const usersCol = db.collection('users');
+    const settingsCol = db.collection('system_settings');
+    const sysSettings = await settingsCol.findOne({ key: 'general' });
+    const defaultReferralPercent = Number(sysSettings?.referralBonusPercent ?? 20);
 
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get('mode');
@@ -58,7 +61,7 @@ export async function GET(req) {
           username: u.username,
           email: u.email || 'N/A',
           referralCode: u.referralCode || u.username.toUpperCase(),
-          commissionRate: u.affiliateRate || 50,
+          commissionRate: u.affiliateRate || defaultReferralPercent,
           commissionsEarned: Number(u.affiliateCommissionsEarned || 0),
           commissionsUnpaid: Number(u.affiliateCommissionsUnpaid || 0),
           totalReferrals: refs.length,
@@ -113,7 +116,7 @@ export async function GET(req) {
       stats: {
         referralCode: user.referralCode || user.username || '',
         referralLink: `https://playersparadisehub.com/register?ref=${user.referralCode || user.username || ''}`,
-        commissionRate: user.affiliateRate || 50,
+        commissionRate: user.affiliateRate || defaultReferralPercent,
         totalReferrals: referredUsers.length,
         activeDepositors: referredUsers.filter(u => (u.totalDeposited || 0) > 0).length,
         commissionsEarned: user.affiliateCommissionsEarned || 0,

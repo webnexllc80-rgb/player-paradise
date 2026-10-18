@@ -130,7 +130,7 @@ export default function AffiliateManagementHub({
             <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
               {activeTab === 'affiliate_commissions'
                 ? 'Affiliate Commission Settlement Desk'
-                : 'Affiliate Partner Program & 50% Revenue Share'}
+                : 'Affiliate Partner Program & Referral Bonus Hub'}
             </h2>
           </div>
           <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#9A91A8' }}>
@@ -242,7 +242,7 @@ export default function AffiliateManagementHub({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px', fontSize: '10.5px', color: '#00F0FF' }}>
             <Sparkles size={11} />
-            <span className="truncate">50% RevShare Active</span>
+            <span className="truncate">Referral Bonus Active</span>
           </div>
         </div>
 
