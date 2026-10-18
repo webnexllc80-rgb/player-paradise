@@ -126,6 +126,18 @@ function createCollectionWrapper(name) {
           limitCount = n;
           return cursor;
         },
+        project(projection = {}) {
+          if (projection && Object.keys(projection).length > 0) {
+            filtered = filtered.map(doc => {
+              const res = { ...doc };
+              for (const [k, v] of Object.entries(projection)) {
+                if (v === 0) delete res[k];
+              }
+              return res;
+            });
+          }
+          return cursor;
+        },
         async toArray() {
           if (limitCount !== null) {
             return filtered.slice(0, limitCount);
