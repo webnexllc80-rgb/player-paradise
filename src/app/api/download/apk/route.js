@@ -5,6 +5,8 @@ import path from 'path';
 export async function GET() {
   try {
     const candidates = [
+      path.join(process.cwd(), 'public', 'download', 'players-paradise.apk'),
+      path.join(process.cwd(), 'public', 'players-paradise.apk'),
       path.join(process.cwd(), 'public', 'download', 'vegas-one.apk'),
       path.join(process.cwd(), 'public', 'vegas-one.apk'),
     ];
@@ -46,7 +48,7 @@ export async function GET() {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.android.package-archive',
-        'Content-Disposition': 'attachment; filename="vegas-one.apk"',
+        'Content-Disposition': 'attachment; filename="players-paradise.apk"',
         'Content-Length': stat.size.toString(),
         'Cache-Control': 'public, max-age=3600, must-revalidate',
       },

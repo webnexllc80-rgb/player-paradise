@@ -133,7 +133,7 @@ export default function DownloadAppPage() {
                   <span>DOWNLOAD ANDROID APK</span>
                 </a>
                 <div className="text-[11px] text-center text-slate-500 font-mono">
-                  APK Size: ~23.5 MB • Android 8.0+
+                  APK Size: ~5.8 MB • Android 8.0+ • Optimized Ultra-Fast
                 </div>
               </div>
             </div>

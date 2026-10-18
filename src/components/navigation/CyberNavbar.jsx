@@ -58,7 +58,13 @@ export default function CyberNavbar({
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 w-full h-16 border-b border-[var(--chrome-border)]/60 bg-[var(--bg-deep)]/90 backdrop-blur-xl px-4 flex items-center justify-between gap-3">
+    <header
+      className="sticky top-0 z-30 w-full border-b border-[var(--chrome-border)]/60 bg-[var(--bg-deep)]/90 backdrop-blur-xl px-4 flex items-center justify-between gap-3"
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        minHeight: 'calc(4rem + env(safe-area-inset-top, 0px))',
+      }}
+    >
       {/* Left side: Hamburger toggle & brand emblem on mobile */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <button

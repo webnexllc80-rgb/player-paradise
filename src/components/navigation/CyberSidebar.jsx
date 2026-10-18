@@ -67,6 +67,10 @@ export default function CyberSidebar({
         className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col transition-all duration-300 ease-in-out border-r border-[var(--chrome-border)] bg-[var(--bg-deep)]/95 backdrop-blur-xl ${
           mobileOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'
         } ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))',
+        }}
       >
         {/* Brand Header */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-[var(--chrome-border)]/60">
