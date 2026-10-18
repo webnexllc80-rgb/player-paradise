@@ -1,0 +1,217 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import CyberNavbar from '@/components/navigation/CyberNavbar';
+import CyberSidebar from '@/components/navigation/CyberSidebar';
+import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
+import CyberFooter from '@/components/common/CyberFooter';
+import PlayerGameCredentialsHub from '@/components/hub/PlayerGameCredentialsHub';
+import AuthModal from '@/components/modals/AuthModal';
+import WalletModal from '@/components/modals/WalletModal';
+import ExternalGameModal from '@/components/modals/ExternalGameModal';
+import Panda777SlotsModal from '@/components/games/Panda777SlotsModal';
+import CyberCrashModal from '@/components/games/CyberCrashModal';
+import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
+
+import {
+  KeyRound,
+  ShieldCheck,
+  Gamepad2,
+  Sparkles,
+  ArrowRight
+} from 'lucide-react';
+
+export default function MyGameIdsPage() {
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+  const [games, setGames] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Modals
+  const [authModal, setAuthModal] = useState({ open: false, tab: 'login' });
+  const [walletModal, setWalletModal] = useState({ open: false, tab: 'deposit' });
+  const [activeExternalGame, setActiveExternalGame] = useState(null);
+  const [slotsOpen, setSlotsOpen] = useState(false);
+  const [crashOpen, setCrashOpen] = useState(false);
+  const [spinWheelOpen, setSpinWheelOpen] = useState(false);
+
+  const loadUser = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.authenticated && data.user) {
+        setUser(data.user);
+      } else {
+        setUser(null);
+      }
+    } catch {
+      setUser(null);
+    }
+  };
+
+  const loadGames = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/games');
+      const data = await res.json();
+      if (data.success && data.games) setGames(data.games);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadUser();
+    loadGames();
+  }, []);
+
+  const handlePlayGame = (game) => {
+    if (!user) {
+      setAuthModal({ open: true, tab: 'login' });
+      return;
+    }
+    if (game.id === 'panda-777-slots') setSlotsOpen(true);
+    else if (game.id === 'cyber-matrix-crash') setCrashOpen(true);
+    else setActiveExternalGame(game);
+  };
+
+  return (
+    <div className="min-h-screen bg-[var(--bg-deep)] text-white flex flex-col" style={{ fontFamily: 'Lexend, -apple-system, sans-serif' }}>
+      <CyberSidebar
+        collapsed={sidebarCollapsed}
+        setCollapsed={setSidebarCollapsed}
+        mobileOpen={mobileSidebarOpen}
+        setMobileOpen={setMobileSidebarOpen}
+        user={user}
+        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenGameRequest={() => {}}
+        onOpenChat={() => {}}
+        onOpenDailyBonus={() => {}}
+        onOpenSpinWheel={() => setSpinWheelOpen(true)}
+      />
+
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+        <CyberNavbar
+          onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+          user={user}
+          onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+          onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+          onOpenDailyBonus={() => {}}
+          onOpenNotifications={() => {}}
+          onOpenSpinWheel={() => setSpinWheelOpen(true)}
+          onLogout={() => {
+            fetch('/api/auth/logout', { method: 'POST' });
+            setUser(null);
+          }}
+        />
+
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+          {/* Header Banner */}
+          <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8 border border-cyan-500/30 bg-gradient-to-r from-slate-950 via-[#0d0724] to-slate-950 shadow-[0_0_30px_rgba(0,240,255,0.15)]">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-bold tracking-wider uppercase">
+                  <ShieldCheck size={14} className="text-cyan-400" />
+                  <span>OFFICIAL PLATFORM VAULT</span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight">
+                  MY GAME IDs &amp; PLATFORM ACCOUNTS
+                </h1>
+                <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
+                  View and manage your verified credentials for Ultra Panda, Orion Stars, Fire Kirin, Game Vault, Milky Way, and Juwa 777. Copy your official login credentials or request credentials for additional platforms below.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => router.push('/games')}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 text-slate-200 text-xs font-bold transition-all flex items-center gap-2"
+                >
+                  <Gamepad2 size={16} className="text-cyan-400" />
+                  <span>Explore Games</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWalletModal({ open: true, tab: 'deposit' })}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black text-xs font-black shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all flex items-center gap-2"
+                >
+                  <Sparkles size={16} />
+                  <span>Deposit Funds</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Credentials Hub Component */}
+          <PlayerGameCredentialsHub
+            user={user}
+            games={games}
+            onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+            onPlayGame={handlePlayGame}
+            onDeposit={() => setWalletModal({ open: true, tab: 'deposit' })}
+          />
+        </main>
+
+        <CyberFooter />
+      </div>
+
+      <CyberMobileBottomNav
+        user={user}
+        onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenGameRequest={() => router.push('/my-game-ids')}
+        onOpenSpinWheel={() => setSpinWheelOpen(true)}
+      />
+
+      <AuthModal
+        isOpen={authModal.open}
+        onClose={() => setAuthModal({ open: false, tab: 'login' })}
+        onSuccess={() => loadUser()}
+      />
+
+      <WalletModal
+        isOpen={walletModal.open}
+        onClose={() => setWalletModal({ open: false, tab: 'deposit' })}
+        user={user}
+        onBalanceUpdated={loadUser}
+      />
+
+      <ExternalGameModal
+        isOpen={!!activeExternalGame}
+        onClose={() => setActiveExternalGame(null)}
+        game={activeExternalGame}
+        user={user}
+        onRequestAccount={() => {}}
+        onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+      />
+
+      <Panda777SlotsModal
+        isOpen={slotsOpen}
+        onClose={() => setSlotsOpen(false)}
+        user={user}
+        onBalanceUpdated={loadUser}
+      />
+
+      <CyberCrashModal
+        isOpen={crashOpen}
+        onClose={() => setCrashOpen(false)}
+        user={user}
+        onBalanceUpdated={loadUser}
+      />
+
+      <DailySpinWheelModal
+        isOpen={spinWheelOpen}
+        onClose={() => setSpinWheelOpen(false)}
+        user={user}
+        onSpinComplete={loadUser}
+      />
+    </div>
+  );
+}

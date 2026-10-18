@@ -40,9 +40,9 @@ export default function CyberMobileBottomNav({
       id: 'ids',
       label: 'Game IDs',
       icon: KeyRound,
-      action: onOpenGameRequest || (() => router.push('/games')),
+      action: () => router.push('/my-game-ids'),
       highlight: true,
-      isActive: false,
+      isActive: pathname === '/my-game-ids',
     },
     {
       id: 'deposit',

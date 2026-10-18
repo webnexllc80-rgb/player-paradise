@@ -41,7 +41,7 @@ export default function CyberSidebar({
   const navItems = [
     { label: 'Game Lobby', path: '/', icon: Gamepad2, badge: 'HOT' },
     { label: 'All Games', path: '/games', icon: Trophy },
-    { label: 'My Game IDs', action: onOpenGameRequest, icon: KeyRound, highlight: true },
+    { label: 'My Game IDs', path: '/my-game-ids', icon: KeyRound, highlight: true },
     { label: 'Deposit Funds', path: '/deposit', icon: Wallet },
     { label: 'Redeem Cashout', path: '/withdraw', icon: Receipt },
     { label: 'Daily Spin', path: '/spin-wheel', icon: Gift, glow: true },
