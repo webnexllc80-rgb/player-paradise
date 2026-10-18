@@ -190,28 +190,34 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     const session = await getSessionUser();
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const email = (session?.email || body.email || '').toLowerCase().trim();
     const fcmToken = body.token || body.fcmToken || null;
     const device = body.device || 'web_chrome';
+    const deviceId = body.deviceId || null;
 
-    if (!email) {
-      return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
+    if (!fcmToken && !email) {
+      return NextResponse.json({ success: false, error: 'Push token or email is required' }, { status: 400 });
     }
 
     const db = await getDb();
     const subsCol = db.collection('subscriptions');
     const usersCol = db.collection('users');
 
+    const effectiveEmail = email || (fcmToken ? `device_${fcmToken.slice(-10)}@push.playersparadisehub.com` : 'anonymous@push.playersparadisehub.com');
+    const filter = fcmToken ? { $or: [{ fcmToken }, { token: fcmToken }] } : { email: effectiveEmail };
+
     await subsCol.updateOne(
-      { email },
+      filter,
       {
         $set: {
-          email,
+          email: effectiveEmail,
           fcmToken,
+          token: fcmToken,
           device,
+          deviceId,
           userId: session?.userId || null,
-          username: session?.username || email.split('@')[0],
+          username: session?.username || effectiveEmail.split('@')[0],
           isSubscribed: true,
           updatedAt: new Date(),
         },
@@ -229,7 +235,7 @@ export async function PUT(req) {
 
     return NextResponse.json({
       success: true,
-      message: 'Successfully subscribed to VIP Broadcasts & Chrome Push Notifications!',
+      message: 'Successfully subscribed to VIP Broadcasts & Push Notifications!',
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

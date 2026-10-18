@@ -15,19 +15,20 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Identifier and password are required.' }, { status: 400 });
     }
 
-    const cleanId = identifier.trim().toLowerCase();
+    const cleanId = String(identifier || '').trim().toLowerCase();
+    const cleanPassword = typeof password === 'string' ? password.trim() : password;
     const deviceId = getDeviceIdFromRequest(req, rawDeviceId);
 
     const db = await getDb();
     const usersCol = db.collection('users');
 
     // Case-insensitive lookup for email or username
-    const user = await usersCol.findOne({
+    let user = await usersCol.findOne({
       $or: [
         { email: cleanId },
         { username: cleanId },
-        { email: { $regex: new RegExp(`^${cleanId}$`, 'i') } },
-        { username: { $regex: new RegExp(`^${cleanId}$`, 'i') } },
+        { email: { $regex: new RegExp(`^${cleanId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        { username: { $regex: new RegExp(`^${cleanId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
       ],
     });
 
@@ -39,7 +40,11 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'This account has been suspended.' }, { status: 403 });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    let passwordMatch = await bcrypt.compare(cleanPassword, user.passwordHash);
+    if (!passwordMatch && password !== cleanPassword) {
+      passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    }
+
     if (!passwordMatch) {
       return NextResponse.json({ success: false, error: 'Invalid password. Please check your credentials.' }, { status: 401 });
     }

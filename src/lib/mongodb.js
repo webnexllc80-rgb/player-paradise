@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { MongoClient } from 'mongodb';
 
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/players_paradise';
@@ -20,8 +22,18 @@ if (!global._mongoClientPromise) {
 }
 clientPromise = global._mongoClientPromise;
 
-// In-memory fallback database for ultra-reliability
-const fallbackStore = {
+const DATA_DIR = path.join(process.cwd(), 'data');
+const DB_FILE = path.join(DATA_DIR, 'paradise_db.json');
+
+function ensureDataDir() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch {}
+}
+
+const defaultStore = {
   users: [],
   accountRequests: [],
   gameAccounts: [],
@@ -37,7 +49,45 @@ const fallbackStore = {
   system_settings: [],
   settings: [],
   kyc: [],
+  subscriptions: [],
 };
+
+// Global singleton in-memory & file-backed persistent database
+let fallbackStore = global._paradiseFallbackStore || { ...defaultStore };
+global._paradiseFallbackStore = fallbackStore;
+
+function loadFallbackStore() {
+  ensureDataDir();
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const content = fs.readFileSync(DB_FILE, 'utf8');
+      if (content && content.trim()) {
+        const parsed = JSON.parse(content);
+        for (const k of Object.keys(defaultStore)) {
+          if (Array.isArray(parsed[k])) {
+            fallbackStore[k] = parsed[k];
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Load fallbackStore note:', err.message);
+  }
+}
+
+// Initial load
+loadFallbackStore();
+
+function saveFallbackStore() {
+  ensureDataDir();
+  try {
+    const tmp = DB_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(fallbackStore, null, 2), 'utf8');
+    fs.renameSync(tmp, DB_FILE);
+  } catch (err) {
+    console.warn('Save fallbackStore note:', err.message);
+  }
+}
 
 function matchDoc(doc, query) {
   if (!query || Object.keys(query).length === 0) return true;
@@ -94,10 +144,11 @@ function matchDoc(doc, query) {
 
 function createCollectionWrapper(name) {
   if (!fallbackStore[name]) fallbackStore[name] = [];
-  const data = fallbackStore[name];
 
   return {
     find(query = {}) {
+      loadFallbackStore();
+      const data = fallbackStore[name] || [];
       let filtered = data.filter((doc) => matchDoc(doc, query));
       let limitCount = null;
 
@@ -141,27 +192,36 @@ function createCollectionWrapper(name) {
       return cursor;
     },
     async findOne(query = {}) {
+      loadFallbackStore();
+      const data = fallbackStore[name] || [];
       return data.find((doc) => matchDoc(doc, query)) || null;
     },
     async insertOne(doc) {
+      if (!fallbackStore[name]) fallbackStore[name] = [];
+      const data = fallbackStore[name];
       const inserted = {
         _id: doc._id || Math.random().toString(36).substring(2, 12),
         ...doc,
         createdAt: doc.createdAt || new Date(),
       };
       data.push(inserted);
+      saveFallbackStore();
       return { insertedId: inserted._id, acknowledged: true };
     },
     async insertMany(docs) {
+      if (!fallbackStore[name]) fallbackStore[name] = [];
+      const data = fallbackStore[name];
       const inserted = docs.map((d) => ({
         _id: d._id || Math.random().toString(36).substring(2, 12),
         ...d,
         createdAt: d.createdAt || new Date(),
       }));
       data.push(...inserted);
+      saveFallbackStore();
       return { insertedIds: inserted.map((d) => d._id), acknowledged: true };
     },
     async updateOne(filter, update, options = {}) {
+      if (!fallbackStore[name]) fallbackStore[name] = [];
       let doc = await this.findOne(filter);
       if (!doc) {
         if (options.upsert) {
@@ -171,7 +231,8 @@ function createCollectionWrapper(name) {
             createdAt: new Date(),
           };
           if (update.$set) Object.assign(newDoc, update.$set);
-          data.push(newDoc);
+          fallbackStore[name].push(newDoc);
+          saveFallbackStore();
           return { matchedCount: 0, modifiedCount: 1, upsertedId: newDoc._id, acknowledged: true };
         }
         return { matchedCount: 0, modifiedCount: 0 };
@@ -190,10 +251,12 @@ function createCollectionWrapper(name) {
           if (!doc[k].includes(v)) doc[k].push(v);
         }
       }
+      saveFallbackStore();
       return { matchedCount: 1, modifiedCount: 1, acknowledged: true };
     },
     async updateMany(filter, update) {
-      const docs = data.filter((doc) => matchDoc(doc, filter));
+      if (!fallbackStore[name]) fallbackStore[name] = [];
+      const docs = fallbackStore[name].filter((doc) => matchDoc(doc, filter));
       for (const doc of docs) {
         if (update.$set) Object.assign(doc, update.$set);
         if (update.$inc) {
@@ -202,17 +265,25 @@ function createCollectionWrapper(name) {
           }
         }
       }
+      if (docs.length > 0) {
+        saveFallbackStore();
+      }
       return { matchedCount: docs.length, modifiedCount: docs.length, acknowledged: true };
     },
     async deleteOne(filter) {
+      if (!fallbackStore[name]) return { deletedCount: 0 };
+      const data = fallbackStore[name];
       const idx = data.findIndex((doc) => matchDoc(doc, filter));
       if (idx !== -1) {
         data.splice(idx, 1);
+        saveFallbackStore();
         return { deletedCount: 1 };
       }
       return { deletedCount: 0 };
     },
     async countDocuments(query = {}) {
+      loadFallbackStore();
+      const data = fallbackStore[name] || [];
       const filtered = data.filter((doc) => matchDoc(doc, query));
       return filtered.length;
     },

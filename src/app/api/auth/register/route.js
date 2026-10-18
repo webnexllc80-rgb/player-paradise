@@ -17,24 +17,29 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Username, email, and password are required.' }, { status: 400 });
     }
 
-    if (password.length < 6) {
+    const cleanUsername = username.trim().toLowerCase();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    if (cleanPassword.length < 6) {
       return NextResponse.json({ success: false, error: 'Password must be at least 6 characters.' }, { status: 400 });
     }
 
-    const cleanUsername = username.trim().toLowerCase();
-    const cleanEmail = email.trim().toLowerCase();
     const deviceId = getDeviceIdFromRequest(req, rawDeviceId);
 
     const db = await getDb();
     const usersCol = db.collection('users');
 
     // Check duplicate username or email
+    const safeEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const safeUsername = cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     const existing = await usersCol.findOne({
       $or: [
         { email: cleanEmail },
         { username: cleanUsername },
-        { email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },
-        { username: { $regex: new RegExp(`^${cleanUsername}$`, 'i') } },
+        { email: { $regex: new RegExp(`^${safeEmail}$`, 'i') } },
+        { username: { $regex: new RegExp(`^${safeUsername}$`, 'i') } },
       ],
     });
 
@@ -62,7 +67,7 @@ export async function POST(req) {
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
     const myReferralCode = `PP-${randomSuffix}`;
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(cleanPassword, 10);
     const initialBonusSC = 5.0; // 5 Free Sweeps Coins ($5.00)
     const initialBonusGC = 50000; // 50,000 Gold Coins
 
