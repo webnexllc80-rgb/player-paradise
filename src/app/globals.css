@@ -481,3 +481,21 @@ html, body {
   padding-bottom: max(80px, calc(64px + env(safe-area-inset-bottom, 16px)));
 }
 
+/* Floating Live Support Widget Offsets (Clear mobile bottom navigation bar) */
+.live-chat-float-btn {
+  bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+}
+
+.live-chat-drawer {
+  bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 1024px) {
+  .live-chat-float-btn {
+    bottom: 1.5rem; /* 24px on desktop where mobile bottom nav is hidden */
+  }
+  .live-chat-drawer {
+    bottom: 5.5rem; /* 88px on desktop */
+  }
+}
+

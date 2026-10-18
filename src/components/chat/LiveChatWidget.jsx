@@ -203,7 +203,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
   return (
     <>
       {/* Floating Headphone Support Button - Visible site-wide */}
-      <div className="fixed bottom-6 right-5 sm:right-6 z-40">
+      <div className="fixed live-chat-float-btn right-4 sm:right-6 z-40">
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="relative w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-xl cursor-pointer"
@@ -243,12 +243,12 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
       {/* Chat Drawer / Modal with Mobile Keyboard Offset */}
       {isOpen && (
         <div
-          className="fixed right-3 sm:right-6 w-[94vw] sm:w-[390px] max-h-[84vh] h-[550px] rounded-2xl flex flex-col z-50 overflow-hidden shadow-2xl transition-all duration-150"
+          className="fixed live-chat-drawer right-3 sm:right-6 w-[94vw] sm:w-[390px] max-h-[82vh] h-[550px] rounded-2xl flex flex-col z-50 overflow-hidden shadow-2xl transition-all duration-150"
           style={{
             backgroundColor: '#0B071A',
             border: '1px solid rgba(0, 240, 255, 0.35)',
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(0, 240, 255, 0.15)',
-            bottom: keyboardOffset > 0 ? `${keyboardOffset + 12}px` : '88px',
+            ...(keyboardOffset > 0 ? { bottom: `${keyboardOffset + 12}px` } : {}),
           }}
         >
           {/* Header */}
