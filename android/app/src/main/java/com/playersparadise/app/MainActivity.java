@@ -1,4 +1,4 @@
-package com.vegasone.app;
+package com.playersparadise.app;
 
 import com.getcapacitor.BridgeActivity;
 
