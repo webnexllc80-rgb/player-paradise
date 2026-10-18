@@ -197,12 +197,21 @@ export async function PUT(req) {
     const usersCol = db.collection('users');
     const ledgerCol = db.collection('ledger');
 
-    const redemption = await redemptionsCol.findOne({ _id: new ObjectId(redemptionId) });
+    const safeFilter = (targetId) => {
+      if (!targetId) return { _id: null };
+      const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
+      if (is24Hex && ObjectId.isValid(targetId)) {
+        return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { id: targetId }] };
+      }
+      return { $or: [{ _id: targetId }, { id: targetId }] };
+    };
+
+    const redemption = await redemptionsCol.findOne(safeFilter(redemptionId));
     if (!redemption) {
       return NextResponse.json({ success: false, error: 'Redemption not found.' }, { status: 404 });
     }
 
-    const user = await usersCol.findOne({ _id: new ObjectId(redemption.userId) });
+    const user = await usersCol.findOne(safeFilter(redemption.userId));
 
     // ACTION 1: COIN DESK APPROVAL (Verify game score & forward to Finance / Ledger)
     if (action === 'coin_approve') {

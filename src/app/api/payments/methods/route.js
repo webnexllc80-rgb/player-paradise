@@ -168,7 +168,17 @@ export async function PUT(req) {
     if (tag !== undefined) updateFields.tag = tag;
     updateFields.updatedAt = new Date();
 
-    await methodsCol.updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
+    function getMethodFilter(targetId) {
+      if (!targetId) return null;
+      const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
+      if (is24Hex && ObjectId.isValid(targetId)) {
+        return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { methodId: targetId }] };
+      }
+      return { $or: [{ _id: targetId }, { methodId: targetId }] };
+    }
+
+    const filter = getMethodFilter(id);
+    await methodsCol.updateOne(filter, { $set: updateFields });
 
     return NextResponse.json({ success: true, message: 'Payment method updated successfully.' });
   } catch (error) {
@@ -194,7 +204,16 @@ export async function DELETE(req) {
     const db = await getDb();
     const methodsCol = db.collection('payment_methods');
 
-    await methodsCol.deleteOne({ _id: new ObjectId(id) });
+    function getMethodFilter(targetId) {
+      if (!targetId) return null;
+      const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
+      if (is24Hex && ObjectId.isValid(targetId)) {
+        return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { methodId: targetId }] };
+      }
+      return { $or: [{ _id: targetId }, { methodId: targetId }] };
+    }
+
+    await methodsCol.deleteOne(getMethodFilter(id));
     return NextResponse.json({ success: true, message: 'Payment method deleted.' });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

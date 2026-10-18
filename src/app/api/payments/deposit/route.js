@@ -206,7 +206,16 @@ export async function PUT(req) {
     const usersCol = db.collection('users');
     const ledgerCol = db.collection('ledger');
 
-    const deposit = await depositsCol.findOne({ _id: new ObjectId(depositId) });
+    const safeFilter = (targetId) => {
+      if (!targetId) return { _id: null };
+      const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
+      if (is24Hex && ObjectId.isValid(targetId)) {
+        return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { id: targetId }] };
+      }
+      return { $or: [{ _id: targetId }, { id: targetId }] };
+    };
+
+    const deposit = await depositsCol.findOne(safeFilter(depositId));
     if (!deposit) {
       return NextResponse.json({ success: false, error: 'Deposit record not found.' }, { status: 404 });
     }
@@ -215,7 +224,7 @@ export async function PUT(req) {
       return NextResponse.json({ success: false, error: `Deposit is already marked as ${deposit.status}.` }, { status: 400 });
     }
 
-    const user = await usersCol.findOne({ _id: new ObjectId(deposit.userId) });
+    const user = await usersCol.findOne(safeFilter(deposit.userId));
     if (!user) {
       return NextResponse.json({ success: false, error: 'Associated player not found.' }, { status: 404 });
     }

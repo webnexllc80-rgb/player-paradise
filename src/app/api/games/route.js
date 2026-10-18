@@ -128,7 +128,16 @@ export async function PUT(req) {
       updateFields.isFeatured = normalizedBadge === 'EXCLUSIVE' || normalizedBadge === 'POPULAR';
     }
 
-    await gamesCol.updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
+    function getGameFilter(targetId) {
+      if (!targetId) return null;
+      const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
+      if (is24Hex && ObjectId.isValid(targetId)) {
+        return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { id: targetId }] };
+      }
+      return { $or: [{ _id: targetId }, { id: targetId }] };
+    }
+
+    await gamesCol.updateOne(getGameFilter(id), { $set: updateFields });
 
     return NextResponse.json({ success: true, message: 'Game updated successfully' });
   } catch (error) {
@@ -154,7 +163,16 @@ export async function DELETE(req) {
     const db = await getDb();
     const gamesCol = db.collection('games');
 
-    await gamesCol.deleteOne({ _id: new ObjectId(id) });
+    function getGameFilter(targetId) {
+      if (!targetId) return null;
+      const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
+      if (is24Hex && ObjectId.isValid(targetId)) {
+        return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { id: targetId }] };
+      }
+      return { $or: [{ _id: targetId }, { id: targetId }] };
+    }
+
+    await gamesCol.deleteOne(getGameFilter(id));
     return NextResponse.json({ success: true, message: 'Game deleted successfully' });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

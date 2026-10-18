@@ -282,7 +282,7 @@ export async function ensureDbInitialized() {
     }
 
     // 3. Ensure Default Payment Methods
-    const methodsCol = db.collection('paymentMethods');
+    const methodsCol = db.collection('payment_methods');
     const existingMethodsCount = await methodsCol.countDocuments({});
 
     if (existingMethodsCount === 0) {

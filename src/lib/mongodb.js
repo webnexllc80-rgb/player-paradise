@@ -41,6 +41,7 @@ const fallbackStore = {
   chat_messages: [],
   notifications: [],
   paymentMethods: [],
+  payment_methods: [],
   system_settings: [],
   settings: [],
   kyc: [],
