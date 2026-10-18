@@ -14,41 +14,63 @@ export default function PushNotificationManager() {
   const toastTimerRef = useRef(null);
   const progressIntervalRef = useRef(null);
 
-  // Helper to trigger native Chrome desktop notification
-  const triggerChromeDesktopNotification = (item) => {
+  // Helper to trigger native Chrome desktop & Android notification shade
+  const triggerChromeDesktopNotification = async (item) => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
 
     if (Notification.permission === 'granted') {
+      const title = item.title || '🎰 VIP Flash Coin Drop Activated!';
+      const body =
+        item.message ||
+        '5.00 SC + 50,000 GC test bonus has been credited to your player account. Enjoy the games!';
+      const url = item.url || '/';
+
       try {
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.ready
-            .then((reg) => {
-              reg.showNotification(item.title || 'Players Paradise Hub', {
-                body: item.message || 'You have a new alert waiting in your dashboard!',
+        // Method 1: Use registered Service Worker (Mandatory for Android Chrome notification bar)
+        if ('serviceWorker' in navigator) {
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            if (reg && reg.showNotification) {
+              await reg.showNotification(title, {
+                body,
                 icon: '/logo.png',
                 badge: '/logo.png',
                 tag: 'pp-alert-' + (item.id || Date.now()),
                 renotify: true,
-                vibrate: [200, 100, 200],
-                data: { url: item.url || '/' },
+                requireInteraction: true,
+                vibrate: [300, 100, 300],
+                data: { url, date: Date.now() },
+                actions: [
+                  { action: 'open', title: 'Claim / View' },
+                  { action: 'dismiss', title: 'Dismiss' },
+                ],
               });
-            })
-            .catch(() => {
-              new Notification(item.title || 'Players Paradise Hub', {
-                body: item.message || 'You have a new alert waiting in your dashboard!',
-                icon: '/logo.png',
-                tag: 'pp-alert-' + (item.id || Date.now()),
-              });
+              return;
+            }
+          } catch (swErr) {
+            console.warn('SW showNotification notice:', swErr);
+          }
+
+          // Method 2: Send message to active service worker controller
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'SHOW_NOTIFICATION',
+              title,
+              body,
+              url,
             });
-        } else {
-          new Notification(item.title || 'Players Paradise Hub', {
-            body: item.message || 'You have a new alert waiting in your dashboard!',
-            icon: '/logo.png',
-            tag: 'pp-alert-' + (item.id || Date.now()),
-          });
+            return;
+          }
         }
+
+        // Method 3: Desktop browser standard Notification API fallback
+        new Notification(title, {
+          body,
+          icon: '/logo.png',
+          tag: 'pp-alert-' + (item.id || Date.now()),
+        });
       } catch (err) {
-        console.warn('Chrome notification dispatch notice:', err);
+        console.warn('Chrome notification dispatch error:', err);
       }
     }
   };
@@ -91,35 +113,83 @@ export default function PushNotificationManager() {
     showInAppToast(item);
   };
 
-  // Request Chrome permission on user interaction or mount
+  // 1. Android Native Capacitor Push Notifications (For APK / Installed App)
   useEffect(() => {
-    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    const initCapacitor = async () => {
+      try {
+        if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+          const { PushNotifications } = await import('@capacitor/push-notifications');
+          const permStatus = await PushNotifications.requestPermissions();
 
-    if (Notification.permission === 'default') {
-      const askPermission = () => {
-        Notification.requestPermission()
-          .then((perm) => {
-            if (perm === 'granted') {
-              triggerChromeDesktopNotification({
-                title: '🔔 Notifications Enabled!',
-                message: 'You will now receive instant alerts for deposits, cashouts, and game IDs.',
+          if (permStatus.receive === 'granted') {
+            await PushNotifications.register();
+
+            PushNotifications.addListener('registration', async (token) => {
+              try {
+                await fetch('/api/notifications', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    token: token.value,
+                    device: 'android_apk',
+                  }),
+                });
+              } catch {}
+            });
+
+            PushNotifications.addListener('pushNotificationReceived', (notification) => {
+              dispatchAlert({
+                title: notification.title,
+                message: notification.body,
+                url: notification.data?.url || '/',
               });
-            }
-          })
-          .catch(() => {});
-      };
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Capacitor native push note:', err.message);
+      }
+    };
 
-      // Ask after short delay or first click
-      const timer = setTimeout(askPermission, 3500);
-      window.addEventListener('click', askPermission, { once: true });
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener('click', askPermission);
-      };
+    initCapacitor();
+  }, []);
+
+  // 2. Browser Service Worker & Chrome Permission Setup
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+    }
+
+    // Auto-request Chrome permission if not decided
+    if ('Notification' in window) {
+      if (Notification.permission === 'default') {
+        const askPermission = () => {
+          Notification.requestPermission()
+            .then((perm) => {
+              if (perm === 'granted') {
+                triggerChromeDesktopNotification({
+                  title: '🔔 Notifications Enabled!',
+                  message: 'You will now receive instant alerts for deposits, cashouts, and bonuses.',
+                });
+              }
+            })
+            .catch(() => {});
+        };
+
+        const timer = setTimeout(askPermission, 3000);
+        window.addEventListener('click', askPermission, { once: true });
+        return () => {
+          clearTimeout(timer);
+          window.removeEventListener('click', askPermission);
+        };
+      }
     }
   }, []);
 
-  // Poll for incoming notifications in real time
+  // 3. Poll for incoming broadcast notifications in real time
   useEffect(() => {
     let isCancelled = false;
 
@@ -135,7 +205,7 @@ export default function PushNotificationManager() {
 
         const newest = notifs[0];
 
-        // On first run, record the newest ID so we don't spam old alerts
+        // On first run, record the newest ID so we don't spam old historical alerts
         if (isInitialRef.current) {
           lastSeenIdRef.current = newest.id;
           isInitialRef.current = false;
@@ -162,18 +232,24 @@ export default function PushNotificationManager() {
 
     window.addEventListener('paradise-show-notification', handleCustomTrigger);
 
+    // Global developer / test shortcut
+    if (typeof window !== 'undefined') {
+      window.triggerTestPush = (customTitle, customMessage) => {
+        dispatchAlert({
+          title: customTitle || '🎰 VIP Flash Coin Drop Activated!',
+          message:
+            customMessage ||
+            '5.00 SC + 50,000 GC test bonus has been credited to your player account. Enjoy the games!',
+          url: '/deposit',
+        });
+      };
+    }
+
     return () => {
       isCancelled = true;
       clearInterval(interval);
       window.removeEventListener('paradise-show-notification', handleCustomTrigger);
     };
-  }, []);
-
-  // Service worker registration
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-    }
   }, []);
 
   if (!activeToast) return null;
@@ -205,7 +281,7 @@ export default function PushNotificationManager() {
           </div>
 
           <h4 className="text-xs font-heading font-black text-white truncate tracking-wide">
-            {activeToast.title || 'Players Paradise Alert'}
+            {activeToast.title || '🎰 VIP Flash Coin Drop Activated!'}
           </h4>
 
           <p className="text-[11px] text-slate-300 mt-0.5 leading-snug line-clamp-2">
@@ -220,13 +296,12 @@ export default function PushNotificationManager() {
                 if (activeToast.url && activeToast.url !== '/') {
                   router.push(activeToast.url);
                 } else {
-                  // Trigger notification modal open event
                   window.dispatchEvent(new CustomEvent('paradise-open-notifications'));
                 }
               }}
               className="px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-400 to-teal-400 text-black text-[11px] font-heading font-black hover:scale-102 active:scale-98 transition-all flex items-center gap-1 shadow-[0_0_10px_rgba(0,240,255,0.4)]"
             >
-              <span>VIEW</span>
+              <span>CLAIM / VIEW</span>
               <ExternalLink size={11} strokeWidth={3} />
             </button>
 
