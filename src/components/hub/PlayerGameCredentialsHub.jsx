@@ -43,14 +43,14 @@ export default function PlayerGameAccountsHub({
   const [requestSuccessMsg, setRequestSuccessMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
 
-  const fetchAccountsAndRequests = async () => {
+  const fetchAccountsAndRequests = async (isSilent = false) => {
     if (!user?.email) return;
 
-    setLoading(true);
+    if (!isSilent) setLoading(true);
     try {
       const [credRes, reqRes] = await Promise.all([
-        fetch(`/api/game-accounts?email=${encodeURIComponent(user.email)}`),
-        fetch(`/api/account-requests?email=${encodeURIComponent(user.email)}`),
+        fetch(`/api/game-accounts?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' }),
+        fetch(`/api/account-requests?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' }),
       ]);
 
       const credData = await credRes.json();
@@ -95,15 +95,28 @@ export default function PlayerGameAccountsHub({
     } catch (err) {
       console.error('Error fetching game accounts:', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
     if (user?.email) {
       fetchAccountsAndRequests();
-      const interval = setInterval(fetchAccountsAndRequests, 6000);
-      return () => clearInterval(interval);
+      const interval = setInterval(() => {
+        if (!document.hidden) fetchAccountsAndRequests(true);
+      }, 4000);
+
+      const handleFocus = () => fetchAccountsAndRequests(true);
+      window.addEventListener('focus', handleFocus);
+      document.addEventListener('visibilitychange', handleFocus);
+      window.addEventListener('accountRequestUpdated', handleFocus);
+
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('focus', handleFocus);
+        document.removeEventListener('visibilitychange', handleFocus);
+        window.removeEventListener('accountRequestUpdated', handleFocus);
+      };
     } else {
       setActiveAccounts([]);
       setPendingRequests([]);

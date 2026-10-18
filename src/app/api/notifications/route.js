@@ -125,57 +125,55 @@ export async function POST(req) {
 
     const res = await notifsCol.insertOne(newRecord);
 
-    // Send push notification via FCM / WebPush (fail-safe)
-    try {
-      await sendPushNotification({
-        topic: 'vegas_all_players',
-        title: title.trim(),
-        body: message.trim(),
-        data: { url },
-      });
-    } catch (fcmErr) {
+    // Send push notification via FCM / WebPush (fail-safe non-blocking)
+    sendPushNotification({
+      topic: 'vegas_all_players',
+      title: title.trim(),
+      body: message.trim(),
+      data: { url },
+    }).catch((fcmErr) => {
       console.warn('FCM delivery note:', fcmErr.message);
-    }
+    });
 
-    // Send email dispatch to players if channel is 'all' or 'email'
+    // Send email dispatch to players in background if channel is 'all' or 'email'
     if (channel === 'all' || channel === 'email') {
-      try {
-        const { sendEmail } = await import('@/lib/email');
-        const usersCol = db.collection('users');
-        let userFilter = { role: 'player' };
-        if (target !== 'all' && target.includes('@')) {
-          userFilter = { email: target.toLowerCase().trim() };
-        }
-        const targetUsers = await usersCol
-          .find(userFilter, { projection: { email: 1, username: 1 } })
-          .limit(100)
-          .toArray();
-
-        for (const u of targetUsers) {
-          if (u.email) {
-            const html = `
-              <div style="background-color: #070514; color: #FFFFFF; padding: 40px 24px; font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 540px; margin: auto; border-radius: 16px; border: 1px solid rgba(0, 240, 255, 0.35); text-align: center;">
-                <img src="https://playersparadisehub.com/logo.png" alt="Players Paradise" style="height: 52px; margin-bottom: 8px;" />
-                <h1 style="color: #00F0FF; margin: 0; font-size: 22px; font-weight: 900; letter-spacing: 1px;">PLAYERS PARADISE</h1>
-                <p style="color: #E026D8; font-size: 11px; margin: 4px 0 20px 0; text-transform: uppercase; letter-spacing: 2px;">Official Player Broadcast</p>
-                <div style="background: #0E0A24; border: 1px solid rgba(0, 240, 255, 0.2); border-radius: 12px; padding: 22px; text-align: left; margin: 20px 0;">
-                  <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #FFFFFF;">${title.trim()}</h2>
-                  <p style="font-size: 14px; color: #CBD5E1; line-height: 1.6; margin: 0;">${message.trim()}</p>
-                </div>
-                <a href="${url && url.startsWith('http') ? url : `https://playersparadisehub.com${url}`}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF 0%, #E026D8 100%); color: #070514; font-weight: 900; padding: 12px 28px; border-radius: 9999px; text-decoration: none; font-size: 14px; letter-spacing: 0.5px;">
-                  ACCESS NOW &amp; PLAY
-                </a>
-                <p style="margin-top: 30px; font-size: 11px; color: #64748B;">You received this update because you are a registered player at Players Paradise.</p>
-              </div>
-            `;
-            sendEmail({ to: u.email, subject: `🎰 Players Paradise: ${title.trim()}`, html }).catch((err) =>
-              console.warn('Email dispatch note:', err.message)
-            );
+      (async () => {
+        try {
+          const { sendEmail } = await import('@/lib/email');
+          const usersCol = db.collection('users');
+          let userFilter = { role: 'player' };
+          if (target !== 'all' && target.includes('@')) {
+            userFilter = { email: target.toLowerCase().trim() };
           }
+          const targetUsers = await usersCol
+            .find(userFilter, { projection: { email: 1, username: 1 } })
+            .limit(100)
+            .toArray();
+
+          for (const u of targetUsers) {
+            if (u.email) {
+              const html = `
+                <div style="background-color: #070514; color: #FFFFFF; padding: 40px 24px; font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 540px; margin: auto; border-radius: 16px; border: 1px solid rgba(0, 240, 255, 0.35); text-align: center;">
+                  <img src="https://playersparadisehub.com/logo.png" alt="Players Paradise" style="height: 52px; margin-bottom: 8px;" />
+                  <h1 style="color: #00F0FF; margin: 0; font-size: 22px; font-weight: 900; letter-spacing: 1px;">PLAYERS PARADISE</h1>
+                  <p style="color: #E026D8; font-size: 11px; margin: 4px 0 20px 0; text-transform: uppercase; letter-spacing: 2px;">Official Player Broadcast</p>
+                  <div style="background: #0E0A24; border: 1px solid rgba(0, 240, 255, 0.2); border-radius: 12px; padding: 22px; text-align: left; margin: 20px 0;">
+                    <h2 style="font-size: 18px; margin: 0 0 10px 0; color: #FFFFFF;">${title.trim()}</h2>
+                    <p style="font-size: 14px; color: #CBD5E1; line-height: 1.6; margin: 0;">${message.trim()}</p>
+                  </div>
+                  <a href="${url && url.startsWith('http') ? url : `https://playersparadisehub.com${url}`}" style="display: inline-block; background: linear-gradient(135deg, #00F0FF 0%, #E026D8 100%); color: #070514; font-weight: 900; padding: 12px 28px; border-radius: 9999px; text-decoration: none; font-size: 14px; letter-spacing: 0.5px;">
+                    ACCESS NOW &amp; PLAY
+                  </a>
+                  <p style="margin-top: 30px; font-size: 11px; color: #64748B;">You received this update because you are a registered player at Players Paradise.</p>
+                </div>
+              `;
+              sendEmail({ to: u.email, subject: `🎰 Players Paradise: ${title.trim()}`, html }).catch(() => {});
+            }
+          }
+        } catch (emailErr) {
+          console.warn('Broadcast email batch note:', emailErr.message);
         }
-      } catch (emailErr) {
-        console.warn('Broadcast email batch error:', emailErr.message);
-      }
+      })();
     }
 
     return NextResponse.json({

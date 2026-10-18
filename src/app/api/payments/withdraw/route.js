@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
+import { notifyPlayer } from '@/lib/notify';
 
 // GET: List Redemptions
 export async function GET(req) {
@@ -15,6 +16,7 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const stage = searchParams.get('stage');
+    const lightweight = searchParams.get('lightweight') === 'true';
 
     const db = await getDb();
     const redemptionsCol = db.collection('redemptions');
@@ -42,7 +44,8 @@ export async function GET(req) {
       query.stage = stage;
     }
 
-    const items = await redemptionsCol.find(query).sort({ createdAt: -1 }).limit(100).toArray();
+    const projection = lightweight ? { gameScreenshot: 0, qrCodeImage: 0 } : {};
+    const items = await redemptionsCol.find(query, { projection }).sort({ createdAt: -1 }).limit(100).toArray();
 
     return NextResponse.json({
       success: true,
@@ -52,8 +55,18 @@ export async function GET(req) {
         username: r.username,
         amount: r.amount,
         gameTitle: r.gameTitle || 'Standard Platform',
-        gameScreenshot: r.gameScreenshot || null,
-        qrCodeImage: r.qrCodeImage || null,
+        gameScreenshot: r.gameScreenshot
+          ? (r.gameScreenshot.startsWith('data:') && r.gameScreenshot.length > 50000
+              ? `/api/payments/withdraw/proof?id=${r._id}&type=gameScreenshot`
+              : r.gameScreenshot)
+          : null,
+        qrCodeImage: r.qrCodeImage
+          ? (r.qrCodeImage.startsWith('data:') && r.qrCodeImage.length > 50000
+              ? `/api/payments/withdraw/proof?id=${r._id}&type=qrCodeImage`
+              : r.qrCodeImage)
+          : null,
+        hasScreenshot: Boolean(r.gameScreenshot),
+        hasQrCode: Boolean(r.qrCodeImage),
         payoutMethod: r.payoutMethod,
         destinationTag: r.destinationTag || r.destinationAddress || '',
         destinationAddress: r.destinationAddress || r.destinationTag || '',
@@ -330,6 +343,18 @@ export async function PUT(req) {
         createdAt: new Date(),
       });
 
+      // ACTION 1: COIN DESK APPROVAL (Pass to Finance)
+      if (action === 'coin_approve' && redemption.stage !== 'finance_payout' && redemption.status === 'pending_coin') {
+        notifyPlayer({
+          userId: redemption.userId,
+          userEmail: user?.email,
+          username: redemption.username,
+          title: 'Cashout Verified! 🎮',
+          message: `Your winnings of $${redemption.amount} SC from ${redemption.gameTitle} have been verified and passed to Finance for final dispatch!`,
+          type: 'withdraw_coin_approved',
+        });
+      }
+
       // Email notification if player has email
       if (user?.email) {
         sendEmail({
@@ -338,6 +363,17 @@ export async function PUT(req) {
           html: `<p>Hi ${user.username}, your cashout of $${redemption.amount} via ${redemption.payoutMethod} to ${redemption.destinationTag || redemption.destinationAddress} has been approved and dispatched!</p>`,
         }).catch(() => {});
       }
+
+      // Push & In-App Notification
+      notifyPlayer({
+        userId: redemption.userId,
+        userEmail: user?.email,
+        username: redemption.username,
+        title: 'Cashout Dispatched! 💸',
+        message: `Your cashout of $${redemption.amount} via ${redemption.payoutMethod} has been approved and dispatched!`,
+        type: 'withdraw_approved',
+        data: { amount: String(redemption.amount) },
+      });
 
       return NextResponse.json({ success: true, message: `Cashout of $${redemption.amount} approved and marked as dispatched to ${redemption.username}!` });
     }
@@ -373,6 +409,15 @@ export async function PUT(req) {
         referenceId: redemptionId,
         notes: `Cashout rejected by staff: ${reason}`,
         createdAt: new Date(),
+      });
+
+      notifyPlayer({
+        userId: redemption.userId,
+        userEmail: user?.email,
+        username: redemption.username,
+        title: 'Cashout Update ⚠️',
+        message: `Your cashout request ($${redemption.amount} SC) could not be processed: ${reason}`,
+        type: 'withdraw_rejected',
       });
 
       return NextResponse.json({ success: true, message: 'Cashout rejected. Rejection reason saved and sent to player.' });

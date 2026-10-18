@@ -2,31 +2,23 @@ import { MongoClient } from 'mongodb';
 
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/players_paradise';
 const options = {
-  maxPoolSize: 20,
-  minPoolSize: 2,
-  serverSelectionTimeoutMS: 4000,
-  connectTimeoutMS: 4000,
+  maxPoolSize: 50,
+  minPoolSize: 5,
+  serverSelectionTimeoutMS: 5000,
+  connectTimeoutMS: 5000,
 };
 
 let client;
 let clientPromise;
 
-if (process.env.NODE_ENV === 'development') {
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect().catch((err) => {
-      console.warn('MongoDB connection warning:', err.message);
-      return null;
-    });
-  }
-  clientPromise = global._mongoClientPromise;
-} else {
+if (!global._mongoClientPromise) {
   client = new MongoClient(uri, options);
-  clientPromise = client.connect().catch((err) => {
-    console.warn('MongoDB connection warning (prod):', err.message);
+  global._mongoClientPromise = client.connect().catch((err) => {
+    console.warn('MongoDB connection warning:', err.message);
     return null;
   });
 }
+clientPromise = global._mongoClientPromise;
 
 // In-memory fallback database for ultra-reliability
 const fallbackStore = {

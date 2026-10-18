@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
+import { notifyPlayer } from '@/lib/notify';
 
 // GET Account Requests
 export async function GET(req) {
@@ -327,6 +328,25 @@ export async function PUT(req) {
         { upsert: true }
       );
 
+      // Instant in-app & push notification
+      if (finalAmount > 0) {
+        notifyPlayer({
+          userEmail: cleanEmail,
+          title: `Game Loaded: ${cleanTitle}! ⚡`,
+          message: `$${finalAmount.toFixed(2)} SC loaded into your ${cleanTitle} account! Good luck!`,
+          type: 'coin_load_approved',
+          data: { gameTitle: cleanTitle, amount: String(finalAmount) },
+        });
+      } else {
+        notifyPlayer({
+          userEmail: cleanEmail,
+          title: `Game ID Ready: ${cleanTitle}! 🎮`,
+          message: `Your ${cleanTitle} credentials have been issued! Username: ${username}`,
+          type: 'account_ready',
+          data: { gameTitle: cleanTitle },
+        });
+      }
+
       return NextResponse.json({
         success: true,
         message: finalAmount > 0
@@ -373,6 +393,14 @@ export async function PUT(req) {
           },
         }
       );
+
+      notifyPlayer({
+        userEmail: cleanEmail,
+        title: `${cleanTitle} Request Update ⚠️`,
+        message: `Your request for ${cleanTitle} was rejected: ${reason}`,
+        type: 'account_rejected',
+        data: { gameTitle: cleanTitle },
+      });
 
       return NextResponse.json({
         success: true,

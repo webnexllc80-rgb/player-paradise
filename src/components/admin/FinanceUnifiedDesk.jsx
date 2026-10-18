@@ -49,6 +49,19 @@ export default function FinanceUnifiedDesk({
   const [approvingId, setApprovingId] = useState(null);
   const [previewProof, setPreviewProof] = useState(null);
 
+  // Instant close on ESC key
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setPreviewProof(null);
+        setRejectDepositModal({ open: false, deposit: null, reason: '' });
+        setRejectRedeemModal({ open: false, item: null, reason: '' });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleCopy = (text, id) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
@@ -1625,10 +1638,12 @@ export default function FinanceUnifiedDesk({
                 Cancel
               </button>
               <button
-                onClick={async () => {
+                onClick={() => {
                   const depId = rejectDepositModal.deposit.id || rejectDepositModal.deposit._id;
-                  await onRejectDeposit(depId, rejectDepositModal.reason || 'Payment details could not be verified.');
+                  const reason = rejectDepositModal.reason || 'Payment details could not be verified.';
+                  // Close modal instantly in 0ms!
                   setRejectDepositModal({ open: false, deposit: null, reason: '' });
+                  onRejectDeposit(depId, reason);
                 }}
                 style={{
                   padding: '8px 18px',
@@ -1730,10 +1745,12 @@ export default function FinanceUnifiedDesk({
                 Cancel
               </button>
               <button
-                onClick={async () => {
+                onClick={() => {
                   const redId = rejectRedeemModal.item.id || rejectRedeemModal.item._id;
-                  await onRejectRedemption(redId, rejectRedeemModal.reason || 'Cashout rejected. Coins refunded to player balance.');
+                  const reason = rejectRedeemModal.reason || 'Cashout rejected. Coins refunded to player balance.';
+                  // Close modal instantly in 0ms!
                   setRejectRedeemModal({ open: false, item: null, reason: '' });
+                  onRejectRedemption(redId, reason);
                 }}
                 style={{
                   padding: '8px 18px',

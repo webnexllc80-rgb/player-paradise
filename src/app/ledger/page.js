@@ -40,30 +40,51 @@ export default function LedgerPage() {
   const [filterType, setFilterType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
-      const meRes = await fetch('/api/auth/me');
+      const meRes = await fetch('/api/auth/me', { cache: 'no-store' });
       const meData = await meRes.json();
       if (meData.authenticated && meData.user) {
         setUser(meData.user);
-        const ledRes = await fetch('/api/ledger');
+        const ledRes = await fetch('/api/ledger', { cache: 'no-store' });
         const ledData = await ledRes.json();
         if (ledData.success && ledData.records) {
           setRecords(ledData.records);
         }
-      } else {
+      } else if (!isSilent) {
         router.push('/login?redirect=/ledger');
       }
     } catch (err) {
       console.error('Failed to load ledger:', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
+
+    const interval = setInterval(() => {
+      if (!document.hidden) loadData(true);
+    }, 5000);
+
+    const handleUserSync = (e) => {
+      if (e.detail) setUser(e.detail);
+    };
+
+    const handleFocus = () => loadData(true);
+
+    window.addEventListener('paradise-user-sync', handleUserSync);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('paradise-user-sync', handleUserSync);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   // Filtered records

@@ -60,11 +60,12 @@ export default function FinanceDepositsView({
   const approvedCount = deposits.filter((d) => d.status === 'approved').length;
   const rejectedCount = deposits.filter((d) => d.status === 'rejected').length;
 
-  const handleConfirmReject = async () => {
+  const handleConfirmReject = () => {
     if (!rejectModal.deposit) return;
+    const targetId = rejectModal.deposit.id;
     const reason = rejectModal.reason.trim() || 'Payment details could not be verified.';
-    await onReject(rejectModal.deposit.id, reason);
     setRejectModal({ open: false, deposit: null, reason: '' });
+    onReject(targetId, reason);
   };
 
   const handleExecuteApprove = async (deposit, scToCredit) => {

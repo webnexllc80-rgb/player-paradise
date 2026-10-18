@@ -147,29 +147,40 @@ export default function CoinOperationsDesk({ sessionUser }) {
     e.preventDefault();
     if (!approveLoadModal.item) return;
 
+    const targetItem = approveLoadModal.item;
+    const u = approveLoadModal.username.trim() || targetItem.userName;
+    const p = approveLoadModal.password.trim() || 'VegasWin777!';
+    const amt = Number(approveLoadModal.transferAmount);
+
+    // 1. Optimistic state update (0ms)
+    setLoadRequests((prev) =>
+      prev.map((r) => (r.id === targetItem.id ? { ...r, status: 'READY', gameAccountUsername: u } : r))
+    );
+    // 2. Dismiss modal immediately (0ms)
+    setApproveLoadModal({ open: false, item: null, username: '', password: '', transferAmount: 0 });
+    showAlert('success', 'Game load approved!');
+
     try {
       const res = await fetch('/api/account-requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: approveLoadModal.item.id,
+          id: targetItem.id,
           action: 'approve',
-          username: approveLoadModal.username.trim() || approveLoadModal.item.userName,
-          password: approveLoadModal.password.trim() || 'VegasWin777!',
-          transferAmount: Number(approveLoadModal.transferAmount),
+          username: u,
+          password: p,
+          transferAmount: amt,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        showAlert('success', data.message || 'Game load approved and balance deducted!');
-        setApproveLoadModal({ open: false, item: null, username: '', password: '', transferAmount: 0 });
-        fetchData();
-      } else {
+      if (!data.success) {
         showAlert('error', data.message || 'Failed to approve load.');
+        fetchData();
       }
     } catch {
       showAlert('error', 'Network error approving game load.');
+      fetchData();
     }
   };
 
@@ -182,32 +193,47 @@ export default function CoinOperationsDesk({ sessionUser }) {
       return;
     }
 
+    const targetItem = rejectLoadModal.item;
+    const reason = rejectLoadModal.reason.trim();
+
+    // 1. Optimistic state update (0ms)
+    setLoadRequests((prev) =>
+      prev.map((r) => (r.id === targetItem.id ? { ...r, status: 'REJECTED', rejectionReason: reason } : r))
+    );
+    // 2. Dismiss modal immediately (0ms)
+    setRejectLoadModal({ open: false, item: null, reason: '' });
+    showAlert('success', 'Game load request rejected.');
+
     try {
       const res = await fetch('/api/account-requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: rejectLoadModal.item.id,
+          id: targetItem.id,
           action: 'reject',
-          rejectionReason: rejectLoadModal.reason.trim(),
+          rejectionReason: reason,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        showAlert('success', 'Game load request rejected. Reason logged for user!');
-        setRejectLoadModal({ open: false, item: null, reason: '' });
-        fetchData();
-      } else {
+      if (!data.success) {
         showAlert('error', data.message || 'Failed to reject request.');
+        fetchData();
       }
     } catch {
       showAlert('error', 'Network error rejecting request.');
+      fetchData();
     }
   };
 
   // Handle Cashout Coin Approval (Pass to Finance)
   const handleApproveCashout = async (redemptionId) => {
+    // 1. Optimistic state update (0ms)
+    setCashoutRequests((prev) =>
+      prev.map((c) => (c.id === redemptionId ? { ...c, stage: 'finance_payout', coinApprovedBy: 'Coin Desk' } : c))
+    );
+    showAlert('success', '🏆 Game screenshot verified! Request forwarded to Finance Ledger for payout.');
+
     try {
       const res = await fetch('/api/payments/withdraw', {
         method: 'PUT',
@@ -219,14 +245,13 @@ export default function CoinOperationsDesk({ sessionUser }) {
       });
 
       const data = await res.json();
-      if (data.success) {
-        showAlert('success', '🏆 Game screenshot verified! Request forwarded to Finance Ledger for payout.');
-        fetchData();
-      } else {
+      if (!data.success) {
         showAlert('error', data.error || 'Failed to verify cashout.');
+        fetchData();
       }
     } catch {
       showAlert('error', 'Network error verifying cashout.');
+      fetchData();
     }
   };
 
@@ -239,27 +264,40 @@ export default function CoinOperationsDesk({ sessionUser }) {
       return;
     }
 
+    const targetItem = rejectCashoutModal.item;
+    const reason = rejectCashoutModal.reason.trim();
+
+    // 1. Optimistic state update (0ms)
+    setCashoutRequests((prev) =>
+      prev.map((c) =>
+        c.id === targetItem.id
+          ? { ...c, status: 'rejected_by_coin', stage: 'rejected_coin', rejectReason: reason }
+          : c
+      )
+    );
+    // 2. Dismiss modal immediately (0ms)
+    setRejectCashoutModal({ open: false, item: null, reason: '' });
+    showAlert('success', 'Cashout rejected. Note sent to user.');
+
     try {
       const res = await fetch('/api/payments/withdraw', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          redemptionId: rejectCashoutModal.item.id,
+          redemptionId: targetItem.id,
           action: 'coin_reject',
-          rejectReason: rejectCashoutModal.reason.trim(),
+          rejectReason: reason,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        showAlert('success', 'Cashout rejected. Note sent to user and funds unfrozen.');
-        setRejectCashoutModal({ open: false, item: null, reason: '' });
+      if (!data.success) {
+        showAlert('error', data.message || 'Failed to reject cashout.');
         fetchData();
-      } else {
-        showAlert('error', data.error || 'Failed to reject cashout.');
       }
     } catch {
       showAlert('error', 'Network error rejecting cashout.');
+      fetchData();
     }
   };
 

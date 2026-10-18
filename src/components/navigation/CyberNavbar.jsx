@@ -36,7 +36,19 @@ export default function CyberNavbar({
   const [profileOpen, setProfileOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [jackpot, setJackpot] = useState(184920.45);
+  const [liveUser, setLiveUser] = useState(user || null);
+  const [liveUnreadCount, setLiveUnreadCount] = useState(unreadNotifsCount);
+  const [balancePulse, setBalancePulse] = useState(false);
+  const lastBalanceRef = useRef(user ? (user.balance ?? user.balanceSC ?? 0) : null);
   const profileRef = useRef(null);
+
+  // Keep liveUser aligned when prop changes
+  useEffect(() => {
+    if (user) {
+      setLiveUser(user);
+      lastBalanceRef.current = Number(user.balance ?? user.balanceSC ?? 0);
+    }
+  }, [user]);
 
   // Progressive jackpot ticker simulation
   useEffect(() => {
@@ -44,6 +56,77 @@ export default function CyberNavbar({
       setJackpot((prev) => prev + (Math.random() * 0.45 + 0.05));
     }, 2500);
     return () => clearInterval(timer);
+  }, []);
+
+  // Real-time auto-sync for user balance and notifications (Zero Page Refresh)
+  useEffect(() => {
+    let isCancelled = false;
+
+    const syncUserData = async () => {
+      if (document.hidden) return; // Save VPS CPU when tab is hidden
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        const data = await res.json();
+        if (isCancelled) return;
+
+        if (data.authenticated && data.user) {
+          const currentBal = Number(data.user.balance ?? data.user.balanceSC ?? 0);
+          if (lastBalanceRef.current !== null && Math.abs(lastBalanceRef.current - currentBal) > 0.001) {
+            setBalancePulse(true);
+            setTimeout(() => setBalancePulse(false), 2200);
+          }
+          lastBalanceRef.current = currentBal;
+          setLiveUser(data.user);
+
+          // Dispatch event to sync parent page states automatically
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
+          }
+
+          // Fetch live unread notification count
+          if (data.user.email) {
+            fetch(`/api/notifications?email=${encodeURIComponent(data.user.email)}`, { cache: 'no-store' })
+              .then((r) => r.json())
+              .then((nData) => {
+                if (!isCancelled && nData.success && Array.isArray(nData.notifications)) {
+                  const unread = nData.notifications.filter((n) => !n.read).length;
+                  setLiveUnreadCount(unread);
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      } catch {
+        // silent fail
+      }
+    };
+
+    // Initial silent check
+    syncUserData();
+
+    // 5-second polling loop
+    const syncInterval = setInterval(syncUserData, 5000);
+
+    // Event-based triggers: tab focus, visibility change, and custom in-app balance events
+    const handleFocus = () => syncUserData();
+    const handleVisibility = () => {
+      if (!document.hidden) syncUserData();
+    };
+    const handleCustomEvent = () => syncUserData();
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('balanceUpdate', handleCustomEvent);
+    window.addEventListener('refreshUser', handleCustomEvent);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(syncInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('balanceUpdate', handleCustomEvent);
+      window.removeEventListener('refreshUser', handleCustomEvent);
+    };
   }, []);
 
   // Close profile dropdown on outside click
@@ -56,6 +139,8 @@ export default function CyberNavbar({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const activeUser = liveUser || user;
 
   return (
     <header
@@ -106,19 +191,27 @@ export default function CyberNavbar({
 
       {/* Right side: Balances & User Actions */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-        {user ? (
+        {activeUser ? (
           <>
             {/* Live Single Wallet Balance Chip */}
             <Link
               href="/deposit"
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 hover:border-emerald-400 shadow-inner group transition-all shrink-0"
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900/90 border transition-all duration-300 shrink-0 ${
+                balancePulse
+                  ? 'border-emerald-400 bg-emerald-950/40 shadow-[0_0_18px_rgba(16,185,129,0.5)] scale-105'
+                  : 'border-emerald-500/40 hover:border-emerald-400 shadow-inner group'
+              }`}
               title="Player Wallet Balance (Click to Deposit)"
             >
-              <span className="text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-500 text-black uppercase tracking-wider">
+              <span className={`text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider transition-colors ${
+                balancePulse ? 'bg-emerald-300 text-black' : 'bg-emerald-500 text-black'
+              }`}>
                 BAL
               </span>
-              <span className="font-mono font-bold text-xs sm:text-sm text-emerald-400 group-hover:text-emerald-300">
-                ${Number(user.balance ?? user.balanceSC ?? 0).toFixed(2)}
+              <span className={`font-mono font-bold text-xs sm:text-sm transition-colors ${
+                balancePulse ? 'text-white' : 'text-emerald-400 group-hover:text-emerald-300'
+              }`}>
+                ${Number(activeUser.balance ?? activeUser.balanceSC ?? 0).toFixed(2)}
               </span>
             </Link>
 
@@ -186,16 +279,16 @@ export default function CyberNavbar({
         </button>
 
         {/* Notification Bell */}
-        {user && (
+        {activeUser && (
           <button
             onClick={onOpenNotifications}
             className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-900/80 border border-slate-700/70 text-slate-300 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)] transition-colors shrink-0"
             title="Notifications"
           >
             <Bell size={16} />
-            {unreadNotifsCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(244,63,94,0.6)]">
-                {unreadNotifsCount}
+            {liveUnreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(244,63,94,0.6)] animate-pulse">
+                {liveUnreadCount}
               </span>
             )}
           </button>
@@ -211,14 +304,14 @@ export default function CyberNavbar({
         </button>
 
         {/* User Profile Menu */}
-        {user && (
+        {activeUser && (
           <div className="relative shrink-0" ref={profileRef}>
             <button
               onClick={() => setProfileOpen(!profileOpen)}
               className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/80 border border-slate-700/70 hover:border-[var(--neon-cyan)] transition-all shrink-0"
             >
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--neon-cyan)] to-[var(--neon-purple)] flex items-center justify-center text-black font-bold text-xs uppercase shadow-sm">
-                {user.username ? user.username.charAt(0) : 'P'}
+                {activeUser.username ? activeUser.username.charAt(0) : 'P'}
               </div>
               <ChevronDown size={14} className="text-slate-400 hidden sm:block" />
             </button>
@@ -228,15 +321,15 @@ export default function CyberNavbar({
               <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-[var(--bg-deep)] border border-[var(--chrome-border)] shadow-2xl p-2 z-50">
                 <div className="px-3 py-2 border-b border-slate-800">
                   <p className="font-heading font-bold text-sm text-white truncate">
-                    {user.username}
+                    {activeUser.username}
                   </p>
-                  <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
+                  <p className="text-[11px] text-slate-400 truncate">{activeUser.email}</p>
                   <div className="mt-1.5 flex items-center gap-1.5">
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--neon-cyan)]/20 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/30">
-                      {user.vipTier || 'Bronze Panda'}
+                      {activeUser.vipTier || 'Bronze Panda'}
                     </span>
                     <span className="text-[10px] text-slate-500 font-mono">
-                      KYC: {user.kycStatus?.toUpperCase() || 'UNVERIFIED'}
+                      KYC: {activeUser.kycStatus?.toUpperCase() || 'UNVERIFIED'}
                     </span>
                   </div>
                 </div>

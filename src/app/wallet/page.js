@@ -50,6 +50,27 @@ export default function WalletPage() {
 
   useEffect(() => {
     loadData();
+
+    const interval = setInterval(() => {
+      if (!document.hidden) loadData();
+    }, 4500);
+
+    const handleUserSync = (e) => {
+      if (e.detail) setUser(e.detail);
+    };
+
+    const handleFocus = () => loadData();
+
+    window.addEventListener('paradise-user-sync', handleUserSync);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('paradise-user-sync', handleUserSync);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   return (

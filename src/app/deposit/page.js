@@ -66,20 +66,21 @@ export default function DepositPage() {
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   // 1. Fetch current user & settings
-  const fetchUserAndSettings = async () => {
+  const fetchUserAndSettings = async (isSilent = false) => {
+    if (!isSilent) setLoadingUser(true);
     try {
       const [uRes, sRes] = await Promise.all([
-        fetch('/api/auth/me'),
-        fetch('/api/admin/settings'),
+        fetch('/api/auth/me', { cache: 'no-store' }),
+        fetch('/api/admin/settings', { cache: 'no-store' }),
       ]);
       const [uData, sData] = await Promise.all([uRes.json(), sRes.json()]);
 
       if (uData.authenticated && uData.user) {
         setUser(uData.user);
         if (uData.user.email) {
-          setPlayerPaymentEmail(uData.user.email);
+          setPlayerPaymentEmail((prev) => prev || uData.user.email);
         }
-      } else {
+      } else if (!isSilent) {
         router.push('/login?redirect=/deposit');
       }
 
@@ -92,7 +93,7 @@ export default function DepositPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoadingUser(false);
+      if (!isSilent) setLoadingUser(false);
     }
   };
 
@@ -137,11 +138,11 @@ export default function DepositPage() {
     }
   };
 
-  // 3. Fetch deposit history
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
+  // 3. Fetch deposit history (with silent background update support)
+  const fetchHistory = async (isSilent = false) => {
+    if (!isSilent) setLoadingHistory(true);
     try {
-      const res = await fetch('/api/payments/deposit');
+      const res = await fetch('/api/payments/deposit', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.deposits) {
         setDepositHistory(data.deposits);
@@ -149,7 +150,7 @@ export default function DepositPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoadingHistory(false);
+      if (!isSilent) setLoadingHistory(false);
     }
   };
 
@@ -157,6 +158,34 @@ export default function DepositPage() {
     fetchUserAndSettings();
     fetchGateways();
     fetchHistory();
+
+    // Zero-refresh live polling: updates pending deposits as soon as admin approves/rejects
+    const pollInterval = setInterval(() => {
+      if (!document.hidden) {
+        fetchHistory(true);
+        fetchUserAndSettings(true);
+      }
+    }, 4000);
+
+    const handleUserSync = (e) => {
+      if (e.detail) setUser(e.detail);
+    };
+
+    const handleFocus = () => {
+      fetchHistory(true);
+      fetchUserAndSettings(true);
+    };
+
+    window.addEventListener('paradise-user-sync', handleUserSync);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('paradise-user-sync', handleUserSync);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   const handleCopy = (text, fieldName) => {
@@ -177,21 +206,58 @@ export default function DepositPage() {
     document.body.removeChild(a);
   };
 
-  const handleImageUpload = (e) => {
+  const compressImage = (file, maxDim = 1200, quality = 0.82) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/webp', quality));
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File size exceeds 5MB limit.');
+    if (file.size > 15 * 1024 * 1024) {
+      alert('File size exceeds 15MB limit.');
       return;
     }
 
     setProofFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setProofImage(reader.result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file, 1200, 0.82);
+      setProofImage(compressed || null);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => setProofImage(reader.result);
+      reader.readAsDataURL(file);
+    }
   };
 
   const finalAmount = customAmount ? parseFloat(customAmount) : amount;

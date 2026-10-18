@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
+import { notifyPlayer } from '@/lib/notify';
 
 // GET: List Deposits (Admin / Financial Manager) or Player's own
 export async function GET(req) {
@@ -14,6 +15,7 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
+    const lightweight = searchParams.get('lightweight') === 'true';
 
     const db = await getDb();
     const depositsCol = db.collection('deposits');
@@ -32,7 +34,8 @@ export async function GET(req) {
       query.status = status;
     }
 
-    const deposits = await depositsCol.find(query).sort({ createdAt: -1 }).limit(100).toArray();
+    const projection = lightweight ? { proofImage: 0 } : {};
+    const deposits = await depositsCol.find(query, { projection }).sort({ createdAt: -1 }).limit(100).toArray();
 
     return NextResponse.json({
       success: true,
@@ -52,7 +55,12 @@ export async function GET(req) {
           playerTagName: d.playerTagName || d.senderNote || '',
           playerPaymentEmail: d.playerPaymentEmail || '',
           senderNote: d.senderNote || d.playerTagName || '',
-          proofImage: d.proofImage || null,
+          proofImage: d.proofImage
+            ? (d.proofImage.startsWith('data:') && d.proofImage.length > 50000
+                ? `/api/payments/deposit/proof?id=${d._id}`
+                : d.proofImage)
+            : null,
+          hasProof: Boolean(d.proofImage || d.proofUrl),
           txHash: d.txHash || '',
           bonusType,
           bonusPercent,
@@ -407,19 +415,41 @@ export async function PUT(req) {
         html: `<p>Hi ${user.username}, your deposit of $${deposit.amount} via ${deposit.methodName} was verified and ${creditedSC} SC (+ ${creditedGC.toLocaleString()} GC) was credited to your account. Best of luck at the tables!</p>`,
       }).catch(() => {});
 
+      // Instant In-App and Push Notification
+      notifyPlayer({
+        userId: user._id,
+        userEmail: user.email,
+        username: user.username,
+        title: 'Deposit Approved! 🎉',
+        message: `Your deposit of $${deposit.amount} was approved! ${creditedSC} SC credited to your wallet.`,
+        type: 'deposit_approved',
+        data: { amount: String(creditedSC) },
+      });
+
       return NextResponse.json({ success: true, message: `Deposit approved! Credited ${creditedSC} SC to ${user.username}.` });
     } else if (action === 'reject') {
+      const finalRejectReason = rejectReason || 'Payment receipt unverified';
       await depositsCol.updateOne(
         { _id: deposit._id },
         {
           $set: {
             status: 'rejected',
-            rejectReason: rejectReason || 'Payment receipt unverified',
+            rejectReason: finalRejectReason,
             processedBy: `${session.username} (${session.role})`,
             updatedAt: new Date(),
           },
         }
       );
+
+      // Instant In-App and Push Notification for player
+      notifyPlayer({
+        userId: user._id,
+        userEmail: user.email,
+        username: user.username,
+        title: 'Deposit Update ⚠️',
+        message: `Your deposit request ($${deposit.amount}) could not be approved: ${finalRejectReason}`,
+        type: 'deposit_rejected',
+      });
 
       return NextResponse.json({ success: true, message: 'Deposit rejected.' });
     }

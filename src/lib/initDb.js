@@ -2,15 +2,45 @@ import bcrypt from 'bcryptjs';
 import { getDb } from './mongodb';
 import { ROLES } from './auth';
 
-export async function ensureDbInitialized() {
-  try {
-    const db = await getDb();
+let isDbInitialized = false;
+let initPromise = null;
 
-    // 1. Ensure Super Admin and Staff accounts
-    const usersCol = db.collection('users');
-    const adminPasswordHash = await bcrypt.hash('Paradise@2026!', 10);
-    const staffPasswordHash = await bcrypt.hash('Staff@2026!', 10);
-    const playerPasswordHash = await bcrypt.hash('Player@2026!', 10);
+export async function ensureDbInitialized() {
+  if (isDbInitialized) return true;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    try {
+      const db = await getDb();
+
+      // Ensure MongoDB Indexes for Ultra-Fast Queries
+      try {
+        if (db && typeof db.collection === 'function') {
+          await Promise.allSettled([
+            db.collection('users').createIndex({ email: 1 }),
+            db.collection('users').createIndex({ username: 1 }),
+            db.collection('deposits').createIndex({ status: 1, createdAt: -1 }),
+            db.collection('deposits').createIndex({ userId: 1, createdAt: -1 }),
+            db.collection('redemptions').createIndex({ status: 1, createdAt: -1 }),
+            db.collection('redemptions').createIndex({ userId: 1, createdAt: -1 }),
+            db.collection('accountRequests').createIndex({ status: 1, createdAt: -1 }),
+            db.collection('accountRequests').createIndex({ userEmail: 1 }),
+            db.collection('notifications').createIndex({ target: 1, createdAt: -1 }),
+            db.collection('notifications').createIndex({ email: 1, createdAt: -1 }),
+            db.collection('games').createIndex({ isActive: 1, isFeatured: -1 }),
+            db.collection('payment_methods').createIndex({ isActive: 1 }),
+            db.collection('ledger').createIndex({ userId: 1, createdAt: -1 }),
+          ]);
+        }
+      } catch (idxErr) {
+        console.warn('Index initialization note:', idxErr.message);
+      }
+
+      // 1. Ensure Super Admin and Staff accounts
+      const usersCol = db.collection('users');
+      const adminPasswordHash = await bcrypt.hash('Paradise@2026!', 10);
+      const staffPasswordHash = await bcrypt.hash('Staff@2026!', 10);
+      const playerPasswordHash = await bcrypt.hash('Player@2026!', 10);
 
     // 1. Always ensure 'superadmin' exists and has active credentials
     await usersCol.updateOne(
@@ -365,9 +395,12 @@ export async function ensureDbInitialized() {
     }
 
     console.log('Database initialization check completed successfully.');
+    isDbInitialized = true;
     return true;
   } catch (err) {
     console.error('Error during database initialization:', err);
     return false;
   }
+  })();
+  return initPromise;
 }

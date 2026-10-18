@@ -43,12 +43,12 @@ export default function WalletModal({
   const [historyItems, setHistoryItems] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
+  const fetchHistory = async (isSilent = false) => {
+    if (!isSilent) setLoadingHistory(true);
     try {
       const [depRes, withRes] = await Promise.all([
-        fetch('/api/payments/deposit?status=all'),
-        fetch('/api/payments/withdraw?status=all'),
+        fetch('/api/payments/deposit?status=all', { cache: 'no-store' }),
+        fetch('/api/payments/withdraw?status=all', { cache: 'no-store' }),
       ]);
       const depData = await depRes.json();
       const withData = await withRes.json();
@@ -64,13 +64,17 @@ export default function WalletModal({
     } catch {
       // ignore
     } finally {
-      setLoadingHistory(false);
+      if (!isSilent) setLoadingHistory(false);
     }
   };
 
   useEffect(() => {
     if (isOpen && activeTab === 'history') {
       fetchHistory();
+      const interval = setInterval(() => {
+        if (!document.hidden) fetchHistory(true);
+      }, 4000);
+      return () => clearInterval(interval);
     }
   }, [isOpen, activeTab]);
 

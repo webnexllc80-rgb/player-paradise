@@ -10,12 +10,24 @@ export default function NotificationsModal({ isOpen, onClose, user }) {
   useEffect(() => {
     if (isOpen && user?.email) {
       setLoading(true);
-      fetch(`/api/notifications?email=${encodeURIComponent(user.email)}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) setNotifs(data.notifications || []);
-        })
-        .finally(() => setLoading(false));
+      const fetchNotifs = (isSilent = false) => {
+        if (!isSilent) setLoading(true);
+        fetch(`/api/notifications?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) setNotifs(data.notifications || []);
+          })
+          .finally(() => {
+            if (!isSilent) setLoading(false);
+          });
+      };
+
+      fetchNotifs(false);
+      const interval = setInterval(() => {
+        if (!document.hidden) fetchNotifs(true);
+      }, 4000);
+
+      return () => clearInterval(interval);
     }
   }, [isOpen, user]);
 

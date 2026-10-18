@@ -56,27 +56,28 @@ export default function WithdrawPage() {
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   // 1. Fetch current user
-  const fetchUser = async () => {
+  const fetchUser = async (isSilent = false) => {
+    if (!isSilent) setLoadingUser(true);
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetch('/api/auth/me', { cache: 'no-store' });
       const data = await res.json();
       if (data.authenticated && data.user) {
         setUser(data.user);
-      } else {
+      } else if (!isSilent) {
         router.push('/login?redirect=/withdraw');
       }
     } catch (err) {
       console.error(err);
     } finally {
-      setLoadingUser(false);
+      if (!isSilent) setLoadingUser(false);
     }
   };
 
   // 2. Fetch withdrawal history
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
+  const fetchHistory = async (isSilent = false) => {
+    if (!isSilent) setLoadingHistory(true);
     try {
-      const res = await fetch('/api/payments/withdraw');
+      const res = await fetch('/api/payments/withdraw', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.redemptions) {
         setWithdrawHistory(data.redemptions);
@@ -84,33 +85,105 @@ export default function WithdrawPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoadingHistory(false);
+      if (!isSilent) setLoadingHistory(false);
     }
   };
 
   useEffect(() => {
     fetchUser();
     fetchHistory();
+
+    // Zero-refresh live polling: updates pending cashouts as soon as admin approves/rejects
+    const pollInterval = setInterval(() => {
+      if (!document.hidden) {
+        fetchHistory(true);
+        fetchUser(true);
+      }
+    }, 4000);
+
+    const handleUserSync = (e) => {
+      if (e.detail) setUser(e.detail);
+    };
+
+    const handleFocus = () => {
+      fetchHistory(true);
+      fetchUser(true);
+    };
+
+    window.addEventListener('paradise-user-sync', handleUserSync);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('paradise-user-sync', handleUserSync);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
-  const handleGameScreenshotUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 6 * 1024 * 1024) return alert('Screenshot file must be under 6MB');
-    setGameScreenshotName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => setGameScreenshot(reader.result);
-    reader.readAsDataURL(file);
+  const compressImage = (file, maxDim = 1200, quality = 0.82) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/webp', quality));
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
   };
 
-  const handleQrUpload = (e) => {
+  const handleGameScreenshotUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 6 * 1024 * 1024) return alert('QR Code file must be under 6MB');
+    if (file.size > 15 * 1024 * 1024) return alert('Screenshot file must be under 15MB');
+    setGameScreenshotName(file.name);
+    try {
+      const compressed = await compressImage(file, 1200, 0.82);
+      setGameScreenshot(compressed || null);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => setGameScreenshot(reader.result);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleQrUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) return alert('QR Code file must be under 15MB');
     setQrCodeImageName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => setQrCodeImage(reader.result);
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file, 800, 0.85);
+      setQrCodeImage(compressed || null);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => setQrCodeImage(reader.result);
+      reader.readAsDataURL(file);
+    }
   };
 
   const finalAmount = customAmount ? parseFloat(customAmount) : amount;

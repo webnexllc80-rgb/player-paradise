@@ -449,26 +449,46 @@ export default function AdminPortal({ initialTab }) {
   };
 
   const handleConfirmApproval = async () => {
-    if (!approvalModal.request || !approvalModal.username || !approvalModal.password) return;
+    if (!approvalModal.request || !approvalModal.username || !approvalModal.password || submittingApproval) return;
     setSubmittingApproval(true);
+
+    const targetReq = approvalModal.request;
+    const u = approvalModal.username.trim();
+    const p = approvalModal.password.trim();
+
+    // 1. Optimistically update account requests state (0ms)
+    setAccountRequests((prev) =>
+      prev.map((r) =>
+        r.id === targetReq.id
+          ? { ...r, status: 'READY', gameAccountUsername: u, gameAccountPassword: p }
+          : r
+      )
+    );
+
+    // 2. Dismiss modal immediately for instant 0ms user feedback
+    setApprovalModal({ open: false, request: null, username: '', password: '' });
+
     try {
       const res = await fetch('/api/account-requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: approvalModal.request.id,
+          id: targetReq.id,
           action: 'approve',
-          username: approvalModal.username,
-          password: approvalModal.password,
+          username: u,
+          password: p,
         }),
       });
       const data = await res.json();
-      if (data.success) {
-        setApprovalModal({ open: false, request: null, username: '', password: '' });
+      if (!data.success) {
+        alert(data.message || 'Failed to issue credentials');
         fetchAccountRequests();
+      } else {
+        syncRequestsAndAlerts();
       }
     } catch (e) {
       console.error(e);
+      fetchAccountRequests();
     } finally {
       setSubmittingApproval(false);
     }
@@ -477,15 +497,22 @@ export default function AdminPortal({ initialTab }) {
   const handleCancelRequest = async (id) => {
     const reason = prompt('Enter rejection reason for player:', 'Temporary platform maintenance. Please contact 24/7 Concierge.');
     if (!reason) return;
+
+    // Optimistically mark as rejected (0ms)
+    setAccountRequests((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: 'REJECTED', rejectionReason: reason } : r))
+    );
+
     try {
       await fetch('/api/account-requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action: 'cancel', reason }),
       });
-      fetchAccountRequests();
+      syncRequestsAndAlerts();
     } catch (e) {
       console.error(e);
+      fetchAccountRequests();
     }
   };
 
@@ -607,8 +634,29 @@ export default function AdminPortal({ initialTab }) {
     }
   };
 
+  // Browser Desktop & Chrome Push Notification Dispatcher
+  const sendDesktopNotification = (title, body) => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new window.Notification(title, {
+          body,
+          icon: '/playerparadisehub.jpeg',
+          badge: '/playerparadisehub.jpeg',
+          tag: 'admin-action-alert',
+          renotify: true,
+        });
+      } catch (e) {
+        console.warn('Desktop notification note:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     fetchSession();
+    // Request Chrome desktop notification permission on admin dashboard load
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
   }, []);
 
   // Persistent background sync: deposits, redemptions, and game account requests are ALWAYS monitored
@@ -620,8 +668,8 @@ export default function AdminPortal({ initialTab }) {
     if (!user) return;
     try {
       const [depRes, withRes, reqRes, loadRes] = await Promise.all([
-        fetch('/api/payments/deposit?status=all'),
-        fetch('/api/payments/withdraw?status=all'),
+        fetch('/api/payments/deposit?status=all&lightweight=true'),
+        fetch('/api/payments/withdraw?status=all&lightweight=true'),
         fetch('/api/account-requests?type=ACCOUNT_CREATION&status=all'),
         fetch('/api/account-requests?type=COIN_LOAD&status=all'),
       ]);
@@ -652,6 +700,18 @@ export default function AdminPortal({ initialTab }) {
       const pendingCoinLoads = (loadData.accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING');
       const pendingCoinCashouts = (withData.redemptions || []).filter(r => r.status === 'pending_coin' || r.stage === 'coin_verification');
 
+      // Update Chrome Badge & Tab Title
+      const totalPending = pendingDeps.length + pendingWith.length + pendingReqs.length + pendingCoinLoads.length + pendingCoinCashouts.length;
+      if (typeof document !== 'undefined') {
+        if (totalPending > 0) {
+          document.title = `(${totalPending}) Players Paradise | Admin Operations`;
+          if ('setAppBadge' in navigator) navigator.setAppBadge(totalPending).catch(() => {});
+        } else {
+          document.title = 'Players Paradise | Admin Operations';
+          if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
+        }
+      }
+
       if (isInitialLoadRef.current) {
         prevCountsRef.current = {
           deposits: pendingDeps.length,
@@ -666,9 +726,12 @@ export default function AdminPortal({ initialTab }) {
         if (pendingCoinLoads.length > 0) {
           const newest = pendingCoinLoads[0];
           playAdminChime();
+          const alertTitle = `Pending Coin Loads (${pendingCoinLoads.length})`;
+          const alertBody = `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'} from ${newest?.userName || 'Player'}`;
+          sendDesktopNotification(alertTitle, alertBody);
           setActiveAlertToast({
             type: 'coin_load',
-            title: `Pending Coin Loads (${pendingCoinLoads.length})`,
+            title: alertTitle,
             message: `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'}`,
             subtext: `From ${newest?.userName || 'Player'} • Escrow Frozen in Wallet`,
             targetTab: 'coins_allotment',
@@ -677,9 +740,12 @@ export default function AdminPortal({ initialTab }) {
         } else if (pendingReqs.length > 0) {
           const newest = pendingReqs[0];
           playAdminChime();
+          const alertTitle = `Pending Account Request (${pendingReqs.length})`;
+          const alertBody = `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`;
+          sendDesktopNotification(alertTitle, alertBody);
           setActiveAlertToast({
             type: 'account',
-            title: `Pending Account Request (${pendingReqs.length})`,
+            title: alertTitle,
             message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
             subtext: 'Ready to issue credentials',
             targetTab: 'account_requests',
@@ -692,6 +758,9 @@ export default function AdminPortal({ initialTab }) {
       if (pendingDeps.length > (prevCountsRef.current.deposits || 0)) {
         const newest = pendingDeps[0];
         playAdminChime();
+        const alertTitle = 'New Deposit Request! 💰';
+        const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} USD from ${newest?.username || 'Player'} via ${newest?.methodName || 'Payment'}`;
+        sendDesktopNotification(alertTitle, alertBody);
         setActiveAlertToast({
           type: 'deposit',
           title: 'New Deposit Request!',
@@ -705,6 +774,9 @@ export default function AdminPortal({ initialTab }) {
       else if (pendingWith.length > (prevCountsRef.current.redemptions || 0)) {
         const newest = pendingWith[0];
         playAdminChime();
+        const alertTitle = 'New Cashout Request! 💸';
+        const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'} via ${newest?.payoutMethod || 'Direct'}`;
+        sendDesktopNotification(alertTitle, alertBody);
         setActiveAlertToast({
           type: 'redemption',
           title: 'New Cashout Request!',
@@ -718,6 +790,9 @@ export default function AdminPortal({ initialTab }) {
       else if (pendingCoinLoads.length > (prevCountsRef.current.coinLoads || 0)) {
         const newest = pendingCoinLoads[0];
         playAdminChime();
+        const alertTitle = 'New Coin Load Request! ⚡';
+        const alertBody = `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'} from ${newest?.userName || 'Player'}`;
+        sendDesktopNotification(alertTitle, alertBody);
         setActiveAlertToast({
           type: 'coin_load',
           title: 'New Coin Load Request!',
@@ -731,6 +806,9 @@ export default function AdminPortal({ initialTab }) {
       else if (pendingCoinCashouts.length > (prevCountsRef.current.coinCashouts || 0)) {
         const newest = pendingCoinCashouts[0];
         playAdminChime();
+        const alertTitle = 'New Cashout Verification (Coins Desk)! 🎮';
+        const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'} - ${newest?.gameTitle || 'Game'}`;
+        sendDesktopNotification(alertTitle, alertBody);
         setActiveAlertToast({
           type: 'coin_verification',
           title: 'New Cashout Verification (Coins Desk)!',
@@ -744,6 +822,9 @@ export default function AdminPortal({ initialTab }) {
       else if (pendingReqs.length > (prevCountsRef.current.requests || 0)) {
         const newest = pendingReqs[0];
         playAdminChime();
+        const alertTitle = 'New Account Creation Request! 🎯';
+        const alertBody = `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`;
+        sendDesktopNotification(alertTitle, alertBody);
         setActiveAlertToast({
           type: 'account',
           title: 'New Account Creation Request!',
@@ -769,8 +850,21 @@ export default function AdminPortal({ initialTab }) {
   useEffect(() => {
     if (!user) return;
     syncRequestsAndAlerts();
-    const interval = setInterval(syncRequestsAndAlerts, 3500);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (!document.hidden) syncRequestsAndAlerts();
+    }, 3500);
+
+    const handleFocus = () => {
+      if (!document.hidden) syncRequestsAndAlerts();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [user]);
 
   // Fetch data for specific active tabs
@@ -778,49 +872,61 @@ export default function AdminPortal({ initialTab }) {
     if (!user) return;
 
     const loadData = () => {
+      if (document.hidden) return;
       if (activeTab === 'overview') {
-        fetch('/api/admin/stats').then(r => r.json()).then(d => { if (d.success) setStats(d.stats); });
+        fetch('/api/admin/stats', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setStats(d.stats); });
       } else if (activeTab === 'games') {
-        fetch('/api/games?all=true').then(r => r.json()).then(d => { if (d.success) setGames(d.games); });
+        fetch('/api/games?all=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setGames(d.games); });
       } else if (activeTab === 'finance') {
-        fetch('/api/payments/methods?all=true').then(r => r.json()).then(d => { if (d.success) setPaymentMethods(d.methods || []); });
-        fetch('/api/payments/deposit?status=all').then(r => r.json()).then(d => { if (d.success) setDeposits(d.deposits || []); });
-        fetch('/api/payments/withdraw?status=all').then(r => r.json()).then(d => { if (d.success) setRedemptions(d.redemptions || []); });
+        fetch('/api/payments/methods?all=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setPaymentMethods(d.methods || []); });
+        fetch('/api/payments/deposit?status=all&lightweight=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setDeposits(d.deposits || []); });
+        fetch('/api/payments/withdraw?status=all&lightweight=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setRedemptions(d.redemptions || []); });
       } else if (activeTab === 'ledger') {
-        fetch(`/api/ledger?username=${encodeURIComponent(ledgerFilterUser)}&type=${ledgerFilterType}`)
+        fetch(`/api/ledger?username=${encodeURIComponent(ledgerFilterUser)}&type=${ledgerFilterType}`, { cache: 'no-store' })
           .then(r => r.json())
           .then(d => { if (d.success) setLedgerRecords(d.records); });
       } else if (activeTab === 'chat') {
-        fetch('/api/chat?inbox=true').then(r => r.json()).then(d => { if (d.success) setChatConversations(d.conversations); });
+        fetch('/api/chat?inbox=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setChatConversations(d.conversations); });
       } else if (activeTab === 'promos') {
-        fetch('/api/notifications?admin=true').then(r => r.json()).then(d => { if (d.success) setBroadcastLogs(d.broadcasts || []); });
+        fetch('/api/notifications?admin=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setBroadcastLogs(d.broadcasts || []); });
       } else if (activeTab === 'affiliates' || activeTab === 'affiliate_commissions') {
-        fetch('/api/affiliates?mode=admin').then(r => r.json()).then(d => {
+        fetch('/api/affiliates?mode=admin', { cache: 'no-store' }).then(r => r.json()).then(d => {
           if (d.success) {
             setAffiliates(d.affiliates || []);
             setAffiliateSummary(d.summary || null);
           }
         });
       } else if (activeTab === 'staff') {
-        fetch('/api/admin/staff').then(r => r.json()).then(d => { if (d.success) setStaffList(d.staff); });
+        fetch('/api/admin/staff', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setStaffList(d.staff); });
       } else if (activeTab === 'account_requests') {
         fetchAccountRequests();
       } else if (activeTab === 'coins_allotment') {
         fetchAllotmentData();
       } else if (activeTab === 'users') {
-        fetch(`/api/users?search=${encodeURIComponent(userSearchQuery)}`).then(r => r.json()).then(d => { if (d.success) setUsersList(d.users || []); });
+        fetch(`/api/users?search=${encodeURIComponent(userSearchQuery)}`, { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setUsersList(d.users || []); });
       } else if (activeTab === 'gateways') {
-        fetch('/api/payments/methods?all=true').then(r => r.json()).then(d => { if (d.success) setPaymentMethods(d.methods || []); });
+        fetch('/api/payments/methods?all=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setPaymentMethods(d.methods || []); });
       } else if (activeTab === 'tx_search') {
-        fetch(`/api/ledger?username=${encodeURIComponent(ledgerFilterUser)}&type=${ledgerFilterType}`).then(r => r.json()).then(d => { if (d.success) setLedgerRecords(d.records || []); });
+        fetch(`/api/ledger?username=${encodeURIComponent(ledgerFilterUser)}&type=${ledgerFilterType}`, { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setLedgerRecords(d.records || []); });
       } else if (activeTab === 'settings') {
-        fetch('/api/admin/settings').then(r => r.json()).then(d => { if (d.success) setSysSettings(d.settings); });
+        fetch('/api/admin/settings', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setSysSettings(d.settings); });
       }
     };
 
     loadData();
     const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
+
+    const handleFocus = () => {
+      if (!document.hidden) loadData();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [user, activeTab, ledgerFilterUser, ledgerFilterType, accountReqFilter, userSearchQuery, allotmentSearch]);
 
   // Load chat messages when active conversation selected
@@ -2182,33 +2288,40 @@ export default function AdminPortal({ initialTab }) {
                         onSubmit={async (e) => {
                           e.preventDefault();
                           if (!newGame.title.trim()) return alert('Game title is required');
-                          setIsSavingGame(true);
+
+                          // 1. Optimistic game item (0ms)
+                          const tempId = 'temp-' + Date.now();
+                          const optimisticGame = { ...newGame, id: tempId, isActive: true };
+                          setGames(prev => [optimisticGame, ...prev]);
+
+                          // 2. Dismiss modal immediately in 0ms!
+                          setIsAddGameModalOpen(false);
+                          const gameToSubmit = { ...newGame };
+                          setNewGame({
+                            title: '',
+                            provider: 'Players Paradise Studio',
+                            thumbnail: '/images/vegas-777.webp',
+                            badge: 'HOT',
+                            url: '',
+                            isActive: true,
+                          });
+
+                          // 3. Fire API in background
                           try {
                             const res = await fetch('/api/games', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(newGame),
+                              body: JSON.stringify(gameToSubmit),
                             });
                             const d = await res.json();
-                            if (d.success) {
-                              alert('Game added successfully!');
-                              setGames(prev => [d.game || { ...newGame, id: d.gameId }, ...prev]);
-                              setNewGame({
-                                title: '',
-                                provider: 'Players Paradise Studio',
-                                thumbnail: '/images/vegas-777.webp',
-                                badge: 'HOT',
-                                url: '',
-                                isActive: true,
-                              });
-                              setIsAddGameModalOpen(false);
-                            } else {
+                            if (d.success && d.game) {
+                              setGames(prev => prev.map(g => g.id === tempId ? (d.game || { ...gameToSubmit, id: d.gameId }) : g));
+                            } else if (!d.success) {
                               alert(d.error || 'Failed to add game');
+                              setGames(prev => prev.filter(g => g.id !== tempId));
                             }
                           } catch (err) {
-                            alert(err.message);
-                          } finally {
-                            setIsSavingGame(false);
+                            console.error('Failed to add game', err);
                           }
                         }}
                         className="space-y-4"
@@ -2589,10 +2702,10 @@ export default function AdminPortal({ initialTab }) {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={async () => {
+                                  onClick={() => {
                                     if (confirm(`Remove ${g.title} from catalog?`)) {
-                                      await fetch(`/api/games?id=${g.id}`, { method: 'DELETE' });
-                                      setGames(games.filter(item => item.id !== g.id));
+                                      setGames(prev => prev.filter(item => item.id !== g.id));
+                                      fetch(`/api/games?id=${g.id}`, { method: 'DELETE' }).catch(err => console.error(err));
                                     }
                                   }}
                                   className="p-2 rounded-xl transition-all cursor-pointer"
@@ -2890,25 +3003,26 @@ export default function AdminPortal({ initialTab }) {
                         onSubmit={async (e) => {
                           e.preventDefault();
                           if (!editingGame.title.trim()) return alert('Game title is required');
-                          setIsSavingGame(true);
+
+                          const updatedGame = { ...editingGame };
+                          // 1. Optimistic update (0ms)
+                          setGames(prev => prev.map(item => item.id === updatedGame.id ? { ...item, ...updatedGame } : item));
+                          // 2. Dismiss modal immediately in 0ms!
+                          setEditingGame(null);
+
+                          // 3. Fire API in background
                           try {
                             const res = await fetch('/api/games', {
                               method: 'PUT',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(editingGame),
+                              body: JSON.stringify(updatedGame),
                             });
                             const d = await res.json();
-                            if (d.success) {
-                              alert('Game updated successfully!');
-                              setGames(prev => prev.map(item => item.id === editingGame.id ? { ...item, ...editingGame } : item));
-                              setEditingGame(null);
-                            } else {
+                            if (!d.success) {
                               alert(d.error || 'Failed to update game');
                             }
                           } catch (err) {
-                            alert(err.message);
-                          } finally {
-                            setIsSavingGame(false);
+                            console.error('Failed to update game', err);
                           }
                         }}
                         className="space-y-4"
@@ -3106,73 +3220,105 @@ export default function AdminPortal({ initialTab }) {
                 syncRequestsAndAlerts().finally(() => setRefreshingFinance(false));
               }}
               onApproveDeposit={async (depositId, scToCredit) => {
-                const res = await fetch('/api/payments/deposit', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ depositId, action: 'approve', customSC: Number(scToCredit) }),
-                });
-                const data = await res.json();
-                if (data.success) {
-                  setDeposits((prev) =>
-                    prev.map((item) =>
-                      item.id === depositId
-                        ? { ...item, status: 'approved', creditedSC: Number(scToCredit) }
-                        : item
-                    )
-                  );
+                // Optimistic UI update: immediately mark deposit as approved (0ms)
+                setDeposits((prev) =>
+                  prev.map((item) =>
+                    item.id === depositId
+                      ? { ...item, status: 'approved', creditedSC: Number(scToCredit) }
+                      : item
+                  )
+                );
+
+                try {
+                  const res = await fetch('/api/payments/deposit', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ depositId, action: 'approve', customSC: Number(scToCredit) }),
+                  });
+                  const data = await res.json();
+                  if (!data.success) {
+                    alert(data.error || 'Failed to approve deposit');
+                    syncRequestsAndAlerts();
+                  } else {
+                    syncRequestsAndAlerts();
+                  }
+                } catch (e) {
+                  console.error(e);
                   syncRequestsAndAlerts();
-                } else {
-                  alert(data.error || 'Failed to approve deposit');
                 }
               }}
               onRejectDeposit={async (depositId, reason) => {
-                const res = await fetch('/api/payments/deposit', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ depositId, action: 'reject', rejectReason: reason }),
-                });
-                const data = await res.json();
-                if (data.success) {
-                  setDeposits((prev) =>
-                    prev.map((item) => (item.id === depositId ? { ...item, status: 'rejected' } : item))
-                  );
+                // Optimistic UI update: immediately mark deposit as rejected (0ms)
+                setDeposits((prev) =>
+                  prev.map((item) => (item.id === depositId ? { ...item, status: 'rejected' } : item))
+                );
+
+                try {
+                  const res = await fetch('/api/payments/deposit', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ depositId, action: 'reject', rejectReason: reason }),
+                  });
+                  const data = await res.json();
+                  if (!data.success) {
+                    alert(data.error || 'Failed to reject deposit');
+                    syncRequestsAndAlerts();
+                  } else {
+                    syncRequestsAndAlerts();
+                  }
+                } catch (e) {
+                  console.error(e);
                   syncRequestsAndAlerts();
-                } else {
-                  alert(data.error || 'Failed to reject deposit');
                 }
               }}
               onApproveRedemption={async (redemptionId) => {
-                const res = await fetch('/api/payments/withdraw', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ redemptionId, action: 'approve' }),
-                });
-                const data = await res.json();
-                if (data.success) {
-                  setRedemptions((prev) =>
-                    prev.map((item) =>
-                      item.id === redemptionId ? { ...item, status: 'approved' } : item
-                    )
-                  );
+                // Optimistic UI update: immediately mark redemption as approved & dispatched (0ms)
+                setRedemptions((prev) =>
+                  prev.map((item) =>
+                    item.id === redemptionId ? { ...item, status: 'approved', stage: 'completed' } : item
+                  )
+                );
+
+                try {
+                  const res = await fetch('/api/payments/withdraw', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ redemptionId, action: 'approve' }),
+                  });
+                  const data = await res.json();
+                  if (!data.success) {
+                    alert(data.error || 'Failed to dispatch redemption');
+                    syncRequestsAndAlerts();
+                  } else {
+                    syncRequestsAndAlerts();
+                  }
+                } catch (e) {
+                  console.error(e);
                   syncRequestsAndAlerts();
-                } else {
-                  alert(data.error || 'Failed to dispatch redemption');
                 }
               }}
               onRejectRedemption={async (redemptionId, reason) => {
-                const res = await fetch('/api/payments/withdraw', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ redemptionId, action: 'reject', rejectReason: reason }),
-                });
-                const data = await res.json();
-                if (data.success) {
-                  setRedemptions((prev) =>
-                    prev.map((item) => (item.id === redemptionId ? { ...item, status: 'rejected' } : item))
-                  );
+                // Optimistic UI update: immediately mark redemption as rejected (0ms)
+                setRedemptions((prev) =>
+                  prev.map((item) => (item.id === redemptionId ? { ...item, status: 'rejected', stage: 'rejected' } : item))
+                );
+
+                try {
+                  const res = await fetch('/api/payments/withdraw', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ redemptionId, action: 'reject', rejectReason: reason }),
+                  });
+                  const data = await res.json();
+                  if (!data.success) {
+                    alert(data.error || 'Failed to reject redemption');
+                    syncRequestsAndAlerts();
+                  } else {
+                    syncRequestsAndAlerts();
+                  }
+                } catch (e) {
+                  console.error(e);
                   syncRequestsAndAlerts();
-                } else {
-                  alert(data.error || 'Failed to reject redemption');
                 }
               }}
             />
@@ -5628,29 +5774,43 @@ export default function AdminPortal({ initialTab }) {
                         if (!newMethod.name.trim() || !newMethod.accountDetails.trim()) {
                           return alert('Please fill in Method Name and Cashtag / Address');
                         }
-                        const res = await fetch('/api/payments/methods', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(newMethod),
+
+                        // 1. Optimistic UI update (0ms)
+                        const tempId = 'gateway-' + Date.now();
+                        const optimisticGateway = { ...newMethod, id: tempId, isActive: true };
+                        setPaymentMethods(prev => [...prev, optimisticGateway]);
+
+                        // 2. Dismiss modal immediately in 0ms!
+                        setIsAddGatewayModalOpen(false);
+                        const methodToSubmit = { ...newMethod };
+                        setNewMethod({
+                          name: '',
+                          type: 'cashapp',
+                          tag: 'Instant',
+                          accountDetails: '',
+                          paymentUrl: '',
+                          qrCode: '',
+                          instructions: '',
+                          minDeposit: 10,
+                          maxDeposit: 2500,
                         });
-                        const d = await res.json();
-                        if (d.success) {
-                          alert('Payment method activated successfully!');
-                          setPaymentMethods(prev => [...prev, d.method || { ...newMethod, id: d.id, isActive: true }]);
-                          setNewMethod({
-                            name: '',
-                            type: 'cashapp',
-                            tag: 'Instant',
-                            accountDetails: '',
-                            paymentUrl: '',
-                            qrCode: '',
-                            instructions: '',
-                            minDeposit: 10,
-                            maxDeposit: 2500,
+
+                        // 3. Fire API in background
+                        try {
+                          const res = await fetch('/api/payments/methods', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(methodToSubmit),
                           });
-                          setIsAddGatewayModalOpen(false);
-                        } else {
-                          alert(d.error || 'Failed to create payment method');
+                          const d = await res.json();
+                          if (d.success && d.method) {
+                            setPaymentMethods(prev => prev.map(x => x.id === tempId ? (d.method || { ...methodToSubmit, id: d.id, isActive: true }) : x));
+                          } else if (!d.success) {
+                            alert(d.error || 'Failed to create payment method');
+                            setPaymentMethods(prev => prev.filter(x => x.id !== tempId));
+                          }
+                        } catch (err) {
+                          console.error('Failed to create payment method', err);
                         }
                       }}
                       className="space-y-4"
@@ -5962,21 +6122,18 @@ export default function AdminPortal({ initialTab }) {
                           {/* Toggle Active Button */}
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={() => {
                               const updatedActive = !m.isActive;
-                              const res = await fetch('/api/payments/methods', {
+                              // 1. Optimistic state toggle (0ms)
+                              setPaymentMethods(prev => prev.map(x => x.id === m.id ? { ...x, isActive: updatedActive } : x));
+                              // 2. Fire PUT in background
+                              fetch('/api/payments/methods', {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ id: m.id, isActive: updatedActive }),
-                              });
-                              const d = await res.json();
-                              if (d.success) {
-                                setPaymentMethods(prev => prev.map(x => x.id === m.id ? { ...x, isActive: updatedActive } : x));
-                              } else {
-                                alert(d.error || 'Failed to update gateway status');
-                              }
+                              }).catch(err => console.error('Failed to update gateway', err));
                             }}
-                            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition border ${m.isActive
+                            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition border cursor-pointer ${m.isActive
                               ? 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
                               : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
                               }`}
@@ -5988,19 +6145,16 @@ export default function AdminPortal({ initialTab }) {
                           {/* Delete Button */}
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={() => {
                               if (!window.confirm(`Are you sure you want to delete "${m.name}" payment method?`)) return;
-                              const res = await fetch(`/api/payments/methods?id=${encodeURIComponent(m.id)}`, {
+                              // 1. Optimistic removal (0ms)
+                              setPaymentMethods(prev => prev.filter(x => x.id !== m.id));
+                              // 2. Fire DELETE in background
+                              fetch(`/api/payments/methods?id=${encodeURIComponent(m.id)}`, {
                                 method: 'DELETE',
-                              });
-                              const d = await res.json();
-                              if (d.success) {
-                                setPaymentMethods(paymentMethods.filter(x => x.id !== m.id));
-                              } else {
-                                alert(d.error || 'Failed to delete gateway');
-                              }
+                              }).catch(err => console.error('Failed to delete gateway', err));
                             }}
-                            className="px-2.5 py-1.5 rounded-xl bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/30 font-bold text-xs flex items-center gap-1 transition"
+                            className="px-2.5 py-1.5 rounded-xl bg-red-500/15 text-red-300 hover:bg-red-500/25 border border-red-500/30 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
                             title="Remove Gateway"
                           >
                             <Trash2 size={12} />

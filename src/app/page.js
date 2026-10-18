@@ -117,6 +117,24 @@ export default function HomePage() {
 
   useEffect(() => {
     loadUser();
+
+    const handleUserSync = (e) => {
+      if (e.detail) setUser(e.detail);
+    };
+
+    const handleFocus = () => {
+      loadUser();
+    };
+
+    window.addEventListener('paradise-user-sync', handleUserSync);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      window.removeEventListener('paradise-user-sync', handleUserSync);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   useEffect(() => {

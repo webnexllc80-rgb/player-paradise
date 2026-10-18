@@ -56,11 +56,12 @@ export default function FinanceRedemptionsView({
   const approvedCount = redemptions.filter((r) => r.status === 'approved').length;
   const rejectedCount = redemptions.filter((r) => r.status === 'rejected').length;
 
-  const handleConfirmReject = async () => {
+  const handleConfirmReject = () => {
     if (!rejectModal.item) return;
+    const targetId = rejectModal.item.id;
     const reason = rejectModal.reason.trim() || 'Cashout request rejected. Please check requirements.';
-    await onReject(rejectModal.item.id, reason);
     setRejectModal({ open: false, item: null, reason: '' });
+    onReject(targetId, reason);
   };
 
   const handleExecuteApprove = async (item) => {
