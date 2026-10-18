@@ -4138,10 +4138,34 @@ export default function AdminPortal({ initialTab }) {
                           Omnichannel Dispatcher
                         </h3>
                       </div>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        Live Engine
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const r = await fetch('/api/notifications/test', { method: 'POST' });
+                              const d = await r.json();
+                              if (d.success) {
+                                setPushStatus('✓ Instant test alert sent to Chrome & In-App!');
+                                const logsRes = await fetch('/api/notifications?admin=true').then(res => res.json());
+                                if (logsRes.success) setBroadcastLogs(logsRes.broadcasts || []);
+                                setTimeout(() => setPushStatus(null), 5000);
+                              }
+                            } catch (e) {
+                              alert('Test error: ' + e.message);
+                            }
+                          }}
+                          className="px-2.5 py-1 rounded-xl bg-cyan-500/15 border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/25 text-[11px] font-bold flex items-center gap-1 transition-all"
+                          title="Send instant test alert to test Chrome & In-App notifications"
+                        >
+                          <Zap size={13} className="text-cyan-400" />
+                          <span>Send Test Notification</span>
+                        </button>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                          Live Engine
+                        </span>
+                      </div>
                     </div>
 
                     <form onSubmit={handleDispatchBroadcast} className="space-y-3.5">

@@ -1,5 +1,6 @@
 import './globals.css';
 import GlobalLiveChat from '@/components/chat/GlobalLiveChat';
+import PushNotificationManager from '@/components/common/PushNotificationManager';
 
 export const metadata = {
   title: 'Players Paradise Hub | Official Cyber Gaming & Sweeps Hub',
@@ -30,6 +31,7 @@ export default function RootLayout({ children }) {
         <link rel="icon" href="/logo.png" />
       </head>
       <body className="antialiased selection:bg-[var(--neon-cyan)] selection:text-black">
+        <PushNotificationManager />
         {children}
         <GlobalLiveChat />
       </body>

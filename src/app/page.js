@@ -436,8 +436,7 @@ export default function HomePage() {
         onBalanceUpdated={loadUser}
       />
 
-      {/* Push Notifications & Real-Time Broadcast Toast */}
-      <PushNotificationManager />
+      {/* Bonus Alerts Toast */}
       <BonusAlertToast />
 
       {/* Promos & Broadcasts Modal */}
