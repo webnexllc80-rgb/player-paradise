@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
 // Search player for allotment or fetch recent allotment history
@@ -115,7 +115,7 @@ export async function POST(req) {
     const usersCol = db.collection('users');
     const ledgerCol = db.collection('ledger');
 
-    const player = await usersCol.findOne({ _id: new ObjectId(playerId) });
+    const player = await usersCol.findOne(safeIdFilter(playerId, ['username', 'email']));
     if (!player) {
       return NextResponse.json({ success: false, error: 'Player not found.' }, { status: 404 });
     }

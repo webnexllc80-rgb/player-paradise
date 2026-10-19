@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
 // GET list of players
@@ -63,8 +63,7 @@ export async function PATCH(req) {
     const db = await getDb();
     const usersCol = db.collection('users');
 
-    let filter = { _id: userId };
-    if (ObjectId.isValid(userId)) filter = { _id: new ObjectId(userId) };
+    const filter = safeIdFilter(userId);
 
     const updateFields = { updatedAt: new Date() };
     if (isBanned !== undefined) updateFields.isBanned = isBanned;

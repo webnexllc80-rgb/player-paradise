@@ -30,17 +30,17 @@ export function notifyPlayer({ userId, userEmail, username, title, message, type
       let token = null;
       if (cleanEmail) {
         const sub = await db.collection('subscriptions').findOne({ email: cleanEmail });
-        if (sub?.fcmToken) token = sub.fcmToken;
+        if (sub) token = sub.fcmToken || sub.token;
       }
       if (!token && cleanUid) {
         const sub = await db.collection('subscriptions').findOne({ userId: cleanUid });
-        if (sub?.fcmToken) token = sub.fcmToken;
+        if (sub) token = sub.fcmToken || sub.token;
       }
 
       // 3. Send Push Notification via Firebase
       await sendPushNotification({
         token,
-        topic: token ? undefined : 'vegas_all_players',
+        topic: token ? undefined : 'paradise_all_players',
         title,
         body: message,
         data: { ...data, type },

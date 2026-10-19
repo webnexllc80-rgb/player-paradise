@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
+import { getSessionUser, ROLES, getUserFilter, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 
@@ -130,16 +130,16 @@ export async function PUT(req) {
     const kycCol = db.collection('kyc_requests');
     const usersCol = db.collection('users');
 
-    const kyc = await kycCol.findOne({ _id: new ObjectId(kycId) });
+    const kyc = await kycCol.findOne(safeIdFilter(kycId));
     if (!kyc) {
       return NextResponse.json({ success: false, error: 'KYC request not found.' }, { status: 404 });
     }
 
-    const user = await usersCol.findOne({ _id: new ObjectId(kyc.userId) });
+    const user = await usersCol.findOne(safeIdFilter(kyc.userId));
 
     if (action === 'approve') {
       await kycCol.updateOne(
-        { _id: kyc._id },
+        safeIdFilter(kyc._id),
         {
           $set: {
             status: 'approved',
@@ -150,7 +150,7 @@ export async function PUT(req) {
       );
 
       await usersCol.updateOne(
-        { _id: new ObjectId(kyc.userId) },
+        safeIdFilter(kyc.userId),
         { $set: { kycStatus: 'approved' } }
       );
 
@@ -165,7 +165,7 @@ export async function PUT(req) {
       return NextResponse.json({ success: true, message: 'KYC Approved successfully.' });
     } else if (action === 'reject') {
       await kycCol.updateOne(
-        { _id: kyc._id },
+        safeIdFilter(kyc._id),
         {
           $set: {
             status: 'rejected',
@@ -177,7 +177,7 @@ export async function PUT(req) {
       );
 
       await usersCol.updateOne(
-        { _id: new ObjectId(kyc.userId) },
+        safeIdFilter(kyc.userId),
         { $set: { kycStatus: 'rejected' } }
       );
 

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
+import { notifyPlayer } from '@/lib/notify';
+import { sendPushNotification } from '@/lib/fcm';
 
 // GET: Fetch chat messages
 export async function GET(req) {
@@ -155,6 +157,53 @@ export async function POST(req) {
     };
 
     const res = await chatCol.insertOne(newMsg);
+
+    // Bi-directional Real-Time Notification Dispatch
+    if (isStaff) {
+      // Staff sent message to Player: Notify player via in-app & push
+      (async () => {
+        try {
+          const targetPlayer = await db.collection('users').findOne(safeIdFilter(resolvedConvId, ['username', 'email']));
+          notifyPlayer({
+            userId: targetPlayer?._id ? targetPlayer._id.toString() : resolvedConvId,
+            userEmail: targetPlayer?.email || null,
+            username: targetPlayer?.username || targetUsername || 'Player',
+            title: `💬 Support Message: ${staffName || 'VIP Support'}`,
+            message: (text || 'Sent an attachment').slice(0, 100),
+            type: 'chat_message',
+            data: { url: '/chat', conversationId: resolvedConvId },
+          });
+        } catch (nErr) {
+          console.warn('Chat player notification note:', nErr.message);
+        }
+      })();
+    } else {
+      // Player/Guest sent message to Staff: Dispatch notification to staff dashboard
+      (async () => {
+        try {
+          await db.collection('notifications').insertOne({
+            target: 'staff',
+            channel: 'all',
+            title: `💬 New Message from ${senderUsername}`,
+            message: (text || 'Sent an image attachment').slice(0, 100),
+            type: 'chat_message',
+            conversationId: resolvedConvId,
+            url: `/admin/chat?cid=${resolvedConvId}`,
+            read: false,
+            createdAt: new Date(),
+          });
+
+          await sendPushNotification({
+            topic: 'paradise_all_players',
+            title: `💬 Support Chat from ${senderUsername}`,
+            body: (text || 'Sent an attachment').slice(0, 100),
+            data: { url: `/admin/chat?cid=${resolvedConvId}`, conversationId: resolvedConvId },
+          });
+        } catch (sErr) {
+          console.warn('Chat staff notification note:', sErr.message);
+        }
+      })();
+    }
 
     return NextResponse.json({
       success: true,

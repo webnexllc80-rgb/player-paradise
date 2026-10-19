@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { notifyPlayer } from '@/lib/notify';
 
 // GET Account Requests
@@ -105,7 +105,7 @@ export async function POST(req) {
     let user = null;
     if (session?.userId) {
       try {
-        user = await usersCol.findOne({ _id: new ObjectId(session.userId) });
+        user = await usersCol.findOne(safeIdFilter(session.userId));
       } catch (_) {}
     }
     if (!user) {
@@ -241,7 +241,7 @@ export async function PUT(req) {
 
     const db = await getDb();
     const requestsCol = db.collection('accountRequests');
-    const targetRequest = await requestsCol.findOne({ _id: new ObjectId(id) });
+    const targetRequest = await requestsCol.findOne(safeIdFilter(id));
 
     if (!targetRequest) {
       return NextResponse.json({ success: false, message: 'Request not found.' }, { status: 404 });

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
+import { getSessionUser, ROLES, getUserFilter, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
 export async function GET(req) {
@@ -216,7 +216,7 @@ export async function PUT(req) {
         return NextResponse.json({ success: false, error: 'Target userId required' }, { status: 400 });
       }
 
-      const user = await usersCol.findOne({ _id: new ObjectId(userId) });
+      const user = await usersCol.findOne(safeIdFilter(userId, ['username', 'email']));
       if (!user) {
         return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
       }
@@ -317,7 +317,7 @@ export async function PUT(req) {
 
       const rate = Math.min(100, Math.max(1, Number(customRate)));
       await usersCol.updateOne(
-        { _id: new ObjectId(userId) },
+        safeIdFilter(userId, ['username', 'email']),
         { $set: { affiliateRate: rate } }
       );
 

@@ -268,7 +268,7 @@ export async function PUT(req) {
 
       // Unfreeze player's balance
       await usersCol.updateOne(
-        { _id: new ObjectId(redemption.userId) },
+        safeFilter(redemption.userId),
         { $inc: { frozenBalance: -redemption.amount } }
       );
 

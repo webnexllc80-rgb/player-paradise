@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { ObjectId } from 'mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
 // GET: List all staff
@@ -114,7 +114,7 @@ export async function PUT(req) {
     const db = await getDb();
     const usersCol = db.collection('users');
 
-    const staffQuery = ObjectId.isValid(staffId) ? { _id: new ObjectId(staffId) } : { _id: staffId };
+    const staffQuery = safeIdFilter(staffId, ['username', 'email']);
     const currentStaff = await usersCol.findOne(staffQuery);
 
     if (!currentStaff) {
@@ -184,7 +184,7 @@ export async function DELETE(req) {
     const db = await getDb();
     const usersCol = db.collection('users');
 
-    const staffQuery = ObjectId.isValid(staffId) ? { _id: new ObjectId(staffId) } : { _id: staffId };
+    const staffQuery = safeIdFilter(staffId, ['username', 'email']);
     const currentStaff = await usersCol.findOne(staffQuery);
 
     if (!currentStaff) {

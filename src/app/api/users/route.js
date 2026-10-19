@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 
 // GET: List Player Accounts (Staff only)
@@ -21,8 +21,8 @@ export async function GET(req) {
     const usersCol = db.collection('users');
 
     // 1. Single User 360° Intelligence Profile
-    if (userId && ObjectId.isValid(userId)) {
-      const u = await usersCol.findOne({ _id: new ObjectId(userId) }, { projection: { passwordHash: 0 } });
+    if (userId) {
+      const u = await usersCol.findOne(safeIdFilter(userId, ['username', 'email']), { projection: { passwordHash: 0 } });
       if (!u) {
         return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
       }
@@ -301,21 +301,21 @@ export async function PUT(req) {
     const body = await req.json();
     const { userId, action, reason, newPassword, balanceAdjustment } = body;
 
-    if (!userId || !ObjectId.isValid(userId)) {
+    if (!userId) {
       return NextResponse.json({ success: false, error: 'Invalid user ID.' }, { status: 400 });
     }
 
     const db = await getDb();
     const usersCol = db.collection('users');
-    const uObjectId = new ObjectId(userId);
+    const uFilter = safeIdFilter(userId, ['username', 'email']);
+    const targetUser = await usersCol.findOne(uFilter);
+    if (!targetUser) return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
+    const targetFilter = safeIdFilter(targetUser._id);
 
     if (action === 'toggleBan') {
-      const targetUser = await usersCol.findOne({ _id: uObjectId });
-      if (!targetUser) return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
-
       const newBannedState = !targetUser.isBanned;
       await usersCol.updateOne(
-        { _id: uObjectId },
+        targetFilter,
         {
           $set: {
             isBanned: newBannedState,
@@ -337,7 +337,7 @@ export async function PUT(req) {
         return NextResponse.json({ success: false, error: 'Password must be at least 6 characters.' }, { status: 400 });
       }
       const hash = await bcrypt.hash(newPassword, 10);
-      await usersCol.updateOne({ _id: uObjectId }, { $set: { passwordHash: hash } });
+      await usersCol.updateOne(targetFilter, { $set: { passwordHash: hash } });
       return NextResponse.json({ success: true, message: 'Password successfully reset.' });
     }
 
@@ -346,11 +346,9 @@ export async function PUT(req) {
       if (isNaN(amount) || amount === 0) {
         return NextResponse.json({ success: false, error: 'Invalid adjustment amount.' }, { status: 400 });
       }
-      const targetUser = await usersCol.findOne({ _id: uObjectId });
-      if (!targetUser) return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
 
       const newBalance = Math.max(0, (targetUser.balanceSC || 0) + amount);
-      await usersCol.updateOne({ _id: uObjectId }, { $set: { balanceSC: newBalance } });
+      await usersCol.updateOne(targetFilter, { $set: { balanceSC: newBalance } });
 
       // Log in ledger
       const ledgerCol = db.collection('ledger');
@@ -370,11 +368,8 @@ export async function PUT(req) {
     }
 
     if (action === 'resetDevice') {
-      const targetUser = await usersCol.findOne({ _id: uObjectId });
-      if (!targetUser) return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
-
       await usersCol.updateOne(
-        { _id: uObjectId },
+        targetFilter,
         {
           $set: { deviceId: null, boundDevices: [] },
         }

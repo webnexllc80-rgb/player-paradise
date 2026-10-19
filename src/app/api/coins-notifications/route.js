@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
-import { getSessionUser, ROLES } from '@/lib/auth';
+import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { ensureDbInitialized } from '@/lib/initDb';
 
 // GET Coins Allotment Tasks Queue
@@ -104,7 +104,7 @@ export async function PUT(req) {
 
     const db = await getDb();
     const col = db.collection('coinsNotifications');
-    const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+    const filter = safeIdFilter(id);
 
     const updateFields = {
       updatedAt: new Date(),

@@ -117,7 +117,17 @@ export default function PushNotificationManager() {
   useEffect(() => {
     const initCapacitor = async () => {
       try {
-        if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+        if (typeof window === 'undefined') return;
+
+        let isNative = false;
+        try {
+          const { Capacitor } = await import('@capacitor/core');
+          isNative = Capacitor.isNativePlatform();
+        } catch {
+          isNative = Boolean(window.Capacitor?.isNativePlatform?.());
+        }
+
+        if (isNative) {
           const { PushNotifications } = await import('@capacitor/push-notifications');
           const permStatus = await PushNotifications.requestPermissions();
 
@@ -131,6 +141,7 @@ export default function PushNotificationManager() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     token: token.value,
+                    fcmToken: token.value,
                     device: 'android_apk',
                   }),
                 });

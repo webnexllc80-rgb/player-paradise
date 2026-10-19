@@ -149,3 +149,19 @@ export function getUserFilter(sessionUser) {
   }
   return or.length > 0 ? { $or: or } : { _id: strId };
 }
+
+export function safeIdFilter(id, extraFields = []) {
+  if (!id) return { _id: null };
+  const strId = String(id);
+  const or = [{ _id: strId }, { id: strId }];
+  if (/^[0-9a-fA-F]{24}$/.test(strId)) {
+    try {
+      const { ObjectId } = require('mongodb');
+      or.push({ _id: new ObjectId(strId) });
+    } catch {}
+  }
+  for (const field of extraFields) {
+    or.push({ [field]: strId });
+  }
+  return { $or: or };
+}
