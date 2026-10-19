@@ -21,7 +21,8 @@ import {
   Flame,
   Sparkles,
   Crown,
-  Users
+  Users,
+  Headphones
 } from 'lucide-react';
 
 export default function CyberSidebar({
@@ -46,6 +47,20 @@ export default function CyberSidebar({
     { label: 'Redeem Cashout', path: '/withdraw', icon: Receipt },
     { label: 'Daily Spin', path: '/spin-wheel', icon: Gift, glow: true },
     { label: 'Refer & Earn', path: '/referral', icon: Users, badge: 'REWARDS', glow: true },
+    {
+      label: '24/7 Live Support',
+      path: '/chat',
+      icon: Headphones,
+      badge: 'ONLINE',
+      glow: true,
+      action: () => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('open-live-chat'));
+          if (typeof window.openLiveChat === 'function') window.openLiveChat();
+        }
+        if (onOpenChat) onOpenChat();
+      },
+    },
     { label: 'Ledger History', path: '/ledger', icon: Receipt },
     { label: 'Promotions & VIP', path: '/promotions', icon: Crown },
     { label: 'Download App', path: '/download-app', icon: Download, badge: 'APK / iOS' },

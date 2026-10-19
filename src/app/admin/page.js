@@ -886,7 +886,22 @@ export default function AdminPortal({ initialTab }) {
           .then(r => r.json())
           .then(d => { if (d.success) setLedgerRecords(d.records); });
       } else if (activeTab === 'chat') {
-        fetch('/api/chat?inbox=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setChatConversations(d.conversations); });
+        fetch('/api/chat?inbox=true', { cache: 'no-store' })
+          .then(r => r.json())
+          .then(d => {
+            if (d.success) {
+              setChatConversations(d.conversations || []);
+              if (typeof window !== 'undefined') {
+                const sp = new URLSearchParams(window.location.search);
+                const cid = sp.get('cid');
+                if (cid && !activeChatConv) {
+                  const found = (d.conversations || []).find(c => c._id === cid);
+                  if (found) setActiveChatConv(found);
+                  else setActiveChatConv({ _id: cid, username: 'Player', userId: cid });
+                }
+              }
+            }
+          });
       } else if (activeTab === 'promos') {
         fetch('/api/notifications?admin=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setBroadcastLogs(d.broadcasts || []); });
       } else if (activeTab === 'affiliates' || activeTab === 'affiliate_commissions') {

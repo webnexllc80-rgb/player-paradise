@@ -290,24 +290,36 @@ function createCollectionWrapper(name) {
     aggregate(pipeline = []) {
       return {
         async toArray() {
+          loadFallbackStore();
+          const data = fallbackStore[name] || [];
           // Simple inbox grouping implementation for chat
           const convMap = new Map();
           for (const msg of data) {
             const cid = msg.conversationId || msg.userId;
+            if (!cid) continue;
+            const customerName = msg.customerUsername || (msg.senderRole === 'player' ? msg.username : null);
+            const customerUid = msg.customerUserId || (msg.senderRole === 'player' ? msg.userId : null);
+
             if (!convMap.has(cid)) {
               convMap.set(cid, {
                 _id: cid,
-                username: msg.username,
-                userId: msg.userId,
-                lastMessage: msg.text,
+                username: customerName || msg.username || 'Player',
+                userId: customerUid || msg.userId || cid,
+                lastMessage: msg.text || (msg.imageUrl ? '[Attachment]' : ''),
                 lastSenderRole: msg.senderRole,
                 updatedAt: msg.createdAt,
                 unreadCount: msg.read === false && msg.senderRole === 'player' ? 1 : 0,
               });
             } else {
               const existing = convMap.get(cid);
+              if (customerName && (existing.username === 'Player' || existing.username === 'Players Paradise Support')) {
+                existing.username = customerName;
+              }
+              if (customerUid) {
+                existing.userId = customerUid;
+              }
               if (new Date(msg.createdAt) > new Date(existing.updatedAt)) {
-                existing.lastMessage = msg.text;
+                existing.lastMessage = msg.text || (msg.imageUrl ? '[Attachment]' : '');
                 existing.lastSenderRole = msg.senderRole;
                 existing.updatedAt = msg.createdAt;
               }
@@ -316,7 +328,9 @@ function createCollectionWrapper(name) {
               }
             }
           }
-          return Array.from(convMap.values());
+          return Array.from(convMap.values()).sort(
+            (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+          );
         },
       };
     },

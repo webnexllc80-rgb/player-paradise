@@ -189,7 +189,12 @@ export default function HomePage() {
         user={user}
         onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
         onOpenGameRequest={() => handleRequestGame()}
-        onOpenChat={() => setChatOpen(true)}
+        onOpenChat={() => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('open-live-chat'));
+            if (typeof window.openLiveChat === 'function') window.openLiveChat();
+          }
+        }}
         onOpenDailyBonus={() => setDailyBonusOpen(true)}
         onOpenSpinWheel={() => setSpinWheelOpen(true)}
       />

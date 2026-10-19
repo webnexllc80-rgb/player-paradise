@@ -1,9 +1,20 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Headphones, Send, X, Shield, Sparkles, Paperclip, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import {
+  Headphones,
+  Send,
+  X,
+  Shield,
+  Sparkles,
+  Paperclip,
+  CheckCheck,
+  AlertCircle,
+  RefreshCw,
+  MessageSquare,
+} from 'lucide-react';
 
-export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
+export default function LiveChatWidget({ user: initialUser, soundEnabled = true }) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(initialUser || null);
   const [messages, setMessages] = useState([]);
@@ -11,12 +22,32 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
   const [attachedImage, setAttachedImage] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState(null);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const [guestId, setGuestId] = useState('');
+  const [unreadStaffCount, setUnreadStaffCount] = useState(0);
   const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const lastStaffMsgCountRef = useRef(0);
+
+  // Synchronous and persistent guestId generation
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        let storedId = localStorage.getItem('pp_guest_chat_id');
+        if (!storedId || !storedId.startsWith('guest_')) {
+          storedId = `guest_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
+          localStorage.setItem('pp_guest_chat_id', storedId);
+        }
+        setGuestId(storedId);
+      } catch {
+        setGuestId(`guest_${Date.now().toString(36)}`);
+      }
+    }
+  }, []);
 
   // Sync or fetch current user if not provided via props
   useEffect(() => {
@@ -30,18 +61,31 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
         })
         .catch(() => {});
     }
+
+    // Listen to global user sync events from navbar
+    const handleUserSync = (e) => {
+      if (e.detail) setCurrentUser(e.detail);
+    };
+    window.addEventListener('paradise-user-sync', handleUserSync);
+    return () => window.removeEventListener('paradise-user-sync', handleUserSync);
   }, [initialUser]);
 
-  // Initialize or retrieve persistent guestId for unauthenticated visitors
+  // Global window listeners so any button/link/notification can open chat
   useEffect(() => {
+    const handleOpen = () => setIsOpen(true);
+    const handleClose = () => setIsOpen(false);
+    window.addEventListener('open-live-chat', handleOpen);
+    window.addEventListener('close-live-chat', handleClose);
+
     if (typeof window !== 'undefined') {
-      let storedId = localStorage.getItem('pp_guest_chat_id');
-      if (!storedId) {
-        storedId = `guest_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
-        localStorage.setItem('pp_guest_chat_id', storedId);
-      }
-      setGuestId(storedId);
+      window.openLiveChat = handleOpen;
+      window.closeLiveChat = handleClose;
     }
+
+    return () => {
+      window.removeEventListener('open-live-chat', handleOpen);
+      window.removeEventListener('close-live-chat', handleClose);
+    };
   }, []);
 
   // Android Native Back Button Support for APK & Mobile Browser
@@ -91,30 +135,68 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
     };
   }, [isOpen]);
 
-  // Poll chat messages when open (works for both logged in users AND guest visitors)
+  // Periodic polling for messages:
+  // - High frequency (3.5s) when drawer is open
+  // - Low frequency (12s) in background when drawer is closed (to update unread badge)
   useEffect(() => {
-    if (!isOpen) return;
+    let isCancelled = false;
 
     const fetchMessages = async () => {
+      if (document.hidden && !isOpen) return; // Save resources when tab backgrounded
+
+      const activeGuestId =
+        guestId ||
+        (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
+        'guest_session';
+
+      const endpoint = currentUser ? '/api/chat' : `/api/chat?guestId=${encodeURIComponent(activeGuestId)}`;
+
       try {
-        const endpoint = currentUser ? '/api/chat' : `/api/chat?guestId=${guestId}`;
-        const res = await fetch(endpoint);
+        const res = await fetch(endpoint, { cache: 'no-store' });
         const data = await res.json();
-        if (data.success) {
-          setMessages(data.messages || []);
+        if (isCancelled || !data.success) return;
+
+        const newMsgs = data.messages || [];
+        setMessages(newMsgs);
+
+        // Calculate unread staff messages
+        const staffMsgs = newMsgs.filter((m) => m.senderRole === 'staff');
+        if (isOpen) {
+          setUnreadStaffCount(0);
+        } else {
+          setUnreadStaffCount(data.unreadCount || staffMsgs.filter((m) => !m.read).length);
         }
-      } catch {}
+
+        // Optional sound alert on new incoming staff message
+        if (soundEnabled && staffMsgs.length > lastStaffMsgCountRef.current && lastStaffMsgCountRef.current > 0) {
+          try {
+            const audio = new Audio('/sounds/notification.mp3');
+            audio.volume = 0.5;
+            audio.play().catch(() => {});
+          } catch {}
+        }
+        lastStaffMsgCountRef.current = staffMsgs.length;
+      } catch {
+        // silent polling error
+      }
     };
 
     fetchMessages();
-    const interval = setInterval(fetchMessages, 3500);
-    return () => clearInterval(interval);
-  }, [isOpen, currentUser, guestId]);
+    const pollInterval = isOpen ? 3500 : 12000;
+    const interval = setInterval(fetchMessages, pollInterval);
 
-  // Auto-scroll to bottom
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [isOpen, currentUser, guestId, soundEnabled]);
+
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, keyboardOffset, attachedImage]);
+    if (isOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, keyboardOffset, attachedImage, isOpen]);
 
   // Compress & read image to lightweight base64
   const handleFileChange = (e) => {
@@ -131,7 +213,6 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Scale to max 1200px width/height for fast transfer
         const maxDim = 1200;
         let width = img.width;
         let height = img.height;
@@ -165,24 +246,54 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
     e.target.value = '';
   };
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if ((!inputMessage.trim() && !attachedImage) || sending) return;
+  // Send message handler with optimistic UI update and error rollback
+  const handleSendMessage = async (e, directText = null) => {
+    if (e && e.preventDefault) e.preventDefault();
 
-    const text = inputMessage.trim();
-    const imagePayload = attachedImage;
+    const textToSend = directText !== null ? directText.trim() : inputMessage.trim();
+    if ((!textToSend && !attachedImage) || sending) return;
+
+    const currentText = textToSend;
+    const currentAttachment = attachedImage;
+
+    // Reset input fields
     setInputMessage('');
     setAttachedImage(null);
+    setSendError(null);
     setSending(true);
+
+    const effectiveGuestId =
+      guestId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
+      `guest_${Date.now().toString(36)}`;
+
+    // Optimistic message placeholder
+    const optimisticMsg = {
+      id: `opt_${Date.now()}`,
+      conversationId: currentUser ? (currentUser.id || currentUser.userId || currentUser._id) : effectiveGuestId,
+      userId: currentUser ? (currentUser.id || currentUser.userId || currentUser._id) : effectiveGuestId,
+      username: currentUser?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
+      senderRole: 'player',
+      text: currentText,
+      imageUrl: currentAttachment || null,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
 
     try {
       const payload = currentUser
-        ? { text, imageUrl: imagePayload }
+        ? {
+            text: currentText,
+            imageUrl: currentAttachment,
+            conversationId: currentUser.id || currentUser.userId || currentUser._id,
+          }
         : {
-            text,
-            imageUrl: imagePayload,
-            guestId,
-            guestName: `Guest #${guestId.slice(-4).toUpperCase()}`,
+            text: currentText,
+            imageUrl: currentAttachment,
+            guestId: effectiveGuestId,
+            guestName: `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
           };
 
       const res = await fetch('/api/chat', {
@@ -190,31 +301,65 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
       const data = await res.json();
-      if (data.success && data.message) {
-        setMessages((prev) => [...prev, data.message]);
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send message. Please retry.');
       }
-    } catch {
+
+      // Replace optimistic message with verified server message
+      if (data.message) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
+        );
+      }
+    } catch (err) {
+      // Restore input text so the user doesn't lose it
+      setInputMessage(currentText);
+      setAttachedImage(currentAttachment);
+      setSendError(err.message || 'Delivery failed. Tap to retry.');
+      // Remove optimistic message on failure
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
     } finally {
       setSending(false);
     }
   };
 
+  const quickInquiries = [
+    'How do I deposit funds?',
+    'I need my Game ID credentials',
+    'Where is my cashout redemption?',
+    'Speak to live VIP host',
+  ];
+
   return (
     <>
       {/* Floating Headphone Support Button - Visible site-wide */}
-      <div className="fixed live-chat-float-btn right-4 sm:right-6 z-40">
+      <div className="fixed live-chat-float-btn right-4 sm:right-6 z-50">
         <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="relative w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-xl cursor-pointer"
+          type="button"
+          onClick={() => {
+            setIsOpen(!isOpen);
+            if (!isOpen) setUnreadStaffCount(0);
+          }}
+          className="relative w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-110 active:scale-95 shadow-2xl cursor-pointer group"
           style={{
             background: 'linear-gradient(135deg, #00F0FF 0%, #E026D8 100%)',
-            boxShadow: '0 8px 30px rgba(0, 240, 255, 0.45), 0 0 15px rgba(224, 38, 216, 0.35)',
+            boxShadow: '0 8px 30px rgba(0, 240, 255, 0.5), 0 0 20px rgba(224, 38, 216, 0.4)',
           }}
-          aria-label="Open 24/7 Live Support"
+          aria-label="Open 24/7 Live Support Concierge"
         >
-          <Headphones size={24} className="text-black" />
-          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-[#070514] animate-pulse" />
+          <Headphones size={24} className="text-black transition-transform group-hover:rotate-6" />
+
+          {/* Pulse Online Indicator */}
+          <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-[#070514] animate-pulse" />
+
+          {/* Unread Staff Message Badge */}
+          {unreadStaffCount > 0 && !isOpen && (
+            <span className="absolute -top-1.5 -left-1.5 min-w-[22px] h-[22px] px-1 rounded-full bg-rose-500 text-white font-black text-[10px] flex items-center justify-center shadow-lg border-2 border-[#070514] animate-bounce">
+              {unreadStaffCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -240,14 +385,14 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
         </div>
       )}
 
-      {/* Chat Drawer / Modal with Mobile Keyboard Offset */}
+      {/* Chat Drawer / Modal */}
       {isOpen && (
         <div
-          className="fixed live-chat-drawer right-3 sm:right-6 w-[94vw] sm:w-[390px] max-h-[82vh] h-[550px] rounded-2xl flex flex-col z-50 overflow-hidden shadow-2xl transition-all duration-150"
+          className="fixed live-chat-drawer right-3 sm:right-6 w-[94vw] sm:w-[410px] max-h-[84vh] h-[580px] rounded-2xl flex flex-col z-50 overflow-hidden shadow-2xl transition-all duration-150"
           style={{
-            backgroundColor: '#0B071A',
-            border: '1px solid rgba(0, 240, 255, 0.35)',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(0, 240, 255, 0.15)',
+            backgroundColor: '#090616',
+            border: '1px solid rgba(0, 240, 255, 0.4)',
+            boxShadow: '0 25px 70px rgba(0, 0, 0, 0.95), 0 0 40px rgba(0, 240, 255, 0.2)',
             ...(keyboardOffset > 0 ? { bottom: `${keyboardOffset + 12}px` } : {}),
           }}
         >
@@ -256,32 +401,35 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
             className="p-3.5 border-b flex items-center justify-between"
             style={{
               background: 'linear-gradient(135deg, #170E38 0%, #0D0722 100%)',
-              borderColor: 'rgba(0, 240, 255, 0.2)',
+              borderColor: 'rgba(0, 240, 255, 0.25)',
             }}
           >
             <div className="flex items-center gap-2.5">
               <div className="relative">
                 <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-black"
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-black shadow-md"
                   style={{ background: 'linear-gradient(135deg, #00F0FF 0%, #E026D8 100%)' }}
                 >
                   PP
                 </div>
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0B071A]" />
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0B071A] animate-ping" />
               </div>
               <div>
-                <h4 className="text-xs font-black text-white flex items-center gap-1.5" style={{ fontFamily: 'Lexend, sans-serif' }}>
-                  <span>Players Paradise Support</span>
+                <h4
+                  className="text-xs font-black text-white flex items-center gap-1.5"
+                  style={{ fontFamily: 'Lexend, sans-serif' }}
+                >
+                  <span>Players Paradise VIP Desk</span>
                   <Sparkles size={12} color="#00F0FF" />
                 </h4>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>24/7 Desk Online</span>
+                    <span>Live Concierge Online</span>
                   </span>
                   {!currentUser && (
                     <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      Guest Mode
+                      Guest Session
                     </span>
                   )}
                 </div>
@@ -289,6 +437,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
             </div>
 
             <button
+              type="button"
               onClick={handleClose}
               className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
               aria-label="Close Chat"
@@ -300,11 +449,11 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
           {/* Compliance & Mode Notice */}
           <div
             className="px-3 py-1.5 border-b flex items-center justify-between text-[10px] text-gray-400"
-            style={{ backgroundColor: '#070412', borderColor: 'rgba(255, 255, 255, 0.06)' }}
+            style={{ backgroundColor: '#06030F', borderColor: 'rgba(255, 255, 255, 0.06)' }}
           >
             <div className="flex items-center gap-1.5">
               <Shield size={11} color="#00F0FF" className="shrink-0" />
-              <span>Encrypted 24/7 Live Support & Attachments</span>
+              <span>Encrypted 24/7 VIP Hospitality & File Uploads</span>
             </div>
             {!currentUser ? (
               <span className="text-amber-400/90 font-mono text-[9.5px]">Guest Access</span>
@@ -313,10 +462,33 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
             )}
           </div>
 
+          {/* Quick Inquiry Buttons (Visible on empty chat) */}
+          {messages.length === 0 && (
+            <div className="p-3 bg-[#0d0922]/80 border-b border-white/5 space-y-1.5">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                <Sparkles size={11} className="text-amber-400" />
+                <span>Instant Inquiries:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {quickInquiries.map((q, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSendMessage(null, q)}
+                    disabled={sending}
+                    className="text-[10.5px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/50 text-cyan-200 transition text-left cursor-pointer active:scale-95"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Messages Body */}
           <div
             className="flex-1 p-3.5 overflow-y-auto space-y-3"
-            style={{ backgroundColor: '#0A0617' }}
+            style={{ backgroundColor: '#080514' }}
           >
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400 space-y-2.5">
@@ -325,17 +497,17 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
                 </div>
                 <div>
                   <p className="font-bold text-sm text-white" style={{ fontFamily: 'Lexend, sans-serif' }}>
-                    Welcome to 24/7 Live Support!
+                    Welcome to 24/7 Live Concierge!
                   </p>
                   <p className="text-xs text-slate-400 mt-1" style={{ fontFamily: 'Lexend, sans-serif' }}>
                     {!currentUser
-                      ? 'Chatting as a guest! Send messages or upload payment/game screenshots anytime.'
-                      : 'Ask about game credentials, cashout speed, or attach verification screenshots.'}
+                      ? 'Chatting as a guest. Ask questions or attach transaction/game screenshots anytime.'
+                      : 'Ask about game credentials, cashout speed, or attach payment screenshots.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 pt-2">
                   <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[10.5px] text-slate-300">
-                    ⚡ Typical reply in &lt; 1 min
+                    ⚡ Typical staff reply in &lt; 1 min
                   </span>
                 </div>
               </div>
@@ -344,11 +516,11 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
                 const isPlayer = m.senderRole === 'player';
                 return (
                   <div
-                    key={idx}
+                    key={m.id || idx}
                     className={`flex flex-col ${isPlayer ? 'items-end' : 'items-start'}`}
                   >
                     <div className="text-[9.5px] text-slate-400 mb-0.5 px-1 font-mono">
-                      {isPlayer ? (m.username || 'You') : 'Desk Support'}
+                      {isPlayer ? m.username || 'You' : m.staffName || 'VIP Support'}
                     </div>
 
                     <div
@@ -378,15 +550,46 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
                       {m.text && <p className="break-words">{m.text}</p>}
                     </div>
 
-                    <span className="text-[9.5px] text-gray-500 mt-1 px-1 font-mono">
-                      {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <div
+                      className={`flex items-center gap-1 mt-1 px-1 text-[9.5px] text-gray-500 font-mono ${
+                        isPlayer ? 'justify-end' : 'justify-start'
+                      }`}
+                    >
+                      <span>
+                        {new Date(m.createdAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {isPlayer && (
+                        <span className="text-cyan-400">
+                          <CheckCheck size={11} />
+                        </span>
+                      )}
+                    </div>
                   </div>
                 );
               })
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Error Banner if delivery failed */}
+          {sendError && (
+            <div className="px-3 py-2 bg-rose-950/80 border-t border-rose-500/30 flex items-center justify-between text-xs text-rose-300">
+              <div className="flex items-center gap-1.5 truncate">
+                <AlertCircle size={14} className="shrink-0 text-rose-400" />
+                <span className="truncate">{sendError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSendError(null)}
+                className="text-[10px] text-rose-400 hover:text-white px-1.5 py-0.5 rounded"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* Pending Image Attachment Preview */}
           {attachedImage && (
@@ -425,14 +628,14 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
           <form
             onSubmit={handleSendMessage}
             className="p-2.5 border-t flex items-center gap-2"
-            style={{ backgroundColor: '#0F0924', borderColor: 'rgba(0, 240, 255, 0.2)' }}
+            style={{ backgroundColor: '#0B071A', borderColor: 'rgba(0, 240, 255, 0.25)' }}
           >
             {/* Attachment Button */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingImage || sending}
-              className="p-2 rounded-xl text-slate-300 hover:text-[var(--neon-cyan)] bg-white/5 hover:bg-white/10 transition shrink-0"
+              className="p-2 rounded-xl text-slate-300 hover:text-[var(--neon-cyan)] bg-white/5 hover:bg-white/10 transition shrink-0 cursor-pointer"
               title="Attach screenshot or photo"
             >
               {uploadingImage ? (
@@ -446,7 +649,9 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
               ref={inputRef}
               type="text"
               placeholder={
-                currentUser ? 'Type message or attach image...' : 'Type as guest (no login needed)...'
+                currentUser
+                  ? 'Type message or attach image...'
+                  : 'Type message (no account needed)...'
               }
               disabled={sending}
               value={inputMessage}
@@ -455,11 +660,14 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
                   messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
                 }, 300);
               }}
-              onChange={(e) => setInputMessage(e.target.value)}
+              onChange={(e) => {
+                setInputMessage(e.target.value);
+                if (sendError) setSendError(null);
+              }}
               className="flex-1 py-2 px-3 text-xs rounded-xl text-white placeholder-gray-500 focus:outline-none transition"
               style={{
-                backgroundColor: '#06030F',
-                border: '1px solid rgba(0, 240, 255, 0.3)',
+                backgroundColor: '#05030D',
+                border: '1px solid rgba(0, 240, 255, 0.35)',
                 fontFamily: 'Lexend, sans-serif',
               }}
             />
@@ -473,7 +681,11 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled }) {
                 color: '#FFFFFF',
               }}
             >
-              <Send size={15} />
+              {sending ? (
+                <RefreshCw size={14} className="animate-spin text-white" />
+              ) : (
+                <Send size={15} />
+              )}
             </button>
           </form>
         </div>

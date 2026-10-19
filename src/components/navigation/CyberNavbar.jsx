@@ -18,7 +18,8 @@ import {
   ShieldCheck,
   KeyRound,
   ArrowUpRight,
-  Plus
+  Plus,
+  Headphones
 } from 'lucide-react';
 
 export default function CyberNavbar({
@@ -294,6 +295,22 @@ export default function CyberNavbar({
           </button>
         )}
 
+        {/* 24/7 Live Support Concierge Header Button */}
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('open-live-chat'));
+              if (typeof window.openLiveChat === 'function') window.openLiveChat();
+            }
+          }}
+          className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-cyan-500/20 via-purple-600/20 to-pink-500/20 border border-cyan-400/40 text-cyan-300 hover:text-white hover:border-cyan-300 hover:scale-105 transition-all shadow-[0_0_12px_rgba(0,240,255,0.25)] shrink-0 cursor-pointer"
+          title="24/7 Live Support Concierge"
+        >
+          <Headphones size={16} />
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        </button>
+
         {/* Sound toggle (Desktop) */}
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
@@ -366,6 +383,20 @@ export default function CyberNavbar({
                   >
                     <Sparkles size={15} className="text-amber-400" />
                     <span>VIP & Rewards</span>
+                  </div>
+
+                  <div
+                    onClick={() => {
+                      setProfileOpen(false);
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('open-live-chat'));
+                        if (typeof window.openLiveChat === 'function') window.openLiveChat();
+                      }
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 text-xs text-cyan-300 hover:bg-cyan-950/40 rounded-xl cursor-pointer font-bold"
+                  >
+                    <Headphones size={15} className="text-cyan-400" />
+                    <span>24/7 Live Support</span>
                   </div>
                 </div>
 
