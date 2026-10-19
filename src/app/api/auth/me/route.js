@@ -6,9 +6,13 @@ import { getDb } from '@/lib/mongodb';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(req) {
   try {
-    const session = await getSessionUser();
+    const { searchParams } = new URL(req.url);
+    const referer = req.headers.get('referer') || '';
+    const isAdminQuery = searchParams.get('admin') === 'true' || referer.includes('/admin');
+
+    const session = await getSessionUser(isAdminQuery ? 'admin' : 'player');
     if (!session || !session.userId) {
       return NextResponse.json({ authenticated: false, user: null });
     }

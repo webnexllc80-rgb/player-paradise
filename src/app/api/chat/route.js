@@ -117,22 +117,20 @@ export async function GET(req) {
     let targetConvIds = [];
     if (isStaff && conversationId && conversationId !== 'all') {
       targetConvIds = [conversationId];
-    } else {
-      if (conversationId) targetConvIds.push(conversationId);
-      if (session?.userId) targetConvIds.push(String(session.userId));
-      if (session?.username) targetConvIds.push(session.username);
+    } else if (session && session.userId && session.role === 'player') {
+      // Authenticated player: strictly isolated to their own user credentials
+      targetConvIds.push(String(session.userId));
+      if (session.username) targetConvIds.push(session.username);
       try {
-        if (session) {
-          const u = await db.collection('users').findOne(getUserFilter(session));
-          if (u?._id) targetConvIds.push(u._id.toString());
-        }
+        const u = await db.collection('users').findOne(getUserFilter(session));
+        if (u?._id) targetConvIds.push(u._id.toString());
       } catch {}
-      if (guestId) targetConvIds.push(guestId);
-    }
-
-    if (targetConvIds.length === 0) {
-      const fallbackGuest = guestId || (session?.userId ? String(session.userId) : 'guest_session');
-      targetConvIds = [fallbackGuest];
+    } else if (guestId && guestId !== 'guest_session') {
+      targetConvIds = [guestId];
+    } else if (conversationId && conversationId !== 'guest_session') {
+      targetConvIds = [conversationId];
+    } else {
+      return NextResponse.json({ success: true, unreadCount: 0, messages: [] });
     }
 
     // 3. Fetch conversation messages

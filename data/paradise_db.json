@@ -5,23 +5,24 @@
       "username": "superadmin",
       "createdAt": "2026-10-19T12:29:40.952Z",
       "email": "admin@playersparadisehub.com",
-      "passwordHash": "$2b$10$HPYnUNlbupjf2ltFvSXbIeFpFmOlv86lT1oAYmvZOs5bXxkcgbvq.",
+      "passwordHash": "$2b$10$YUqBO2M.E4VWbeyxPoesFuMQ259auxIj42xrSr63cXbZEy5N3fwou",
       "role": "super_admin",
       "balanceSC": 50000,
       "balanceGC": 10000000,
       "kycStatus": "approved",
       "vipTier": "Paradise Legend",
       "isBanned": false,
-      "updatedAt": "2026-10-19T16:03:39.662Z",
-      "deviceId": "dev_mv4498r9_gdc6ewi1_24j9ost6",
-      "lastLoginDevice": "dev_mv4498r9_gdc6ewi1_24j9ost6",
-      "sessionVersion": "1792427494617",
-      "lastLoginAt": "2026-10-19T16:31:34.617Z",
+      "updatedAt": "2026-10-19T18:28:51.568Z",
+      "deviceId": "dev_mvfla8q3_faf3n789_mpabxwmx",
+      "lastLoginDevice": "dev_mvfla8q3_faf3n789_mpabxwmx",
+      "sessionVersion": "1792434605058",
+      "lastLoginAt": "2026-10-19T18:30:05.058Z",
       "boundDevices": [
         "dev_mvf8erj4_mihvptmx_63bbac3j",
         "dev_mvf92ozh_2tm4ic97_9tu7msq0",
         "dev_mvf92z2a_5xbdyr73_unbua6c0",
-        "dev_mv4498r9_gdc6ewi1_24j9ost6"
+        "dev_mv4498r9_gdc6ewi1_24j9ost6",
+        "dev_mvfla8q3_faf3n789_mpabxwmx"
       ],
       "lastDailySpin": "2026-10-19T12:55:42.287Z",
       "balance": 2,
@@ -33,56 +34,56 @@
       "username": "admin",
       "createdAt": "2026-10-19T12:29:40.954Z",
       "email": "admin@playersparadisehub.com",
-      "passwordHash": "$2b$10$HPYnUNlbupjf2ltFvSXbIeFpFmOlv86lT1oAYmvZOs5bXxkcgbvq.",
+      "passwordHash": "$2b$10$YUqBO2M.E4VWbeyxPoesFuMQ259auxIj42xrSr63cXbZEy5N3fwou",
       "role": "super_admin",
       "balanceSC": 50000,
       "balanceGC": 10000000,
       "kycStatus": "approved",
       "vipTier": "Paradise Legend",
       "isBanned": false,
-      "updatedAt": "2026-10-19T16:03:39.665Z"
+      "updatedAt": "2026-10-19T18:28:51.570Z"
     },
     {
       "_id": "v21wl3je7v",
       "username": "financemanager",
       "createdAt": "2026-10-19T12:29:40.955Z",
       "email": "finance@playersparadisehub.com",
-      "passwordHash": "$2b$10$Tuvr4HujgF.9cKF39nDA2.8idwJdJkfknJjmMpHwY055kzK6UX9Sq",
+      "passwordHash": "$2b$10$u2m.Tz1GR.wKM41wtaU7Pu07UhPbw8fUR/Grs6hXjv3trB2fApH6i",
       "role": "financial_manager",
       "balanceSC": 5000,
       "balanceGC": 500000,
       "kycStatus": "approved",
       "vipTier": "Diamond Elite",
       "isBanned": false,
-      "updatedAt": "2026-10-19T16:03:39.666Z"
+      "updatedAt": "2026-10-19T18:28:51.571Z"
     },
     {
       "_id": "yl9dvocoj8",
       "username": "coinmanager",
       "createdAt": "2026-10-19T12:29:40.955Z",
       "email": "coins@playersparadisehub.com",
-      "passwordHash": "$2b$10$Tuvr4HujgF.9cKF39nDA2.8idwJdJkfknJjmMpHwY055kzK6UX9Sq",
+      "passwordHash": "$2b$10$u2m.Tz1GR.wKM41wtaU7Pu07UhPbw8fUR/Grs6hXjv3trB2fApH6i",
       "role": "coin_manager",
       "balanceSC": 2500,
       "balanceGC": 250000,
       "kycStatus": "approved",
       "vipTier": "Gold Titan",
       "isBanned": false,
-      "updatedAt": "2026-10-19T16:03:39.668Z"
+      "updatedAt": "2026-10-19T18:28:51.573Z"
     },
     {
       "_id": "6hg51wj8eq",
       "username": "chatsupport",
       "createdAt": "2026-10-19T12:29:40.956Z",
       "email": "support@playersparadisehub.com",
-      "passwordHash": "$2b$10$Tuvr4HujgF.9cKF39nDA2.8idwJdJkfknJjmMpHwY055kzK6UX9Sq",
+      "passwordHash": "$2b$10$u2m.Tz1GR.wKM41wtaU7Pu07UhPbw8fUR/Grs6hXjv3trB2fApH6i",
       "role": "chat_support",
       "balanceSC": 1000,
       "balanceGC": 100000,
       "kycStatus": "approved",
       "vipTier": "Silver Cyber",
       "isBanned": false,
-      "updatedAt": "2026-10-19T16:03:39.670Z"
+      "updatedAt": "2026-10-19T18:28:51.574Z"
     },
     {
       "_id": "7gq8d87zpq",
@@ -128,9 +129,9 @@
       "boundDevices": [
         "dev_mv4498r9_gdc6ewi1_24j9ost6"
       ],
-      "sessionVersion": "1792427551948",
+      "sessionVersion": "1792433918287",
       "lastLoginDevice": "dev_mv4498r9_gdc6ewi1_24j9ost6",
-      "lastLoginAt": "2026-10-19T16:32:31.948Z",
+      "lastLoginAt": "2026-10-19T18:18:38.287Z",
       "affiliateCommissionsEarned": 0,
       "affiliateCommissionsUnpaid": 0,
       "totalDeposited": 0,
@@ -869,7 +870,7 @@
       "staffName": null,
       "text": "hi",
       "imageUrl": null,
-      "read": false,
+      "read": true,
       "isGuest": false,
       "createdAt": "2026-10-19T18:11:06.469Z"
     }

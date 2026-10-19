@@ -100,15 +100,55 @@ export function verifyToken(token) {
   }
 }
 
-export async function getSessionUser() {
+export async function getSessionUser(preferredType = null) {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('players_session')?.value || cookieStore.get('vegas_session')?.value;
-    if (!token) return null;
-    return verifyToken(token);
+    const adminToken = cookieStore.get('admin_session')?.value;
+    const playerToken = cookieStore.get('players_session')?.value || cookieStore.get('vegas_session')?.value;
+
+    if (preferredType === 'admin') {
+      return adminToken ? verifyToken(adminToken) : null;
+    }
+    if (preferredType === 'player') {
+      return playerToken ? verifyToken(playerToken) : null;
+    }
+
+    // Auto-detect admin context from referer
+    try {
+      const { headers } = require('next/headers');
+      const reqHeaders = await headers();
+      const referer = reqHeaders.get('referer') || '';
+      if (referer.includes('/admin')) {
+        if (adminToken) {
+          const verifiedAdmin = verifyToken(adminToken);
+          if (verifiedAdmin) return verifiedAdmin;
+        }
+      }
+    } catch {}
+
+    // If player token exists, return verified player session
+    if (playerToken) {
+      const verifiedPlayer = verifyToken(playerToken);
+      if (verifiedPlayer) return verifiedPlayer;
+    }
+
+    // Fallback to admin session if present
+    if (adminToken) {
+      return verifyToken(adminToken);
+    }
+
+    return null;
   } catch {
     return null;
   }
+}
+
+export async function getAdminSessionUser() {
+  return getSessionUser('admin');
+}
+
+export async function getPlayerSessionUser() {
+  return getSessionUser('player');
 }
 
 export function hasPermission(role, section) {

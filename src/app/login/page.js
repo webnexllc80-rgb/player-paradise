@@ -94,7 +94,7 @@ function LoginForm() {
               type="text"
               required
               disabled={loading || Boolean(successMsg)}
-              placeholder="superadmin or player@example.com"
+              placeholder="player@example.com or username"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               className="cyber-input"

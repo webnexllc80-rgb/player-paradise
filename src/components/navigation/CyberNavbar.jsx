@@ -99,11 +99,25 @@ export default function CyberNavbar({
 
   // Keep liveUser aligned when prop changes
   useEffect(() => {
+    setLiveUser(user || null);
     if (user) {
-      setLiveUser(user);
       lastBalanceRef.current = Number(user.balance ?? user.balanceSC ?? 0);
+    } else {
+      lastBalanceRef.current = null;
     }
   }, [user]);
+
+  // Listen to global paradise-user-sync event from anywhere in the app
+  useEffect(() => {
+    const handleSync = (e) => {
+      setLiveUser(e.detail || null);
+      if (!e.detail) {
+        setLiveUnreadCount(0);
+      }
+    };
+    window.addEventListener('paradise-user-sync', handleSync);
+    return () => window.removeEventListener('paradise-user-sync', handleSync);
+  }, []);
 
   // Progressive jackpot ticker simulation
   useEffect(() => {
@@ -152,6 +166,9 @@ export default function CyberNavbar({
               })
               .catch(() => {});
           }
+        } else {
+          setLiveUser(null);
+          setLiveUnreadCount(0);
         }
       } catch {
         // silent fail
@@ -449,15 +466,17 @@ export default function CyberNavbar({
                   <div
                     onClick={async () => {
                       setProfileOpen(false);
+                      setLiveUser(null);
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: null }));
+                      }
                       try {
+                        await fetch('/api/auth/logout', { method: 'POST' });
                         if (typeof onLogout === 'function') {
                           await onLogout();
-                        } else {
-                          await fetch('/api/auth/logout', { method: 'POST' });
-                          window.location.href = '/';
                         }
-                      } catch {
-                        window.location.href = '/';
+                      } catch (err) {
+                        console.error('Logout error:', err);
                       }
                     }}
                     className="flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-950/30 rounded-xl cursor-pointer font-semibold"

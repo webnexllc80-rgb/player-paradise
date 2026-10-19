@@ -42,19 +42,38 @@ export default function ChatPage() {
   const fileInputRef = useRef(null);
   const lastStaffMsgCountRef = useRef(0);
 
-  // Load user
+  // Load user & listen to global user sync
   useEffect(() => {
     fetch('/api/auth/me', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.authenticated && d.user) setUser(d.user);
+        if (d?.authenticated && d.user) {
+          setUser(d.user);
+          try {
+            localStorage.removeItem('pp_guest_chat_id');
+          } catch {}
+        }
       })
       .catch(() => {});
+
+    const handleSync = (e) => {
+      const nextUser = e.detail || null;
+      setUser(nextUser);
+      if (nextUser) {
+        try {
+          localStorage.removeItem('pp_guest_chat_id');
+        } catch {}
+      } else {
+        setMessages([]);
+      }
+    };
+    window.addEventListener('paradise-user-sync', handleSync);
+    return () => window.removeEventListener('paradise-user-sync', handleSync);
   }, []);
 
   // Initialize persistent guest ID
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !user) {
       let storedId = localStorage.getItem('pp_guest_chat_id');
       if (!storedId || !storedId.startsWith('guest_')) {
         storedId = `guest_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
@@ -62,21 +81,23 @@ export default function ChatPage() {
       }
       setGuestId(storedId);
     }
-  }, []);
+  }, [user]);
 
   // Poll messages
   useEffect(() => {
     let isCancelled = false;
     const fetchMsgs = async () => {
-      const activeGuestId =
-        guestId ||
-        (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
-        'guest_session';
-
-      const userConvId = user ? (user.userId || user.id || user._id) : '';
       const params = new URLSearchParams();
-      if (activeGuestId) params.set('guestId', activeGuestId);
-      if (userConvId) params.set('conversationId', userConvId);
+      if (user) {
+        const userConvId = user.userId || user.id || user._id;
+        if (userConvId) params.set('conversationId', userConvId);
+      } else {
+        const activeGuestId =
+          guestId ||
+          (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
+          `guest_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
+        params.set('guestId', activeGuestId);
+      }
 
       const endpoint = `/api/chat?${params.toString()}`;
       try {
@@ -201,11 +222,13 @@ export default function ChatPage() {
       const payload = {
         text: currentText,
         imageUrl: currentAttachment,
-        guestId: effectiveGuestId,
         conversationId: user ? (user.userId || user.id || user._id) : effectiveGuestId,
-        guestName: user?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
         username: user?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
       };
+      if (!user) {
+        payload.guestId = effectiveGuestId;
+        payload.guestName = `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`;
+      }
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -264,11 +287,14 @@ export default function ChatPage() {
           user={user}
           onOpenAuth={(tab) => setAuthModal({ open: true, tab: tab || 'login' })}
           onLogout={async () => {
-            await fetch('/api/auth/logout', { method: 'POST' });
             setUser(null);
+            setMessages([]);
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: null }));
             }
+            try {
+              await fetch('/api/auth/logout', { method: 'POST' });
+            } catch {}
           }}
         />
 

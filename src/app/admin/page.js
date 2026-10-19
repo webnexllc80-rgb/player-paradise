@@ -617,7 +617,7 @@ export default function AdminPortal({ initialTab }) {
   // Check current session
   const fetchSession = async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetch('/api/auth/me?admin=true', { cache: 'no-store' });
       const data = await res.json();
       if (data.authenticated && data.user && data.user.role !== 'player') {
         setUser(data.user);
@@ -988,7 +988,7 @@ export default function AdminPortal({ initialTab }) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: loginId, password: loginPassword }),
+        body: JSON.stringify({ identifier: loginId, password: loginPassword, isAdminLogin: true }),
       });
       const data = await res.json();
       if (data.success && data.user.role !== 'player') {
@@ -1002,7 +1002,11 @@ export default function AdminPortal({ initialTab }) {
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isAdminLogout: true }),
+    });
     setUser(null);
   };
 

@@ -65,7 +65,15 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
 
     // Listen to global user sync events from navbar
     const handleUserSync = (e) => {
-      if (e.detail) setCurrentUser(e.detail);
+      const nextUser = e.detail || null;
+      setCurrentUser(nextUser);
+      if (nextUser) {
+        try {
+          localStorage.removeItem('pp_guest_chat_id');
+        } catch {}
+      } else {
+        setMessages([]);
+      }
     };
     window.addEventListener('paradise-user-sync', handleUserSync);
     return () => window.removeEventListener('paradise-user-sync', handleUserSync);
@@ -145,15 +153,17 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
     const fetchMessages = async () => {
       if (document.hidden && !isOpen) return; // Save resources when tab backgrounded
 
-      const activeGuestId =
-        guestId ||
-        (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
-        'guest_session';
-
-      const userConvId = currentUser ? (currentUser.userId || currentUser.id || currentUser._id) : '';
       const params = new URLSearchParams();
-      if (activeGuestId) params.set('guestId', activeGuestId);
-      if (userConvId) params.set('conversationId', userConvId);
+      if (currentUser) {
+        const userConvId = currentUser.userId || currentUser.id || currentUser._id;
+        if (userConvId) params.set('conversationId', userConvId);
+      } else {
+        const activeGuestId =
+          guestId ||
+          (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
+          `guest_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
+        params.set('guestId', activeGuestId);
+      }
 
       const endpoint = `/api/chat?${params.toString()}`;
 
@@ -300,11 +310,13 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
       const payload = {
         text: currentText,
         imageUrl: currentAttachment,
-        guestId: effectiveGuestId,
         conversationId: currentUser ? (currentUser.userId || currentUser.id || currentUser._id) : effectiveGuestId,
-        guestName: currentUser?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
         username: currentUser?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
       };
+      if (!currentUser) {
+        payload.guestId = effectiveGuestId;
+        payload.guestName = `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`;
+      }
 
       const res = await fetch('/api/chat', {
         method: 'POST',

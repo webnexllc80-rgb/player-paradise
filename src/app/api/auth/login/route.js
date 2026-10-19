@@ -9,7 +9,10 @@ export async function POST(req) {
   try {
     await ensureDbInitialized();
 
-    const { identifier, password, deviceId: rawDeviceId } = await req.json();
+    const body = await req.json();
+    const { identifier, password, deviceId: rawDeviceId, isAdminLogin } = body;
+    const referer = req.headers.get('referer') || '';
+    const isExplicitAdminPortal = Boolean(isAdminLogin || referer.includes('/admin'));
 
     if (!identifier || !password) {
       return NextResponse.json({ success: false, error: 'Identifier and password are required.' }, { status: 400 });
@@ -51,10 +54,34 @@ export async function POST(req) {
 
     const isStaff =
       user.role === ROLES.SUPER_ADMIN ||
+      user.role === ROLES.ADMIN ||
       user.role === ROLES.FINANCIAL_MANAGER ||
       user.role === ROLES.COIN_MANAGER ||
       user.role === ROLES.CHAT_SUPPORT ||
       user.role === ROLES.OPERATION_ADMIN;
+
+    // Strict security: Super Admin & Staff credentials are for the Admin Portal only
+    if (isStaff && !isExplicitAdminPortal) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Administrator & Staff credentials cannot be used for player gaming. Please log in at the Admin Portal (/admin).',
+          isAdminOnly: true,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Strict security: Regular players cannot log into the Admin Portal
+    if (isExplicitAdminPortal && !isStaff) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Access denied: This portal is strictly restricted to authorized staff & administrators.',
+        },
+        { status: 403 }
+      );
+    }
 
     // Track active device and session version
     const sessionVersion = Date.now().toString();
@@ -100,20 +127,32 @@ export async function POST(req) {
       },
     });
 
-    response.cookies.set('vegas_session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 3600,
-    });
-    response.cookies.set('players_session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 3600,
-    });
+    if (isStaff || isExplicitAdminPortal) {
+      // Independent cookie for admin portal: does NOT overwrite player session
+      response.cookies.set('admin_session', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 7 * 24 * 3600,
+      });
+    } else {
+      // Independent cookie for player: does NOT overwrite admin session
+      response.cookies.set('players_session', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 7 * 24 * 3600,
+      });
+      response.cookies.set('vegas_session', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 7 * 24 * 3600,
+      });
+    }
 
     if (deviceId) {
       response.cookies.set('v1_device_id', deviceId, {
