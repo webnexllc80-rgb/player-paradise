@@ -65,8 +65,8 @@ export default function DownloadAppPage() {
         <CyberNavbar
           onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={null}
-          onOpenAuth={() => {}}
-          onOpenWallet={() => {}}
+          onOpenAuth={(mode) => router.push(`/${mode || 'login'}`)}
+          onOpenWallet={(tab) => router.push(tab === 'withdraw' ? '/withdraw' : '/deposit')}
           onOpenDailyBonus={() => {}}
           onOpenNotifications={() => {}}
           onLogout={() => {}}

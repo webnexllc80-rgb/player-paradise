@@ -13,6 +13,7 @@ import {
   RefreshCw,
   MessageSquare,
 } from 'lucide-react';
+import { playTune } from '@/lib/soundAlerts';
 
 export default function LiveChatWidget({ user: initialUser, soundEnabled = true }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -149,7 +150,12 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
         (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
         'guest_session';
 
-      const endpoint = currentUser ? '/api/chat' : `/api/chat?guestId=${encodeURIComponent(activeGuestId)}`;
+      const userConvId = currentUser ? (currentUser.userId || currentUser.id || currentUser._id) : '';
+      const params = new URLSearchParams();
+      if (activeGuestId) params.set('guestId', activeGuestId);
+      if (userConvId) params.set('conversationId', userConvId);
+
+      const endpoint = `/api/chat?${params.toString()}`;
 
       try {
         const res = await fetch(endpoint, { cache: 'no-store' });
@@ -157,7 +163,19 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
         if (isCancelled || !data.success) return;
 
         const newMsgs = data.messages || [];
-        setMessages(newMsgs);
+        setMessages((prev) => {
+          // Preserve any optimistic messages that haven't been confirmed yet
+          const pendingOpts = prev.filter(
+            (m) =>
+              String(m.id).startsWith('opt_') &&
+              !newMsgs.some(
+                (nm) =>
+                  nm.text === m.text &&
+                  Math.abs(new Date(nm.createdAt).getTime() - new Date(m.createdAt).getTime()) < 15000
+              )
+          );
+          return [...newMsgs, ...pendingOpts];
+        });
 
         // Calculate unread staff messages
         const staffMsgs = newMsgs.filter((m) => m.senderRole === 'staff');
@@ -169,11 +187,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
 
         // Optional sound alert on new incoming staff message
         if (soundEnabled && staffMsgs.length > lastStaffMsgCountRef.current && lastStaffMsgCountRef.current > 0) {
-          try {
-            const audio = new Audio('/sounds/notification.mp3');
-            audio.volume = 0.5;
-            audio.play().catch(() => {});
-          } catch {}
+          playTune('bell', 0.6);
         }
         lastStaffMsgCountRef.current = staffMsgs.length;
       } catch {
@@ -283,18 +297,14 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
     setMessages((prev) => [...prev, optimisticMsg]);
 
     try {
-      const payload = currentUser
-        ? {
-            text: currentText,
-            imageUrl: currentAttachment,
-            conversationId: currentUser.id || currentUser.userId || currentUser._id,
-          }
-        : {
-            text: currentText,
-            imageUrl: currentAttachment,
-            guestId: effectiveGuestId,
-            guestName: `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
-          };
+      const payload = {
+        text: currentText,
+        imageUrl: currentAttachment,
+        guestId: effectiveGuestId,
+        conversationId: currentUser ? (currentUser.userId || currentUser.id || currentUser._id) : effectiveGuestId,
+        guestName: currentUser?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
+        username: currentUser?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
+      };
 
       const res = await fetch('/api/chat', {
         method: 'POST',

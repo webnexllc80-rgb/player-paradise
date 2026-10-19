@@ -366,3 +366,126 @@ export function playTune(tuneId = 'chaching', volume = 0.7) {
     playFallbackAudio(masterVol);
   }
 }
+
+// ============================================================================
+// Dynamic Chrome Tab Favicon Badge Generator
+// Dynamically paints a notification pill on the favicon showing 1, 2, 3...
+// ============================================================================
+let originalFavicon = null;
+let lastBadgeCount = -1;
+
+export function updateFaviconBadge(count = 0) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (count === lastBadgeCount) return;
+  lastBadgeCount = count;
+
+  let link = document.querySelector("link[rel*='icon']");
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+
+  if (!originalFavicon) {
+    originalFavicon = link.href || '/logo.png';
+  }
+
+  if (count <= 0) {
+    link.href = originalFavicon;
+    return;
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.drawImage(img, 0, 0, 64, 64);
+
+      // Red notification badge bubble with white stroke
+      ctx.beginPath();
+      ctx.arc(46, 18, 16, 0, 2 * Math.PI);
+      ctx.fillStyle = '#EF4444';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.stroke();
+
+      // Number text
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = count > 99 ? '99+' : (count > 9 ? `${count}` : `${count}`);
+      ctx.fillText(label, 46, 19);
+
+      link.href = canvas.toDataURL('image/png');
+    };
+    img.onerror = () => {
+      ctx.fillStyle = '#0F172A';
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.beginPath();
+      ctx.arc(32, 32, 28, 0, 2 * Math.PI);
+      ctx.fillStyle = '#EF4444';
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(count > 9 ? '9+' : String(count), 32, 33);
+      link.href = canvas.toDataURL('image/png');
+    };
+    img.src = '/logo.png';
+  } catch (e) {
+    console.warn('Favicon badge note:', e);
+  }
+}
+
+// ============================================================================
+// Chrome Desktop & Web Push Notification Dispatcher
+// Dispatches immediate Chrome desktop notification with sound and focus action
+// ============================================================================
+export function sendDesktopNotification(title, body, url = '/admin') {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  try {
+    const options = {
+      body,
+      icon: '/logo.png',
+      badge: '/logo.png',
+      tag: 'paradise-admin-' + Date.now(),
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+    };
+    const notification = new window.Notification(title, options);
+    notification.onclick = () => {
+      window.focus();
+      if (url && typeof window !== 'undefined') {
+        if (window.location.pathname !== url) {
+          window.location.href = url;
+        }
+      }
+      notification.close();
+    };
+  } catch (err) {
+    console.warn('Chrome notification dispatch note:', err);
+  }
+}
+
+export async function requestDesktopNotificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported';
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    return permission;
+  } catch {
+    return Notification.permission;
+  }
+}

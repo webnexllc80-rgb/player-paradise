@@ -70,7 +70,14 @@ import SoundSettingsModal from '@/components/admin/SoundSettingsModal';
 import IncomingRequestToast from '@/components/admin/IncomingRequestToast';
 import Player360ProfileModal from '@/components/admin/Player360ProfileModal';
 import AffiliateManagementHub from '@/components/admin/AffiliateManagementHub';
-import { playTune, unlockAudioContext, AVAILABLE_TUNES } from '@/lib/soundAlerts';
+import {
+  playTune,
+  unlockAudioContext,
+  AVAILABLE_TUNES,
+  updateFaviconBadge,
+  sendDesktopNotification,
+  requestDesktopNotificationPermission,
+} from '@/lib/soundAlerts';
 
 export default function AdminPortal({ initialTab }) {
   const [user, setUser] = useState(null);
@@ -634,52 +641,64 @@ export default function AdminPortal({ initialTab }) {
     }
   };
 
-  // Browser Desktop & Chrome Push Notification Dispatcher
-  const sendDesktopNotification = (title, body) => {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new window.Notification(title, {
-          body,
-          icon: '/playerparadisehub.jpeg',
-          badge: '/playerparadisehub.jpeg',
-          tag: 'admin-action-alert',
-          renotify: true,
-        });
-      } catch (e) {
-        console.warn('Desktop notification note:', e);
-      }
+  // Browser Desktop & Chrome Push Notification State
+  const [desktopNotifPerm, setDesktopNotifPerm] = useState(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  );
+
+  const enableDesktopNotifications = async () => {
+    unlockAudioContext();
+    const perm = await requestDesktopNotificationPermission();
+    setDesktopNotifPerm(perm);
+    if (perm === 'granted') {
+      playAdminChime();
+      sendDesktopNotification(
+        '🔔 Instant Alerts Enabled!',
+        'You will now receive Chrome notifications with sound for all new game requests, deposits & chat messages.',
+        '/admin'
+      );
     }
   };
 
   useEffect(() => {
     fetchSession();
-    // Request Chrome desktop notification permission on admin dashboard load
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setDesktopNotifPerm(Notification.permission);
+      // Auto-unlock audio on user click anywhere
+      const unlockOnClick = () => unlockAudioContext();
+      window.addEventListener('click', unlockOnClick, { once: true });
+      return () => window.removeEventListener('click', unlockOnClick);
     }
   }, []);
 
-  // Persistent background sync: deposits, redemptions, and game account requests are ALWAYS monitored
-  // so admins get instant chime + toast notifications no matter which tab they are currently viewing!
-  const prevCountsRef = React.useRef({ requests: 0, deposits: 0, redemptions: 0, coinLoads: 0, coinCashouts: 0 });
+  // Persistent background sync: deposits, redemptions, game account requests, and live support chat
+  // Monitored 24/7 so admins get instant chime + toast + Chrome push notifications regardless of active tab!
+  const prevCountsRef = React.useRef({
+    requests: 0,
+    deposits: 0,
+    redemptions: 0,
+    coinLoads: 0,
+    coinCashouts: 0,
+    chat: 0,
+  });
   const isInitialLoadRef = React.useRef(true);
 
   const syncRequestsAndAlerts = async () => {
     if (!user) return;
     try {
-      const [depRes, withRes, reqRes, loadRes] = await Promise.all([
-        fetch('/api/payments/deposit?status=all&lightweight=true'),
-        fetch('/api/payments/withdraw?status=all&lightweight=true'),
-        fetch('/api/account-requests?type=ACCOUNT_CREATION&status=all'),
-        fetch('/api/account-requests?type=COIN_LOAD&status=all'),
+      const [depRes, withRes, reqRes, loadRes, chatRes] = await Promise.allSettled([
+        fetch('/api/payments/deposit?status=all&lightweight=true', { cache: 'no-store' }),
+        fetch('/api/payments/withdraw?status=all&lightweight=true', { cache: 'no-store' }),
+        fetch('/api/account-requests?type=ACCOUNT_CREATION&status=all', { cache: 'no-store' }),
+        fetch('/api/account-requests?type=COIN_LOAD&status=all', { cache: 'no-store' }),
+        fetch('/api/chat?inbox=true', { cache: 'no-store' }),
       ]);
 
-      const [depData, withData, reqData, loadData] = await Promise.all([
-        depRes.json(),
-        withRes.json(),
-        reqRes.json(),
-        loadRes.json(),
-      ]);
+      const depData = depRes.status === 'fulfilled' ? await depRes.value.json().catch(() => ({})) : {};
+      const withData = withRes.status === 'fulfilled' ? await withRes.value.json().catch(() => ({})) : {};
+      const reqData = reqRes.status === 'fulfilled' ? await reqRes.value.json().catch(() => ({})) : {};
+      const loadData = loadRes.status === 'fulfilled' ? await loadRes.value.json().catch(() => ({})) : {};
+      const chatData = chatRes.status === 'fulfilled' ? await chatRes.value.json().catch(() => ({})) : {};
 
       if (depData.success) {
         setDeposits(depData.deposits || []);
@@ -693,21 +712,35 @@ export default function AdminPortal({ initialTab }) {
       if (loadData.success) {
         setCoinLoadRequests(loadData.accountRequests || []);
       }
+      if (chatData.success && Array.isArray(chatData.conversations)) {
+        setChatConversations(chatData.conversations);
+      }
 
-      const pendingDeps = (depData.deposits || []).filter(d => d.status === 'pending');
-      const pendingWith = (withData.redemptions || []).filter(r => r.status === 'pending');
-      const pendingReqs = (reqData.accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING');
-      const pendingCoinLoads = (loadData.accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING');
-      const pendingCoinCashouts = (withData.redemptions || []).filter(r => r.status === 'pending_coin' || r.stage === 'coin_verification');
+      const pendingDeps = (depData.deposits || []).filter((d) => d.status === 'pending');
+      const pendingWith = (withData.redemptions || []).filter((r) => r.status === 'pending');
+      const pendingReqs = (reqData.accountRequests || []).filter((r) => (r.status || '').toUpperCase() === 'PENDING');
+      const pendingCoinLoads = (loadData.accountRequests || []).filter((r) => (r.status || '').toUpperCase() === 'PENDING');
+      const pendingCoinCashouts = (withData.redemptions || []).filter((r) => r.status === 'pending_coin' || r.stage === 'coin_verification');
+      const unreadChatConvs = (chatData.conversations || []).filter((c) => (c.unreadCount || 0) > 0);
+      const unreadChatCount = unreadChatConvs.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
-      // Update Chrome Badge & Tab Title
-      const totalPending = pendingDeps.length + pendingWith.length + pendingReqs.length + pendingCoinLoads.length + pendingCoinCashouts.length;
+      // Update Chrome Badge, Dynamic Favicon Badge & Tab Title
+      const totalPending =
+        pendingDeps.length +
+        pendingWith.length +
+        pendingReqs.length +
+        pendingCoinLoads.length +
+        pendingCoinCashouts.length +
+        unreadChatCount;
+
       if (typeof document !== 'undefined') {
         if (totalPending > 0) {
           document.title = `(${totalPending}) Players Paradise | Admin Operations`;
+          updateFaviconBadge(totalPending);
           if ('setAppBadge' in navigator) navigator.setAppBadge(totalPending).catch(() => {});
         } else {
           document.title = 'Players Paradise | Admin Operations';
+          updateFaviconBadge(0);
           if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
         }
       }
@@ -719,119 +752,101 @@ export default function AdminPortal({ initialTab }) {
           requests: pendingReqs.length,
           coinLoads: pendingCoinLoads.length,
           coinCashouts: pendingCoinCashouts.length,
+          chat: unreadChatCount,
         };
         isInitialLoadRef.current = false;
-
-        // If there are pending coin loads on initial load, alert staff
-        if (pendingCoinLoads.length > 0) {
-          const newest = pendingCoinLoads[0];
-          playAdminChime();
-          const alertTitle = `Pending Coin Loads (${pendingCoinLoads.length})`;
-          const alertBody = `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'} from ${newest?.userName || 'Player'}`;
-          sendDesktopNotification(alertTitle, alertBody);
-          setActiveAlertToast({
-            type: 'coin_load',
-            title: alertTitle,
-            message: `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'}`,
-            subtext: `From ${newest?.userName || 'Player'} • Escrow Frozen in Wallet`,
-            targetTab: 'coins_allotment',
-            targetSubTab: 'loads',
-          });
-        } else if (pendingReqs.length > 0) {
-          const newest = pendingReqs[0];
-          playAdminChime();
-          const alertTitle = `Pending Account Request (${pendingReqs.length})`;
-          const alertBody = `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`;
-          sendDesktopNotification(alertTitle, alertBody);
-          setActiveAlertToast({
-            type: 'account',
-            title: alertTitle,
-            message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
-            subtext: 'Ready to issue credentials',
-            targetTab: 'account_requests',
-          });
-        }
         return;
       }
 
-      // 1. Check for incoming new deposits (Finance)
+      // Check each category independently so no request is swallowed!
+
+      // 1. Account creation request (Game ID request from "GET ID")
+      if (pendingReqs.length > (prevCountsRef.current.requests || 0)) {
+        const newest = pendingReqs[0];
+        playAdminChime();
+        const alertTitle = '🎯 New Game ID Request!';
+        const alertBody = `${newest?.gameTitle || 'Game'} ID requested by ${newest?.userName || 'Player'}`;
+        sendDesktopNotification(alertTitle, alertBody, '/admin/account_requests');
+        setActiveAlertToast({
+          type: 'account',
+          title: alertTitle,
+          message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
+          subtext: 'Tap to review & issue credentials',
+          targetTab: 'account_requests',
+        });
+      }
+
+      // 2. Incoming new deposits
       if (pendingDeps.length > (prevCountsRef.current.deposits || 0)) {
         const newest = pendingDeps[0];
         playAdminChime();
-        const alertTitle = 'New Deposit Request! 💰';
+        const alertTitle = '💰 New Deposit Request!';
         const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} USD from ${newest?.username || 'Player'} via ${newest?.methodName || 'Payment'}`;
-        sendDesktopNotification(alertTitle, alertBody);
+        sendDesktopNotification(alertTitle, alertBody, '/admin/finance');
         setActiveAlertToast({
           type: 'deposit',
-          title: 'New Deposit Request!',
+          title: alertTitle,
           message: `$${Number(newest?.amount || 0).toFixed(2)} USD from ${newest?.username || 'Player'}`,
           subtext: `Via ${newest?.methodName || 'Payment'}${newest?.senderNote ? ` • ${newest.senderNote}` : ''}`,
           targetTab: 'finance',
           targetSubTab: 'deposits',
         });
       }
-      // 2. Check for incoming new redemptions (Finance Stage 2)
-      else if (pendingWith.length > (prevCountsRef.current.redemptions || 0)) {
+
+      // 3. Incoming new redemptions / cashouts
+      if (pendingWith.length > (prevCountsRef.current.redemptions || 0)) {
         const newest = pendingWith[0];
         playAdminChime();
-        const alertTitle = 'New Cashout Request! 💸';
+        const alertTitle = '💸 New Cashout Request!';
         const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'} via ${newest?.payoutMethod || 'Direct'}`;
-        sendDesktopNotification(alertTitle, alertBody);
+        sendDesktopNotification(alertTitle, alertBody, '/admin/finance');
         setActiveAlertToast({
           type: 'redemption',
-          title: 'New Cashout Request!',
+          title: alertTitle,
           message: `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'}`,
           subtext: `Payout via ${newest?.payoutMethod || 'Direct'}: ${newest?.destinationAddress || ''}`,
           targetTab: 'finance',
           targetSubTab: 'redemptions',
         });
       }
-      // 3. Check for incoming coin load requests (Coins Allotment Desk)
-      else if (pendingCoinLoads.length > (prevCountsRef.current.coinLoads || 0)) {
+
+      // 4. Incoming coin load requests
+      if (pendingCoinLoads.length > (prevCountsRef.current.coinLoads || 0)) {
         const newest = pendingCoinLoads[0];
         playAdminChime();
-        const alertTitle = 'New Coin Load Request! ⚡';
+        const alertTitle = '⚡ New Coin Load Request!';
         const alertBody = `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'} from ${newest?.userName || 'Player'}`;
-        sendDesktopNotification(alertTitle, alertBody);
+        sendDesktopNotification(alertTitle, alertBody, '/admin/coins_allotment');
         setActiveAlertToast({
           type: 'coin_load',
-          title: 'New Coin Load Request!',
+          title: alertTitle,
           message: `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'}`,
           subtext: `From ${newest?.userName || 'Player'} • Escrow Frozen in Wallet`,
           targetTab: 'coins_allotment',
           targetSubTab: 'loads',
         });
       }
-      // 4. Check for incoming coin cashout proof verifications (Stage 1 Coins Allotment Desk)
-      else if (pendingCoinCashouts.length > (prevCountsRef.current.coinCashouts || 0)) {
+
+      // 5. Incoming coin cashout proof verifications
+      if (pendingCoinCashouts.length > (prevCountsRef.current.coinCashouts || 0)) {
         const newest = pendingCoinCashouts[0];
         playAdminChime();
-        const alertTitle = 'New Cashout Verification (Coins Desk)! 🎮';
+        const alertTitle = '🎮 New Cashout Verification (Coins Desk)!';
         const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'} - ${newest?.gameTitle || 'Game'}`;
-        sendDesktopNotification(alertTitle, alertBody);
+        sendDesktopNotification(alertTitle, alertBody, '/admin/coins_allotment');
         setActiveAlertToast({
           type: 'coin_verification',
-          title: 'New Cashout Verification (Coins Desk)!',
+          title: alertTitle,
           message: `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'}`,
           subtext: `${newest?.gameTitle || 'Game'} winning proof uploaded • Stage 1 Inspection`,
           targetTab: 'coins_allotment',
           targetSubTab: 'cashouts',
         });
       }
-      // 5. Check for incoming new game account creation requests (Account Requests Desk)
-      else if (pendingReqs.length > (prevCountsRef.current.requests || 0)) {
-        const newest = pendingReqs[0];
-        playAdminChime();
-        const alertTitle = 'New Account Creation Request! 🎯';
-        const alertBody = `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`;
-        sendDesktopNotification(alertTitle, alertBody);
-        setActiveAlertToast({
-          type: 'account',
-          title: 'New Account Creation Request!',
-          message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
-          subtext: 'Ready to issue credentials',
-          targetTab: 'account_requests',
-        });
+
+      // 6. Incoming Live Support Chat messages
+      if (unreadChatCount > (prevCountsRef.current.chat || 0)) {
+        playAdminChime('bell');
       }
 
       prevCountsRef.current = {
@@ -840,22 +855,23 @@ export default function AdminPortal({ initialTab }) {
         requests: pendingReqs.length,
         coinLoads: pendingCoinLoads.length,
         coinCashouts: pendingCoinCashouts.length,
+        chat: unreadChatCount,
       };
     } catch (err) {
       console.warn('Background sync error:', err);
     }
   };
 
-  // Run persistent poller every 3.5 seconds
+  // Run persistent poller every 3 seconds - continues running in background tab!
   useEffect(() => {
     if (!user) return;
     syncRequestsAndAlerts();
     const interval = setInterval(() => {
-      if (!document.hidden) syncRequestsAndAlerts();
-    }, 3500);
+      syncRequestsAndAlerts();
+    }, 3000);
 
     const handleFocus = () => {
-      if (!document.hidden) syncRequestsAndAlerts();
+      syncRequestsAndAlerts();
     };
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
@@ -1140,7 +1156,7 @@ export default function AdminPortal({ initialTab }) {
       id: 'chat',
       label: 'Live Support Desk',
       icon: MessageSquare,
-      badge: chatConversations.filter(c => c.unreadStaff).length,
+      badge: chatConversations.filter(c => Boolean(c.unreadStaff || (c.unreadCount && c.unreadCount > 0))).length,
       category: 'Operations',
     },
     { id: 'games', label: 'Games Library', icon: Gamepad2, category: 'Catalog & Players' },
@@ -1297,6 +1313,37 @@ export default function AdminPortal({ initialTab }) {
               title={audioAlertsEnabled ? 'Audio Alert ON' : 'Audio Alert MUTED'}
             >
               {audioAlertsEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+            </button>
+
+            <span style={{ width: '1px', height: '12px', backgroundColor: 'rgba(255, 255, 255, 0.15)' }} />
+
+            {/* Chrome Desktop Push Notification Button */}
+            <button
+              onClick={enableDesktopNotifications}
+              style={{
+                background: desktopNotifPerm === 'granted' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.25)',
+                border: `1px solid ${desktopNotifPerm === 'granted' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.7)'}`,
+                color: desktopNotifPerm === 'granted' ? '#34D399' : '#FBBF24',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 9px',
+                borderRadius: '8px',
+                fontSize: '11px',
+                fontWeight: 800,
+                boxShadow: desktopNotifPerm !== 'granted' ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none',
+              }}
+              title={
+                desktopNotifPerm === 'granted'
+                  ? 'Chrome Push Notifications Active (Click to test)'
+                  : 'Click to Enable Chrome Desktop Push Notifications'
+              }
+            >
+              <Bell size={12} className={desktopNotifPerm !== 'granted' ? 'animate-pulse' : ''} />
+              <span className="hidden md:inline">
+                {desktopNotifPerm === 'granted' ? 'Chrome Alerts ON' : 'Turn On Chrome Alerts'}
+              </span>
             </button>
           </div>
 
@@ -1838,7 +1885,7 @@ export default function AdminPortal({ initialTab }) {
                     <div>
                       <p className="text-[11px] text-[#9A91A8] font-black uppercase tracking-wider m-0">Unread Live Chat</p>
                       <p className="text-3xl font-black text-rose-400 mt-2 mb-0">
-                        {chatConversations.filter(c => c.unreadStaff).length}
+                        {chatConversations.filter(c => Boolean(c.unreadStaff || (c.unreadCount && c.unreadCount > 0))).length}
                       </p>
                     </div>
                     <button
@@ -3486,6 +3533,7 @@ export default function AdminPortal({ initialTab }) {
                     targetUsername: activeChatConv.username,
                     text: text,
                     imageUrl: imagePayload || null,
+                    isStaffReply: true,
                   }),
                 });
                 const res = await fetch(`/api/chat?conversationId=${activeChatConv._id}`);
@@ -8027,7 +8075,15 @@ export default function AdminPortal({ initialTab }) {
             onDismiss={() => setActiveAlertToast(null)}
             onViewRequest={(alert) => {
               if (alert.targetTab) setActiveTab(alert.targetTab);
-              if (alert.targetSubTab) setFinanceSubTab(alert.targetSubTab);
+              if (alert.targetSubTab) {
+                if (alert.targetTab === 'finance') setFinanceSubTab(alert.targetSubTab);
+                if (alert.targetTab === 'coins_allotment') setAllotmentSubTab(alert.targetSubTab);
+              }
+              if (alert.cid) {
+                const found = (chatConversations || []).find((c) => c._id === alert.cid);
+                if (found) setActiveChatConv(found);
+                else setActiveChatConv({ _id: alert.cid, username: 'Player', userId: alert.cid });
+              }
             }}
           />
         </main>

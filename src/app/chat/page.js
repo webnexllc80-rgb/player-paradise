@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import CyberNavbar from '@/components/navigation/CyberNavbar';
 import CyberSidebar from '@/components/navigation/CyberSidebar';
 import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
+import AuthModal from '@/components/modals/AuthModal';
 import {
   Headphones,
   Send,
@@ -20,12 +21,14 @@ import {
   Clock,
   ShieldCheck,
 } from 'lucide-react';
+import { playTune } from '@/lib/soundAlerts';
 
 export default function ChatPage() {
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [authModal, setAuthModal] = useState({ open: false, tab: 'login' });
   const [guestId, setGuestId] = useState('');
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -37,6 +40,7 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const lastStaffMsgCountRef = useRef(0);
 
   // Load user
   useEffect(() => {
@@ -69,12 +73,35 @@ export default function ChatPage() {
         (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') ||
         'guest_session';
 
-      const endpoint = user ? '/api/chat' : `/api/chat?guestId=${encodeURIComponent(activeGuestId)}`;
+      const userConvId = user ? (user.userId || user.id || user._id) : '';
+      const params = new URLSearchParams();
+      if (activeGuestId) params.set('guestId', activeGuestId);
+      if (userConvId) params.set('conversationId', userConvId);
+
+      const endpoint = `/api/chat?${params.toString()}`;
       try {
         const res = await fetch(endpoint, { cache: 'no-store' });
         const data = await res.json();
         if (!isCancelled && data.success) {
-          setMessages(data.messages || []);
+          const newMsgs = data.messages || [];
+          setMessages((prev) => {
+            const pendingOpts = prev.filter(
+              (m) =>
+                String(m.id).startsWith('opt_') &&
+                !newMsgs.some(
+                  (nm) =>
+                    nm.text === m.text &&
+                    Math.abs(new Date(nm.createdAt).getTime() - new Date(m.createdAt).getTime()) < 15000
+                )
+            );
+            return [...newMsgs, ...pendingOpts];
+          });
+
+          const staffMsgs = newMsgs.filter((m) => m.senderRole === 'staff');
+          if (staffMsgs.length > lastStaffMsgCountRef.current && lastStaffMsgCountRef.current > 0) {
+            playTune('bell', 0.6);
+          }
+          lastStaffMsgCountRef.current = staffMsgs.length;
         }
       } catch {}
     };
@@ -171,18 +198,14 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, optimisticMsg]);
 
     try {
-      const payload = user
-        ? {
-            text: currentText,
-            imageUrl: currentAttachment,
-            conversationId: user.id || user.userId || user._id,
-          }
-        : {
-            text: currentText,
-            imageUrl: currentAttachment,
-            guestId: effectiveGuestId,
-            guestName: `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
-          };
+      const payload = {
+        text: currentText,
+        imageUrl: currentAttachment,
+        guestId: effectiveGuestId,
+        conversationId: user ? (user.userId || user.id || user._id) : effectiveGuestId,
+        guestName: user?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
+        username: user?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`,
+      };
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -239,6 +262,14 @@ export default function ChatPage() {
         <CyberNavbar
           onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={user}
+          onOpenAuth={(tab) => setAuthModal({ open: true, tab: tab || 'login' })}
+          onLogout={async () => {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            setUser(null);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: null }));
+            }
+          }}
         />
 
         {/* Live Chat Page Content */}
@@ -522,6 +553,16 @@ export default function ChatPage() {
 
       {/* Mobile Navigation */}
       <CyberMobileBottomNav user={user} />
+
+      {/* Global Auth Modal */}
+      <AuthModal
+        isOpen={authModal.open}
+        onClose={() => setAuthModal({ open: false, tab: 'login' })}
+        initialTab={authModal.tab}
+        onSuccess={(loggedUser) => {
+          setUser(loggedUser);
+        }}
+      />
     </div>
   );
 }

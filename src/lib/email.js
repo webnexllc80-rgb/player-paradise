@@ -1,32 +1,52 @@
 import nodemailer from 'nodemailer';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
-  port: parseInt(process.env.SMTP_PORT || '465'),
-  secure: process.env.SMTP_SECURE === 'false' ? false : true,
-  auth: {
-    user: process.env.SMTP_USER || 'support@playersparadisehub.com',
-    pass: process.env.SMTP_PASS || '',
-  },
-});
+function createSmtpTransporter() {
+  const host = process.env.SMTP_HOST || 'smtp.hostinger.com';
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
+  const secure = process.env.SMTP_SECURE === 'false' ? false : port === 465;
 
-export async function sendEmail({ to, subject, html }) {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.log(`[SMTP SIMULATED] To: ${to} | Subject: ${subject}`);
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: {
+      user: process.env.SMTP_USER || 'verified@playersparadisehub.com',
+      pass: process.env.SMTP_PASS || '',
+    },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 12000,
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+}
+
+export async function sendEmail({ to, subject, html, text }) {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!user || !pass) {
+    console.log(`[SMTP SIMULATED - No credentials] To: ${to} | Subject: ${subject}`);
     return { success: true, simulated: true };
   }
 
   try {
-    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'support@playersparadisehub.com';
+    const transporter = createSmtpTransporter();
+    const fromAddress = process.env.SMTP_FROM || user || 'verified@playersparadisehub.com';
+
     const info = await transporter.sendMail({
       from: `"Players Paradise" <${fromAddress}>`,
       to,
       subject,
+      text: text || '',
       html,
     });
+
+    console.log(`[SMTP SUCCESS] Sent to: ${to} | ID: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Email sending error:', error);
+    console.error(`[SMTP ERROR] To: ${to} | Message: ${error.message}`);
     return { success: false, error: error.message };
   }
 }

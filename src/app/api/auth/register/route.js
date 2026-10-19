@@ -11,26 +11,82 @@ export async function POST(req) {
     await ensureDbInitialized();
 
     const body = await req.json();
-    const { username, email, password, referralCode: inputRef, state = 'US', ageVerified = true, deviceId: rawDeviceId } = body;
+    const {
+      username,
+      email,
+      password,
+      otp,
+      referralCode: inputRef,
+      state = 'US',
+      ageVerified = true,
+      deviceId: rawDeviceId,
+    } = body;
 
     if (!username || !email || !password) {
-      return NextResponse.json({ success: false, error: 'Username, email, and password are required.' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Username, email, and password are required.' },
+        { status: 400 }
+      );
+    }
+
+    if (!otp) {
+      return NextResponse.json(
+        { success: false, error: 'Email verification code (OTP) is required.' },
+        { status: 400 }
+      );
     }
 
     const cleanUsername = username.trim().toLowerCase();
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
+    const cleanOtp = String(otp).trim();
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return NextResponse.json({ success: false, error: 'Please enter a valid email address.' }, { status: 400 });
+    }
+
+    if (cleanUsername.length < 3) {
+      return NextResponse.json({ success: false, error: 'Username must be at least 3 characters.' }, { status: 400 });
+    }
 
     if (cleanPassword.length < 6) {
       return NextResponse.json({ success: false, error: 'Password must be at least 6 characters.' }, { status: 400 });
     }
 
-    const deviceId = getDeviceIdFromRequest(req, rawDeviceId);
-
     const db = await getDb();
+    const otpsCol = db.collection('otps');
     const usersCol = db.collection('users');
 
-    // Check duplicate username or email
+    // 1. Verify OTP code
+    const otpRecord = await otpsCol.findOne({ email: cleanEmail });
+    if (!otpRecord) {
+      return NextResponse.json(
+        { success: false, error: 'No verification code found for this email. Please request a new code.' },
+        { status: 400 }
+      );
+    }
+
+    if (new Date() > new Date(otpRecord.expiresAt)) {
+      await otpsCol.deleteOne({ _id: otpRecord._id });
+      return NextResponse.json(
+        { success: false, error: 'Verification code has expired. Please request a new code.' },
+        { status: 400 }
+      );
+    }
+
+    if (otpRecord.code !== cleanOtp) {
+      await otpsCol.updateOne({ _id: otpRecord._id }, { $inc: { attempts: 1 } });
+      return NextResponse.json(
+        { success: false, error: 'Invalid verification code. Please check your email and try again.' },
+        { status: 400 }
+      );
+    }
+
+    // OTP verified! Delete record to prevent replay
+    await otpsCol.deleteOne({ _id: otpRecord._id });
+
+    // 2. Check duplicate username or email in database
     const safeEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const safeUsername = cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -50,7 +106,7 @@ export async function POST(req) {
       );
     }
 
-    // Check referrer if provided (matches referralCode OR username)
+    // 3. Check referrer if provided
     let referrer = null;
     if (inputRef && typeof inputRef === 'string') {
       const cleanRef = inputRef.trim();
@@ -62,6 +118,8 @@ export async function POST(req) {
         ],
       });
     }
+
+    const deviceId = getDeviceIdFromRequest(req, rawDeviceId);
 
     // Generate unique referral code for this new player
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -76,6 +134,7 @@ export async function POST(req) {
     const newUser = {
       username: cleanUsername,
       email: cleanEmail,
+      emailVerified: true,
       passwordHash,
       role: ROLES.PLAYER,
       balanceSC: initialBonusSC,
@@ -86,7 +145,7 @@ export async function POST(req) {
       referralCode: myReferralCode,
       referredBy: referrer ? referrer.username : null,
       deviceId: deviceId,
-      boundDevices: [deviceId],
+      boundDevices: deviceId ? [deviceId] : [],
       sessionVersion,
       lastLoginDevice: deviceId,
       lastLoginAt: new Date(),
@@ -113,7 +172,7 @@ export async function POST(req) {
         balanceBefore: 0,
         balanceAfter: initialBonusSC,
         performedBy: 'system',
-        notes: 'Sign-up welcome bonus ($5.00 wallet credit)',
+        notes: 'Sign-up welcome bonus ($5.00 wallet credit + 50,000 GC)',
         createdAt: new Date(),
       });
     } catch {}
@@ -136,13 +195,14 @@ export async function POST(req) {
 
     const response = NextResponse.json({
       success: true,
-      message: 'Account registered successfully! Welcome bonus credited.',
+      message: 'Account registered & verified! $5.00 Welcome bonus credited.',
       user: {
         userId,
         username: cleanUsername,
         email: cleanEmail,
         role: ROLES.PLAYER,
         balanceSC: initialBonusSC,
+        balanceGC: initialBonusGC,
         balance: initialBonusSC,
         kycStatus: 'none',
         referralCode: myReferralCode,

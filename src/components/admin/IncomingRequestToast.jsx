@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Bell, ArrowRight, X, DollarSign, Wallet, Gamepad2 } from 'lucide-react';
+import { Bell, ArrowRight, X, DollarSign, Wallet, Gamepad2, Headphones, KeyRound } from 'lucide-react';
 
 export default function IncomingRequestToast({ alert, onDismiss, onViewRequest }) {
   if (!alert) return null;
@@ -9,12 +9,16 @@ export default function IncomingRequestToast({ alert, onDismiss, onViewRequest }
   const getIcon = () => {
     if (alert.type === 'deposit') return <DollarSign size={18} className="text-amber-400" />;
     if (alert.type === 'redemption') return <Wallet size={18} className="text-purple-400" />;
+    if (alert.type === 'chat') return <Headphones size={18} className="text-pink-400" />;
+    if (alert.type === 'account') return <KeyRound size={18} className="text-cyan-400" />;
     return <Gamepad2 size={18} className="text-cyan-400" />;
   };
 
   const getBorderColor = () => {
     if (alert.type === 'deposit') return 'border-amber-500/50 shadow-amber-500/20';
     if (alert.type === 'redemption') return 'border-purple-500/50 shadow-purple-500/20';
+    if (alert.type === 'chat') return 'border-pink-500/50 shadow-pink-500/20';
+    if (alert.type === 'account') return 'border-cyan-500/50 shadow-cyan-500/20';
     return 'border-cyan-500/50 shadow-cyan-500/20';
   };
 

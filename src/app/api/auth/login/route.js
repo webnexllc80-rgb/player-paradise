@@ -60,20 +60,20 @@ export async function POST(req) {
     const sessionVersion = Date.now().toString();
     const userId = user._id ? user._id.toString() : user.id;
 
+    const updateFields = {
+      sessionVersion,
+      lastLoginAt: new Date(),
+    };
     if (deviceId) {
-      await usersCol.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            deviceId: deviceId,
-            lastLoginDevice: deviceId,
-            sessionVersion,
-            lastLoginAt: new Date(),
-          },
-          $addToSet: { boundDevices: deviceId },
-        }
-      );
+      updateFields.deviceId = deviceId;
+      updateFields.lastLoginDevice = deviceId;
     }
+
+    const updateOps = { $set: updateFields };
+    if (deviceId) {
+      updateOps.$addToSet = { boundDevices: deviceId };
+    }
+    await usersCol.updateOne({ _id: user._id }, updateOps);
 
     const token = signToken({
       userId,
@@ -93,6 +93,7 @@ export async function POST(req) {
         email: user.email,
         role: user.role,
         balanceSC: user.balanceSC || 0,
+        balanceGC: user.balanceGC || 0,
         balance: user.balanceSC || 0,
         kycStatus: user.kycStatus || 'none',
         referralCode: user.referralCode || '',

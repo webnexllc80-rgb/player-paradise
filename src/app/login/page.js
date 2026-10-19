@@ -53,18 +53,6 @@ function LoginForm() {
     }
   };
 
-  const autofillAdmin = () => {
-    setIdentifier('superadmin');
-    setPassword('Paradise@2026!');
-    setError('');
-  };
-
-  const autofillDemo = () => {
-    setIdentifier('player@demo.com');
-    setPassword('Player@2026!');
-    setError('');
-  };
-
   return (
     <div className="w-full max-w-md p-5 sm:p-8 rounded-3xl border border-[var(--chrome-border)] bg-[#070919] shadow-2xl space-y-6 relative overflow-hidden">
       <div className="text-center space-y-3">
@@ -152,40 +140,13 @@ function LoginForm() {
         </button>
       </form>
 
-      <div className="pt-2 text-center text-xs text-slate-400 space-y-3">
+      <div className="pt-2 text-center text-xs text-slate-400">
         <p>
           Don&apos;t have an account?{' '}
           <Link href="/register" className="text-[var(--neon-cyan)] font-bold hover:underline">
             Sign up free
           </Link>
         </p>
-
-        {/* Quick Autofill Helpers */}
-        <div className="pt-3 border-t border-slate-800/80 space-y-2">
-          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
-            Quick Auto-Fill Logins:
-          </span>
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              disabled={loading}
-              onClick={autofillAdmin}
-              className="px-2.5 py-1.5 rounded-lg bg-purple-950/60 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <ShieldCheck size={13} className="text-purple-400" />
-              <span>Super Admin</span>
-            </button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={autofillDemo}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-800 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <User size={13} className="text-[var(--neon-cyan)]" />
-              <span>Demo Player</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

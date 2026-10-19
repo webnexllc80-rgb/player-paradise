@@ -30,6 +30,7 @@ export default function AuthModal({
   onSuccess,
 }) {
   const [tab, setTab] = useState(initialTab);
+  const [regStep, setRegStep] = useState('details'); // 'details' | 'otp'
   const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -39,13 +40,29 @@ export default function AuthModal({
   const [showReferralInput, setShowReferralInput] = useState(false);
   const [state, setState] = useState('CA');
   const [ageVerified, setAgeVerified] = useState(true);
+  const [otp, setOtp] = useState('');
+  const [otpSentMsg, setOtpSentMsg] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
 
   useEffect(() => {
     setTab(initialTab);
+    setRegStep('details');
     setErrorMsg(null);
+    setSuccessMsg(null);
+    setOtp('');
   }, [initialTab, isOpen]);
+
+  // Resend OTP countdown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // Android Native Back Button Support for APK & Mobile Browser
   useEffect(() => {
@@ -66,6 +83,7 @@ export default function AuthModal({
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSuccessMsg(null);
     setLoading(true);
 
     try {
@@ -83,9 +101,15 @@ export default function AuthModal({
       setLoading(false);
 
       if (data.success) {
+        setSuccessMsg(`Welcome back, ${data.user?.username || 'Player'}!`);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
+        }
         if (onAuthSuccess) onAuthSuccess(data.user);
         if (onSuccess) onSuccess(data.user);
-        onClose();
+        setTimeout(() => {
+          onClose();
+        }, 500);
       } else {
         setErrorMsg(data.error || 'Invalid credentials.');
       }
@@ -95,10 +119,100 @@ export default function AuthModal({
     }
   };
 
-  const handleRegister = async (e) => {
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     if (!ageVerified) {
       setErrorMsg('You must certify that you are 18+ and a US resident.');
+      return;
+    }
+
+    const cleanUser = username.trim().toLowerCase();
+    const cleanMail = email.trim().toLowerCase();
+
+    if (cleanUser.length < 3) {
+      setErrorMsg('Username must be at least 3 characters.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanMail)) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
+      return;
+    }
+
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send',
+          email: cleanMail,
+          username: cleanUser,
+          purpose: 'Registration',
+        }),
+      });
+
+      const data = await res.json();
+      setLoading(false);
+
+      if (data.success) {
+        setRegStep('otp');
+        setOtpSentMsg(data.message || `A 6-digit security code has been sent to ${cleanMail}.`);
+        setResendCooldown(45);
+      } else {
+        setErrorMsg(data.error || 'Failed to dispatch verification code.');
+      }
+    } catch {
+      setLoading(false);
+      setErrorMsg('Network error. Could not send verification code.');
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || loading) return;
+    setErrorMsg(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send',
+          email: email.trim().toLowerCase(),
+          username: username.trim().toLowerCase(),
+          purpose: 'Registration',
+        }),
+      });
+
+      const data = await res.json();
+      setLoading(false);
+
+      if (data.success) {
+        setOtpSentMsg(data.message || `New code sent to ${email}`);
+        setResendCooldown(45);
+      } else {
+        setErrorMsg(data.error || 'Failed to resend code.');
+      }
+    } catch {
+      setLoading(false);
+      setErrorMsg('Network error. Could not resend code.');
+    }
+  };
+
+  const handleVerifyAndRegister = async (e) => {
+    e.preventDefault();
+    if (!otp || otp.trim().length !== 6) {
+      setErrorMsg('Please enter the full 6-digit security code.');
       return;
     }
 
@@ -114,9 +228,10 @@ export default function AuthModal({
           'x-device-id': deviceId,
         },
         body: JSON.stringify({
-          username,
-          email,
-          password,
+          username: username.trim().toLowerCase(),
+          email: email.trim().toLowerCase(),
+          password: password.trim(),
+          otp: otp.trim(),
           referralCode: referralCode.trim(),
           state,
           ageVerified: true,
@@ -128,15 +243,31 @@ export default function AuthModal({
       setLoading(false);
 
       if (data.success) {
+        setSuccessMsg('Account verified! $5.00 Bonus Credited.');
+        try {
+          const confetti = (await import('canvas-confetti')).default;
+          confetti({
+            particleCount: 90,
+            spread: 70,
+            origin: { y: 0.6 },
+          });
+        } catch {}
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
+        }
         if (onAuthSuccess) onAuthSuccess(data.user);
         if (onSuccess) onSuccess(data.user);
-        onClose();
+
+        setTimeout(() => {
+          onClose();
+        }, 900);
       } else {
         setErrorMsg(data.error || 'Registration failed.');
       }
     } catch {
       setLoading(false);
-      setErrorMsg('Registration failed. Please try again.');
+      setErrorMsg('Registration failed. Please check your network connection.');
     }
   };
 
@@ -359,7 +490,7 @@ export default function AuthModal({
               </div>
               <div>
                 <p style={{ margin: 0, fontSize: '11.5px', fontFamily: 'Lexend, sans-serif', fontWeight: 800, color: '#FFFFFF' }}>
-                  $3.00 Instant Freeplay
+                  $5.00 Instant Freeplay + 50,000 GC
                 </p>
                 <p style={{ margin: 0, fontSize: '10px', color: '#9A91A8', fontFamily: 'Lexend, sans-serif' }}>
                   Credited immediately on signup
@@ -495,7 +626,7 @@ export default function AuthModal({
               >
                 <Sparkles size={11} color="#00F0FF" />
                 <span style={{ fontSize: '9.5px', fontFamily: 'Lexend, sans-serif', fontWeight: 900, color: '#00F0FF' }}>
-                  $3.00 FREEPLAY INSTANT SIGNUP BONUS
+                  $5.00 FREEPLAY INSTANT SIGNUP BONUS + 50,000 GC
                 </span>
               </div>
             </div>
@@ -512,7 +643,11 @@ export default function AuthModal({
                   letterSpacing: '-0.02em',
                 }}
               >
-                {tab === 'login' ? 'Welcome Back, Player' : 'Create Sovereign Vault'}
+                {tab === 'login'
+                  ? 'Welcome Back, Player'
+                  : regStep === 'otp'
+                  ? 'Security Verification'
+                  : 'Create Sovereign Vault'}
               </h2>
               <p
                 style={{
@@ -524,7 +659,9 @@ export default function AuthModal({
               >
                 {tab === 'login'
                   ? 'Enter your credentials to access your balances & sweepstakes games.'
-                  : 'Get started in under 30 seconds with immediate $3 Freeplay access.'}
+                  : regStep === 'otp'
+                  ? `Enter the 6-digit verification code sent to ${email || 'your email'}.`
+                  : 'Get started in under 30 seconds with immediate $5 Freeplay access.'}
               </p>
             </div>
 
@@ -544,7 +681,9 @@ export default function AuthModal({
                 type="button"
                 onClick={() => {
                   setTab('login');
+                  setRegStep('details');
                   setErrorMsg(null);
+                  setSuccessMsg(null);
                 }}
                 style={{
                   flex: 1,
@@ -570,6 +709,7 @@ export default function AuthModal({
                 onClick={() => {
                   setTab('register');
                   setErrorMsg(null);
+                  setSuccessMsg(null);
                 }}
                 style={{
                   flex: 1,
@@ -612,6 +752,29 @@ export default function AuthModal({
               >
                 <AlertCircle size={16} style={{ flexShrink: 0 }} />
                 <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* Success Banner */}
+            {successMsg && (
+              <div
+                style={{
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.45)',
+                  color: '#6EE7B7',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontFamily: 'Lexend, sans-serif',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  lineHeight: 1.35,
+                }}
+              >
+                <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
+                <span>{successMsg}</span>
               </div>
             )}
 
@@ -772,11 +935,11 @@ export default function AuthModal({
                   {!loading && <ArrowRight size={16} />}
                 </button>
               </form>
-            ) : (
+            ) : regStep === 'details' ? (
               /* ======================================================== */
-              /* TAB: REGISTRATION FORM                                   */
+              /* TAB: REGISTRATION STEP 1 - DETAILS                       */
               /* ======================================================== */
-              <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
                 {/* 2-Column Grid: Username & Email */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
@@ -805,6 +968,7 @@ export default function AuthModal({
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
+                        minLength={3}
                         style={{
                           width: '100%',
                           backgroundColor: '#070514',
@@ -877,7 +1041,7 @@ export default function AuthModal({
                       letterSpacing: '0.04em',
                     }}
                   >
-                    PASSWORD
+                    PASSWORD (MIN 6 CHARACTERS)
                   </label>
                   <div style={{ position: 'relative' }}>
                     <Lock
@@ -891,6 +1055,7 @@ export default function AuthModal({
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
+                      minLength={6}
                       style={{
                         width: '100%',
                         backgroundColor: '#070514',
@@ -969,7 +1134,7 @@ export default function AuthModal({
                         />
                         <input
                           type="text"
-                          placeholder="e.g. V1-ROYAL7"
+                          placeholder="e.g. PP-VIP88"
                           value={referralCode}
                           onChange={(e) => setReferralCode(e.target.value)}
                           style={{
@@ -1022,7 +1187,7 @@ export default function AuthModal({
                   </label>
                 </div>
 
-                {/* Registration Button */}
+                {/* Send OTP Button */}
                 <button
                   type="submit"
                   disabled={loading}
@@ -1050,8 +1215,165 @@ export default function AuthModal({
                   }}
                   className="hover:scale-[1.01]"
                 >
-                  <span>{loading ? 'CREATING SOVEREIGN VAULT...' : 'CLAIM $3 FREEPLAY & JOIN'}</span>
+                  <span>{loading ? 'SENDING EMAIL OTP...' : 'CONTINUE & SEND EMAIL OTP'}</span>
                   {!loading && <ArrowRight size={16} />}
+                </button>
+              </form>
+            ) : (
+              /* ======================================================== */
+              /* TAB: REGISTRATION STEP 2 - ENTER OTP CODE                */
+              /* ======================================================== */
+              <form onSubmit={handleVerifyAndRegister} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ textAlign: 'center', padding: '4px 0 6px 0' }}>
+                  <div
+                    style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(0, 240, 255, 0.12)',
+                      border: '1px solid rgba(0, 240, 255, 0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 8px auto',
+                      boxShadow: '0 0 20px rgba(0, 240, 255, 0.3)',
+                    }}
+                  >
+                    <Mail size={20} color="#00F0FF" />
+                  </div>
+                  <h3
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 900,
+                      color: '#FFFFFF',
+                      margin: '0 0 4px 0',
+                      fontFamily: 'Lexend, sans-serif',
+                    }}
+                  >
+                    ENTER VERIFICATION CODE
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: '11.5px',
+                      color: '#BDB4CB',
+                      margin: '0 0 6px 0',
+                      lineHeight: 1.4,
+                      fontFamily: 'Lexend, sans-serif',
+                    }}
+                  >
+                    A 6-digit security code was dispatched to: <br />
+                    <strong style={{ color: '#00F0FF' }}>{email}</strong>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegStep('details');
+                      setErrorMsg(null);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#E026D8',
+                      fontSize: '11px',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    ← Edit email address or details
+                  </button>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="••••••"
+                    autoFocus
+                    required
+                    style={{
+                      width: '100%',
+                      backgroundColor: '#070514',
+                      border: '2px solid rgba(0, 240, 255, 0.45)',
+                      borderRadius: '14px',
+                      padding: '12px 14px',
+                      color: '#00F0FF',
+                      fontSize: '24px',
+                      fontWeight: 900,
+                      fontFamily: 'monospace',
+                      letterSpacing: '10px',
+                      textAlign: 'center',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      boxShadow: '0 0 24px rgba(0, 240, 255, 0.25)',
+                    }}
+                  />
+                </div>
+
+
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '11.5px',
+                    color: '#9A91A8',
+                    fontFamily: 'Lexend, sans-serif',
+                  }}
+                >
+                  <span>Didn&apos;t receive it?</span>
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={resendCooldown > 0 || loading}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: resendCooldown > 0 ? '#64748B' : '#00F0FF',
+                      fontFamily: 'Lexend, sans-serif',
+                      fontWeight: 800,
+                      cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer',
+                      textDecoration: resendCooldown > 0 ? 'none' : 'underline',
+                    }}
+                  >
+                    {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || otp.length !== 6}
+                  style={{
+                    width: '100%',
+                    background: 'linear-gradient(135deg, #E026D8 0%, #00F0FF 100%)',
+                    color: '#FFFFFF',
+                    fontFamily: 'Lexend, sans-serif',
+                    fontWeight: 900,
+                    fontSize: '13px',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    padding: '13px 0',
+                    borderRadius: '12px',
+                    border: 'none',
+                    cursor: loading || otp.length !== 6 ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 22px rgba(0, 240, 255, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    marginTop: '4px',
+                    transition: 'all 0.2s ease',
+                    opacity: loading || otp.length !== 6 ? 0.65 : 1,
+                  }}
+                  className="hover:scale-[1.01]"
+                >
+                  <span>{loading ? 'VERIFYING...' : 'VERIFY & CLAIM $5.00 BONUS'}</span>
+                  {!loading && <CheckCircle2 size={16} />}
                 </button>
               </form>
             )}
@@ -1086,7 +1408,7 @@ export default function AuthModal({
                     padding: '0 4px',
                   }}
                 >
-                  Create Account &amp; Claim $3 Freeplay
+                  Create Account &amp; Claim $5 Freeplay
                 </button>
               </p>
             ) : (

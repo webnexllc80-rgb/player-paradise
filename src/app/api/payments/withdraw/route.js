@@ -224,7 +224,11 @@ export async function PUT(req) {
       return NextResponse.json({ success: false, error: 'Redemption not found.' }, { status: 404 });
     }
 
-    const user = await usersCol.findOne(safeFilter(redemption.userId));
+    const user = await usersCol.findOne(getUserFilter({
+      userId: redemption.userId,
+      username: redemption.username,
+      email: redemption.userEmail || redemption.email,
+    }));
 
     // ACTION 1: COIN DESK APPROVAL (Verify game score & forward to Finance / Ledger)
     if (action === 'coin_approve') {

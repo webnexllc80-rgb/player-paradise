@@ -50,6 +50,7 @@ const defaultStore = {
   settings: [],
   kyc: [],
   subscriptions: [],
+  otps: [],
 };
 
 // Global singleton in-memory & file-backed persistent database
@@ -157,8 +158,12 @@ function createCollectionWrapper(name) {
           const [key, dir] = Object.entries(sortObj)[0] || [];
           if (key) {
             filtered = [...filtered].sort((a, b) => {
-              const valA = a[key] instanceof Date ? a[key].getTime() : a[key];
-              const valB = b[key] instanceof Date ? b[key].getTime() : b[key];
+              let valA = a[key];
+              let valB = b[key];
+              if (valA instanceof Date) valA = valA.getTime();
+              else if (typeof valA === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(valA)) valA = new Date(valA).getTime();
+              if (valB instanceof Date) valB = valB.getTime();
+              else if (typeof valB === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(valB)) valB = new Date(valB).getTime();
               if (valA < valB) return dir === 1 ? -1 : 1;
               if (valA > valB) return dir === 1 ? 1 : -1;
               return 0;
@@ -281,11 +286,29 @@ function createCollectionWrapper(name) {
       }
       return { deletedCount: 0 };
     },
+    async deleteMany(filter) {
+      if (!fallbackStore[name]) return { deletedCount: 0 };
+      const data = fallbackStore[name];
+      const initialLen = data.length;
+      fallbackStore[name] = data.filter((doc) => !matchDoc(doc, filter));
+      const deletedCount = initialLen - fallbackStore[name].length;
+      if (deletedCount > 0) saveFallbackStore();
+      return { deletedCount, acknowledged: true };
+    },
     async countDocuments(query = {}) {
       loadFallbackStore();
       const data = fallbackStore[name] || [];
       const filtered = data.filter((doc) => matchDoc(doc, query));
       return filtered.length;
+    },
+    async createIndex() {
+      return { acknowledged: true };
+    },
+    async indexes() {
+      return [];
+    },
+    async dropIndex() {
+      return { acknowledged: true };
     },
     aggregate(pipeline = []) {
       return {

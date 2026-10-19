@@ -43,27 +43,41 @@ export async function GET(req) {
 
     // Player view: notifications broadcast to all, or targeted to user by id, username, or email
     const emailParam = searchParams.get('email');
+    const guestIdParam = searchParams.get('guestId');
     const targetConditions = [{ target: 'all' }];
+    const userKeys = [];
 
     if (session?.userId) {
       targetConditions.push({ userId: session.userId });
       targetConditions.push({ userId: session.userId.toString() });
+      userKeys.push(session.userId.toString());
     }
     if (session?.username) {
       targetConditions.push({ username: session.username.toLowerCase() });
       targetConditions.push({ username: session.username });
+      userKeys.push(session.username.toLowerCase());
     }
     if (session?.email) {
-      targetConditions.push({ email: session.email.toLowerCase().trim() });
+      const cleanEmail = session.email.toLowerCase().trim();
+      targetConditions.push({ email: cleanEmail });
+      targetConditions.push({ userEmail: cleanEmail });
+      userKeys.push(cleanEmail);
+    }
+    if (guestIdParam) {
+      targetConditions.push({ userId: guestIdParam.trim() });
+      userKeys.push(guestIdParam.trim());
     }
     if (emailParam) {
       const cleanEmail = emailParam.toLowerCase().trim();
       targetConditions.push({ email: cleanEmail });
+      targetConditions.push({ userEmail: cleanEmail });
+      userKeys.push(cleanEmail);
       try {
         const uDoc = await db.collection('users').findOne({ email: cleanEmail });
         if (uDoc) {
           targetConditions.push({ userId: uDoc._id.toString() });
           targetConditions.push({ username: uDoc.username });
+          userKeys.push(uDoc._id.toString());
         }
       } catch {}
     }
@@ -78,14 +92,21 @@ export async function GET(req) {
 
     return NextResponse.json({
       success: true,
-      notifications: items.map(n => ({
-        id: n._id.toString(),
-        title: n.title,
-        message: n.message,
-        type: n.type || 'promo',
-        read: Boolean(n.read),
-        createdAt: n.createdAt,
-      })),
+      notifications: items.map(n => {
+        let isRead = Boolean(n.read);
+        if (!isRead && Array.isArray(n.readBy) && userKeys.length > 0) {
+          isRead = userKeys.some(k => n.readBy.includes(k));
+        }
+        return {
+          id: n._id.toString(),
+          title: n.title,
+          message: n.message,
+          type: n.type || 'promo',
+          url: n.url || (n.type === 'chat_message' ? '/chat' : '/'),
+          read: isRead,
+          createdAt: n.createdAt,
+        };
+      }),
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -248,29 +269,60 @@ export async function PATCH(req) {
     const session = await getSessionUser();
     const body = await req.json().catch(() => ({}));
     const email = (session?.email || body.email || '').toLowerCase().trim();
-    const userId = session?.userId ? session.userId.toString() : null;
-
-    if (!email && !userId) {
-      return NextResponse.json({ success: false, error: 'User identification required.' }, { status: 400 });
-    }
+    const userId = session?.userId ? session.userId.toString() : (body.userId ? body.userId.toString() : null);
+    const notificationId = body.notificationId || body.id || null;
 
     const db = await getDb();
     const notifsCol = db.collection('notifications');
 
-    const filterConditions = [];
+    const userKeys = [];
+    if (email) userKeys.push(email);
+    if (userId) userKeys.push(userId);
+    if (session?.username) userKeys.push(session.username.toLowerCase());
+
+    // Single notification marked as read
+    if (notificationId) {
+      const { ObjectId } = await import('mongodb');
+      let idFilter;
+      try {
+        idFilter = ObjectId.isValid(notificationId) ? { _id: new ObjectId(notificationId) } : { _id: notificationId };
+      } catch {
+        idFilter = { _id: notificationId };
+      }
+      const updateDoc = { $set: { read: true, readAt: new Date() } };
+      if (userKeys.length > 0) {
+        updateDoc.$addToSet = { readBy: { $each: userKeys } };
+      }
+      await notifsCol.updateOne(idFilter, updateDoc);
+      return NextResponse.json({ success: true, message: 'Notification marked as read.' });
+    }
+
+    // Mark all notifications read for user
+    const filterConditions = [{ target: 'all' }];
     if (userId) {
       filterConditions.push({ userId });
+      filterConditions.push({ userId: userId.toString() });
     }
     if (email) {
       filterConditions.push({ email });
+      filterConditions.push({ userEmail: email });
+    }
+    if (session?.username) {
+      filterConditions.push({ username: session.username });
+      filterConditions.push({ username: session.username.toLowerCase() });
     }
 
-    if (filterConditions.length > 0) {
-      await notifsCol.updateMany(
-        { $or: filterConditions },
-        { $set: { read: true, readAt: new Date() } }
-      );
+    const updateDoc = {
+      $set: { read: true, readAt: new Date() },
+    };
+    if (userKeys.length > 0) {
+      updateDoc.$addToSet = { readBy: { $each: userKeys } };
     }
+
+    await notifsCol.updateMany(
+      { $or: filterConditions },
+      updateDoc
+    );
 
     return NextResponse.json({ success: true, message: 'Notifications marked as read.' });
   } catch (error) {

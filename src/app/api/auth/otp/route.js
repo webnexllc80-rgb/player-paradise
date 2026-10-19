@@ -7,25 +7,84 @@ export async function POST(req) {
   try {
     await ensureDbInitialized();
     const body = await req.json();
-    const { action = 'send', email, code, purpose = 'Verification' } = body;
+    const { action = 'send', email, username, code, purpose = 'Registration' } = body;
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ success: false, error: 'Email address is required.' }, { status: 400 });
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return NextResponse.json({ success: false, error: 'Please enter a valid email address.' }, { status: 400 });
+    }
+
     const db = await getDb();
     const otpsCol = db.collection('otps');
+    const usersCol = db.collection('users');
 
     // 1. Action: SEND OTP
     if (action === 'send') {
+      // Check if email or username is already taken when registering
+      if (purpose === 'Registration' || purpose === 'Account Verification') {
+        const safeEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existingEmail = await usersCol.findOne({
+          $or: [
+            { email: cleanEmail },
+            { email: { $regex: new RegExp(`^${safeEmail}$`, 'i') } },
+          ],
+        });
+        if (existingEmail) {
+          return NextResponse.json(
+            { success: false, error: 'This email is already registered. Please log in instead.' },
+            { status: 409 }
+          );
+        }
+
+        if (username && typeof username === 'string') {
+          const cleanUsername = username.trim().toLowerCase();
+          if (cleanUsername.length < 3) {
+            return NextResponse.json(
+              { success: false, error: 'Username must be at least 3 characters.' },
+              { status: 400 }
+            );
+          }
+          const safeUsername = cleanUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const existingUser = await usersCol.findOne({
+            $or: [
+              { username: cleanUsername },
+              { username: { $regex: new RegExp(`^${safeUsername}$`, 'i') } },
+            ],
+          });
+          if (existingUser) {
+            return NextResponse.json(
+              { success: false, error: 'Username is already taken. Please choose another username.' },
+              { status: 409 }
+            );
+          }
+        }
+      }
+
+      // Check anti-spam cooldown: 40 seconds
+      const existingOtp = await otpsCol.findOne({ email: cleanEmail });
+      if (existingOtp && existingOtp.createdAt) {
+        const elapsedSec = (Date.now() - new Date(existingOtp.createdAt).getTime()) / 1000;
+        if (elapsedSec < 40) {
+          const remaining = Math.ceil(40 - elapsedSec);
+          return NextResponse.json(
+            { success: false, error: `Please wait ${remaining} seconds before requesting a new code.`, cooldown: remaining },
+            { status: 429 }
+          );
+        }
+      }
+
       // Generate 6-digit numeric OTP
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      // Store in DB (upsert for this email & purpose)
+      // Store in DB (upsert for this email)
       await otpsCol.updateOne(
-        { email: cleanEmail, purpose },
+        { email: cleanEmail },
         {
           $set: {
             email: cleanEmail,
@@ -42,20 +101,25 @@ export async function POST(req) {
       // Send email via Hostinger SMTP
       const sendResult = await sendEmail({
         to: cleanEmail,
-        subject: `Your Players Paradise ${purpose} Security Code: ${otpCode}`,
-        html: getOtpEmailTemplate(otpCode, purpose),
+        subject: `Your Players Paradise Security Code: ${otpCode}`,
+        html: getOtpEmailTemplate(otpCode, 'Registration Security'),
       });
 
-      if (!sendResult.success && !sendResult.simulated) {
+      console.log(`[OTP GENERATED] To: ${cleanEmail} | Code: ${otpCode} | Sent: ${sendResult.success}`);
+
+      if (!sendResult.success) {
         return NextResponse.json(
-          { success: false, error: 'Failed to dispatch email: ' + (sendResult.error || 'SMTP delivery issue') },
+          {
+            success: false,
+            error: sendResult.error || 'Failed to dispatch security code email. Please check your email address or try again in a few moments.',
+          },
           { status: 500 }
         );
       }
 
       return NextResponse.json({
         success: true,
-        message: `A 6-digit security code has been sent to ${cleanEmail}.`,
+        message: `A 6-digit security code has been sent to ${cleanEmail}. Please check your inbox.`,
       });
     }
 
@@ -66,29 +130,26 @@ export async function POST(req) {
       }
 
       const cleanCode = code.trim();
-      const record = await otpsCol.findOne({ email: cleanEmail, purpose });
+      const record = await otpsCol.findOne({ email: cleanEmail });
 
       if (!record) {
-        return NextResponse.json({ success: false, error: 'No verification code found. Please request a new code.' }, { status: 404 });
+        return NextResponse.json({ success: false, error: 'No verification code found. Please request a code first.' }, { status: 404 });
       }
 
       if (new Date() > new Date(record.expiresAt)) {
         await otpsCol.deleteOne({ _id: record._id });
-        return NextResponse.json({ success: false, error: 'Verification code has expired. Please request a new one.' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Verification code has expired. Please request a new code.' }, { status: 400 });
       }
 
       if (record.code !== cleanCode) {
         await otpsCol.updateOne({ _id: record._id }, { $inc: { attempts: 1 } });
-        return NextResponse.json({ success: false, error: 'Invalid verification code. Please check and try again.' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Invalid verification code. Please check your email and try again.' }, { status: 400 });
       }
-
-      // Valid OTP -> remove record
-      await otpsCol.deleteOne({ _id: record._id });
 
       return NextResponse.json({
         success: true,
         verified: true,
-        message: 'Email successfully verified.',
+        message: 'Security code verified successfully.',
       });
     }
 

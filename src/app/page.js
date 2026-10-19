@@ -19,8 +19,6 @@ import GameCard from '@/components/hub/GameCard';
 import AuthModal from '@/components/modals/AuthModal';
 import WalletModal from '@/components/modals/WalletModal';
 import GameRequestModal from '@/components/modals/GameRequestModal';
-import DailyBonusModal from '@/components/modals/DailyBonusModal';
-import NotificationsModal from '@/components/modals/NotificationsModal';
 import ExternalGameModal from '@/components/modals/ExternalGameModal';
 import SubscriptionPromoModal from '@/components/modals/SubscriptionPromoModal';
 import LoadCoinsModal from '@/components/modals/LoadCoinsModal';
@@ -44,8 +42,13 @@ import {
   Zap,
   Gift,
   ArrowRight,
-  Trophy
+  Trophy,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  X
 } from 'lucide-react';
+import { playTune } from '@/lib/soundAlerts';
 
 export default function HomePage() {
   const router = useRouter();
@@ -60,9 +63,7 @@ export default function HomePage() {
   const [authModal, setAuthModal] = useState({ open: false, tab: 'login' });
   const [walletModal, setWalletModal] = useState({ open: false, tab: 'deposit' });
   const [gameRequestModal, setGameRequestModal] = useState({ open: false, initialGame: null });
-  const [dailyBonusOpen, setDailyBonusOpen] = useState(false);
   const [spinWheelOpen, setSpinWheelOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeExternalGame, setActiveExternalGame] = useState(null);
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const [kycOpen, setKycOpen] = useState(false);
@@ -144,6 +145,9 @@ export default function HomePage() {
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: null }));
+    }
   };
 
   const handlePlayGame = (game) => {
@@ -161,12 +165,74 @@ export default function HomePage() {
     }
   };
 
-  const handleRequestGame = (game = null) => {
+  const [requestToast, setRequestToast] = useState(null);
+
+  const handleRequestGame = async (game = null) => {
     if (!user) {
       setAuthModal({ open: true, tab: 'login' });
       return;
     }
-    setGameRequestModal({ open: true, initialGame: game });
+
+    // If no specific game passed (e.g. general button), open selector modal
+    if (!game || !game.title) {
+      setGameRequestModal({ open: true, initialGame: null });
+      return;
+    }
+
+    // Direct 1-click submission for the game - NO MODAL OPENS!
+    const gameTitle = game.title;
+    setActiveExternalGame(null);
+
+    setRequestToast({
+      type: 'loading',
+      title: 'Submitting ID Request...',
+      message: `Sending credentials request for ${gameTitle} to Admin...`,
+    });
+
+    try {
+      const res = await fetch('/api/account-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameTitle,
+          platform: game.platform || gameTitle,
+          requestType: 'ACCOUNT_CREATION',
+          transferAmount: 0,
+          userEmail: user.email,
+          userName: user.username,
+          userId: user.userId || user.id || user._id,
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        playTune('bell', 0.6);
+        setRequestToast({
+          type: 'success',
+          title: 'ID Request Sent! 🎯',
+          message: `Your request for ${gameTitle} credentials has been sent to Admin. Staff will issue your ID shortly!`,
+        });
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('accountRequestUpdated'));
+        }
+      } else {
+        setRequestToast({
+          type: 'info',
+          title: 'Request Notice',
+          message: data.message || `Unable to request ID for ${gameTitle}.`,
+        });
+      }
+    } catch {
+      setRequestToast({
+        type: 'error',
+        title: 'Connection Issue',
+        message: 'Could not connect to server. Please try again.',
+      });
+    }
+
+    setTimeout(() => {
+      setRequestToast((curr) => (curr ? null : curr));
+    }, 6000);
   };
 
   const categories = [
@@ -195,7 +261,6 @@ export default function HomePage() {
             if (typeof window.openLiveChat === 'function') window.openLiveChat();
           }
         }}
-        onOpenDailyBonus={() => setDailyBonusOpen(true)}
         onOpenSpinWheel={() => setSpinWheelOpen(true)}
       />
 
@@ -211,11 +276,8 @@ export default function HomePage() {
           user={user}
           onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
           onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
-          onOpenDailyBonus={() => setDailyBonusOpen(true)}
           onOpenSpinWheel={() => setSpinWheelOpen(true)}
-          onOpenNotifications={() => setNotificationsOpen(true)}
           onLogout={handleLogout}
-          unreadNotifsCount={1}
         />
 
         {/* Page Inner Container */}
@@ -403,19 +465,6 @@ export default function HomePage() {
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
       />
 
-      <DailyBonusModal
-        isOpen={dailyBonusOpen}
-        onClose={() => setDailyBonusOpen(false)}
-        user={user}
-        onBonusClaimed={loadUser}
-        onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-      />
-
-      <NotificationsModal
-        isOpen={notificationsOpen}
-        onClose={() => setNotificationsOpen(false)}
-        user={user}
-      />
 
       <ExternalGameModal
         isOpen={!!activeExternalGame}
@@ -469,6 +518,42 @@ export default function HomePage() {
         onSuccess={loadUser}
         onOpenDeposit={() => setWalletModal({ open: true, tab: 'deposit' })}
       />
+
+      {/* 1-Click Game ID Request Toast Notification */}
+      {requestToast && (
+        <div className="fixed top-24 right-4 sm:right-8 z-[100] max-w-sm w-full animate-slideInRight">
+          <div
+            className={`p-4 rounded-2xl backdrop-blur-2xl border shadow-2xl flex items-start gap-3 transition-all ${
+              requestToast.type === 'success'
+                ? 'bg-[#0B1528]/95 border-emerald-500/60 shadow-[0_0_30px_rgba(16,185,129,0.35)]'
+                : requestToast.type === 'error'
+                ? 'bg-[#200A12]/95 border-rose-500/60 shadow-[0_0_30px_rgba(244,63,94,0.35)]'
+                : requestToast.type === 'loading'
+                ? 'bg-[#0E0C26]/95 border-cyan-500/60 shadow-[0_0_30px_rgba(0,240,255,0.35)]'
+                : 'bg-[#18112C]/95 border-amber-500/60 shadow-[0_0_30px_rgba(245,158,11,0.35)]'
+            }`}
+          >
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 mt-0.5">
+              {requestToast.type === 'success' && <CheckCircle2 size={22} className="text-emerald-400" />}
+              {requestToast.type === 'loading' && <RefreshCw size={20} className="text-cyan-400 animate-spin" />}
+              {requestToast.type === 'error' && <AlertCircle size={22} className="text-rose-400" />}
+              {requestToast.type === 'info' && <KeyRound size={20} className="text-amber-400" />}
+            </div>
+            <div className="flex-1">
+              <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                {requestToast.title}
+              </h4>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">{requestToast.message}</p>
+            </div>
+            <button
+              onClick={() => setRequestToast(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

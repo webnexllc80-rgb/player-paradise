@@ -21,6 +21,7 @@ import {
   Plus,
   Headphones
 } from 'lucide-react';
+import NotificationsModal from '@/components/modals/NotificationsModal';
 
 export default function CyberNavbar({
   onToggleSidebar,
@@ -39,9 +40,62 @@ export default function CyberNavbar({
   const [jackpot, setJackpot] = useState(184920.45);
   const [liveUser, setLiveUser] = useState(user || null);
   const [liveUnreadCount, setLiveUnreadCount] = useState(unreadNotifsCount);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [balancePulse, setBalancePulse] = useState(false);
   const lastBalanceRef = useRef(user ? (user.balance ?? user.balanceSC ?? 0) : null);
   const profileRef = useRef(null);
+  const notificationsOpenRef = useRef(false);
+
+  const handleAuthClick = (mode = 'login') => {
+    if (typeof onOpenAuth === 'function') {
+      onOpenAuth(mode);
+    } else {
+      router.push(`/${mode}`);
+    }
+  };
+
+  const handleWalletClick = (tab = 'deposit') => {
+    if (typeof onOpenWallet === 'function') {
+      onOpenWallet(tab);
+    } else {
+      router.push(tab === 'withdraw' ? '/withdraw' : '/deposit');
+    }
+  };
+
+  useEffect(() => {
+    notificationsOpenRef.current = notificationsOpen;
+  }, [notificationsOpen]);
+
+  // Handle opening notifications modal & immediately clearing badge
+  const handleOpenNotifications = () => {
+    setNotificationsOpen(true);
+    setLiveUnreadCount(0);
+    const active = liveUser || user;
+    if (active?.email || active?.userId) {
+      fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          markAll: true,
+          email: active?.email || '',
+          userId: active?.userId || active?._id || '',
+        }),
+      }).catch(() => {});
+    }
+    if (onOpenNotifications) {
+      onOpenNotifications();
+    }
+  };
+
+  // Global event listener to open notifications from any component
+  useEffect(() => {
+    const handleOpenNotifsEvent = () => {
+      setNotificationsOpen(true);
+      setLiveUnreadCount(0);
+    };
+    window.addEventListener('paradise-open-notifications', handleOpenNotifsEvent);
+    return () => window.removeEventListener('paradise-open-notifications', handleOpenNotifsEvent);
+  }, []);
 
   // Keep liveUser aligned when prop changes
   useEffect(() => {
@@ -90,8 +144,10 @@ export default function CyberNavbar({
               .then((r) => r.json())
               .then((nData) => {
                 if (!isCancelled && nData.success && Array.isArray(nData.notifications)) {
-                  const unread = nData.notifications.filter((n) => !n.read).length;
-                  setLiveUnreadCount(unread);
+                  if (!notificationsOpenRef.current) {
+                    const unread = nData.notifications.filter((n) => !n.read).length;
+                    setLiveUnreadCount(unread);
+                  }
                 }
               })
               .catch(() => {});
@@ -144,7 +200,8 @@ export default function CyberNavbar({
   const activeUser = liveUser || user;
 
   return (
-    <header
+    <>
+      <header
       className="sticky top-0 z-30 w-full border-b border-[var(--chrome-border)]/60 bg-[var(--bg-deep)]/90 backdrop-blur-xl px-4 flex items-center justify-between gap-3"
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
@@ -253,14 +310,14 @@ export default function CyberNavbar({
           /* Guest Actions */
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
-              onClick={() => onOpenAuth('login')}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition-all shrink-0"
+              onClick={() => handleAuthClick('login')}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-200 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition-all shrink-0 cursor-pointer"
             >
               LOG IN
             </button>
             <button
-              onClick={() => onOpenAuth('register')}
-              className="cyber-btn-cyan text-xs py-1.5 px-3 sm:px-3.5 font-bold shrink-0"
+              onClick={() => handleAuthClick('register')}
+              className="cyber-btn-cyan text-xs py-1.5 px-3 sm:px-3.5 font-bold shrink-0 cursor-pointer"
             >
               <Sparkles size={13} />
               <span>PLAY NOW</span>
@@ -268,32 +325,20 @@ export default function CyberNavbar({
           </div>
         )}
 
-        {/* Daily Mystery Gift Button */}
-        <button
-          onClick={onOpenDailyBonus}
-          className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-purple-600/20 border border-amber-500/40 text-amber-300 hover:border-amber-400 hover:scale-105 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)] shrink-0"
-          title="Daily Mystery Reward"
-        >
-          <Gift size={16} />
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-        </button>
-
         {/* Notification Bell */}
-        {activeUser && (
-          <button
-            onClick={onOpenNotifications}
-            className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-900/80 border border-slate-700/70 text-slate-300 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)] transition-colors shrink-0"
-            title="Notifications"
-          >
-            <Bell size={16} />
-            {liveUnreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(244,63,94,0.6)] animate-pulse">
-                {liveUnreadCount}
-              </span>
-            )}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handleOpenNotifications}
+          className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-slate-900/80 border border-slate-700/70 text-slate-300 hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer"
+          title="Notifications"
+        >
+          <Bell size={16} />
+          {liveUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[9px] font-bold text-white shadow-[0_0_8px_rgba(244,63,94,0.6)] animate-pulse">
+              {liveUnreadCount}
+            </span>
+          )}
+        </button>
 
         {/* 24/7 Live Support Concierge Header Button */}
         <button
@@ -354,7 +399,7 @@ export default function CyberNavbar({
                 <div className="py-1">
                   <div
                     onClick={() => {
-                      onOpenWallet('deposit');
+                      handleWalletClick('deposit');
                       setProfileOpen(false);
                     }}
                     className="flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800/80 rounded-xl cursor-pointer"
@@ -402,9 +447,18 @@ export default function CyberNavbar({
 
                 <div className="pt-1 border-t border-slate-800">
                   <div
-                    onClick={() => {
+                    onClick={async () => {
                       setProfileOpen(false);
-                      onLogout();
+                      try {
+                        if (typeof onLogout === 'function') {
+                          await onLogout();
+                        } else {
+                          await fetch('/api/auth/logout', { method: 'POST' });
+                          window.location.href = '/';
+                        }
+                      } catch {
+                        window.location.href = '/';
+                      }
                     }}
                     className="flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-950/30 rounded-xl cursor-pointer font-semibold"
                   >
@@ -418,5 +472,14 @@ export default function CyberNavbar({
         )}
       </div>
     </header>
+
+    {/* Global Player Notifications Modal */}
+    <NotificationsModal
+      isOpen={notificationsOpen}
+      onClose={() => setNotificationsOpen(false)}
+      user={activeUser}
+      onAllRead={() => setLiveUnreadCount(0)}
+    />
+  </>
   );
 }

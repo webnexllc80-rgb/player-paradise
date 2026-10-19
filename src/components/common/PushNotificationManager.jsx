@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { Bell, X, ExternalLink, Sparkles, ShieldCheck } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { Bell, X, ExternalLink, Sparkles, ShieldCheck, MessageSquare } from 'lucide-react';
 import { playTune, unlockAudioContext } from '@/lib/soundAlerts';
 
 export default function PushNotificationManager() {
   const router = useRouter();
+  const pathname = usePathname();
   const [activeToast, setActiveToast] = useState(null);
   const [toastProgress, setToastProgress] = useState(100);
   const lastSeenIdRef = useRef(null);
@@ -206,8 +207,12 @@ export default function PushNotificationManager() {
 
     const checkIncomingNotifications = async () => {
       if (document.hidden) return; // Save VPS resources when tab inactive
+      if (pathname && pathname.startsWith('/admin')) return; // Never show on admin operations console
+
       try {
-        const res = await fetch('/api/notifications', { cache: 'no-store' });
+        const activeGuestId = typeof window !== 'undefined' ? (localStorage.getItem('pp_guest_chat_id') || '') : '';
+        const notifUrl = activeGuestId ? `/api/notifications?guestId=${encodeURIComponent(activeGuestId)}` : '/api/notifications';
+        const res = await fetch(notifUrl, { cache: 'no-store' });
         const data = await res.json();
         if (isCancelled || !data.success || !Array.isArray(data.notifications)) return;
 
@@ -238,6 +243,7 @@ export default function PushNotificationManager() {
 
     // Event listener for manual test or in-app triggers
     const handleCustomTrigger = (e) => {
+      if (pathname && pathname.startsWith('/admin')) return;
       if (e.detail) dispatchAlert(e.detail);
     };
 
@@ -261,9 +267,26 @@ export default function PushNotificationManager() {
       clearInterval(interval);
       window.removeEventListener('paradise-show-notification', handleCustomTrigger);
     };
-  }, []);
+  }, [pathname]);
 
-  if (!activeToast) return null;
+  if (!activeToast || (pathname && pathname.startsWith('/admin'))) return null;
+
+  const handleOpenAction = () => {
+    setActiveToast(null);
+    if (activeToast?.type === 'chat_message') {
+      if (typeof window !== 'undefined' && window.openLiveChat) {
+        window.openLiveChat();
+        return;
+      }
+      router.push(activeToast.url || '/chat');
+      return;
+    }
+    if (activeToast?.url && activeToast.url !== '/') {
+      router.push(activeToast.url);
+    } else {
+      window.dispatchEvent(new CustomEvent('paradise-open-notifications'));
+    }
+  };
 
   return (
     <div
@@ -277,7 +300,11 @@ export default function PushNotificationManager() {
       <div className="flex items-start gap-3">
         {/* Glowing Icon */}
         <div className="relative shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-600/20 border border-cyan-400/60 flex items-center justify-center text-cyan-300 shadow-[0_0_12px_rgba(0,240,255,0.4)]">
-          <Bell size={18} className="animate-bounce" />
+          {activeToast.type === 'chat_message' ? (
+            <MessageSquare size={18} className="animate-bounce text-emerald-400" />
+          ) : (
+            <Bell size={18} className="animate-bounce" />
+          )}
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400" />
         </div>
@@ -302,17 +329,10 @@ export default function PushNotificationManager() {
           {/* Quick Action Button */}
           <div className="mt-2.5 flex items-center gap-2">
             <button
-              onClick={() => {
-                setActiveToast(null);
-                if (activeToast.url && activeToast.url !== '/') {
-                  router.push(activeToast.url);
-                } else {
-                  window.dispatchEvent(new CustomEvent('paradise-open-notifications'));
-                }
-              }}
+              onClick={handleOpenAction}
               className="px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-400 to-teal-400 text-black text-[11px] font-heading font-black hover:scale-102 active:scale-98 transition-all flex items-center gap-1 shadow-[0_0_10px_rgba(0,240,255,0.4)]"
             >
-              <span>CLAIM / VIEW</span>
+              <span>{activeToast.type === 'chat_message' ? 'OPEN CHAT' : 'CLAIM / VIEW'}</span>
               <ExternalLink size={11} strokeWidth={3} />
             </button>
 

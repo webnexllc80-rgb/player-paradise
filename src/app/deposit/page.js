@@ -301,14 +301,20 @@ export default function DepositPage() {
     setStatusMessage(null);
 
     try {
+      const activeGateway = selectedGateway || (gateways && gateways.length > 0 ? gateways[0] : null);
+      const chosenMethodName = activeGateway?.name || 'Cash App';
+      const chosenMethodId = activeGateway?.id || 'cashapp';
+
       const payload = {
         amount: finalAmount,
-        method: selectedGateway?.name || 'Cash App',
-        methodId: selectedGateway?.id || 'cashapp',
+        method: chosenMethodName,
+        methodName: chosenMethodName,
+        methodId: chosenMethodId,
         playerTagName: senderAccount.trim(),
         playerPaymentEmail: playerPaymentEmail.trim(),
         senderNote: senderAccount.trim(),
         transactionId: transactionId.trim(),
+        txHash: transactionId.trim(),
         proofImage,
       };
 

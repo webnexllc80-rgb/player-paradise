@@ -51,7 +51,8 @@ export async function GET(req) {
           userId: d.userId,
           username: d.username,
           amount: d.amount,
-          methodName: d.methodName,
+          methodName: d.methodName || d.method || 'Payment',
+          method: d.method || d.methodName || 'Payment',
           playerTagName: d.playerTagName || d.senderNote || '',
           playerPaymentEmail: d.playerPaymentEmail || '',
           senderNote: d.senderNote || d.playerTagName || '',
@@ -105,7 +106,11 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Minimum deposit is $5.00.' }, { status: 400 });
     }
 
-    if (!methodName) {
+    const resolvedMethodName = String(methodName || body.method || body.gateway || '').trim();
+    const resolvedMethodId = String(methodId || body.methodId || body.gatewayId || 'cashapp').trim();
+    const resolvedTxHash = String(txHash || body.transactionId || body.txId || '').trim();
+
+    if (!resolvedMethodName) {
       return NextResponse.json({ success: false, error: 'Payment method is required.' }, { status: 400 });
     }
 
@@ -149,17 +154,20 @@ export async function POST(req) {
     const totalSC = Number((depositAmount + bonusSC).toFixed(2));
     const totalGC = depositAmount * 10000;
 
+    const resolvedUserId = (user && user._id) ? user._id.toString() : (session.userId || 'custom');
+
     const newDeposit = {
-      userId: session.userId,
-      username: session.username,
+      userId: resolvedUserId,
+      username: user?.username || session.username,
       amount: depositAmount,
-      methodId: methodId || 'custom',
-      methodName,
+      methodId: resolvedMethodId || 'custom',
+      methodName: resolvedMethodName,
+      method: resolvedMethodName,
       playerTagName: tagName,
       playerPaymentEmail: (playerPaymentEmail || user?.email || '').trim(),
       senderNote: tagName,
       proofImage: proofImage || null,
-      txHash: txHash || '',
+      txHash: resolvedTxHash,
       bonusType,
       bonusPercent,
       bonusSC,
@@ -232,7 +240,11 @@ export async function PUT(req) {
       return NextResponse.json({ success: false, error: `Deposit is already marked as ${deposit.status}.` }, { status: 400 });
     }
 
-    const user = await usersCol.findOne(safeFilter(deposit.userId));
+    const user = await usersCol.findOne(getUserFilter({
+      userId: deposit.userId,
+      username: deposit.username,
+      email: deposit.playerPaymentEmail,
+    }));
     if (!user) {
       return NextResponse.json({ success: false, error: 'Associated player not found.' }, { status: 404 });
     }

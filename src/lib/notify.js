@@ -22,6 +22,7 @@ export function notifyPlayer({ userId, userEmail, username, title, message, type
         title,
         message,
         type,
+        url: data?.url || (type === 'chat_message' ? '/chat' : '/'),
         read: false,
         createdAt: new Date(),
       }).catch(() => {});
