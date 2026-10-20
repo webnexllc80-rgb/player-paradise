@@ -10,23 +10,45 @@ const options = {
   retryWrites: true,
 };
 
-let client;
-let clientPromise;
+async function getConnectedClient() {
+  // Check if existing global promise is valid and resolves to a real client with .db()
+  if (global._mongoClientPromise) {
+    try {
+      const existingClient = await global._mongoClientPromise;
+      if (existingClient && typeof existingClient.db === 'function') {
+        return existingClient;
+      }
+    } catch {
+      global._mongoClientPromise = null;
+    }
+  }
 
-// Maintain persistent singleton connection across HMR and production server workers
-if (!global._mongoClientPromise) {
-  client = new MongoClient(uri, options);
-  global._mongoClientPromise = client.connect();
+  // Reset and create fresh connection
+  global._mongoClientPromise = null;
+  const client = new MongoClient(uri, options);
+  
+  global._mongoClientPromise = client.connect().catch((err) => {
+    global._mongoClientPromise = null;
+    throw err;
+  });
+
+  const connectedClient = await global._mongoClientPromise;
+  if (!connectedClient || typeof connectedClient.db !== 'function') {
+    global._mongoClientPromise = null;
+    throw new Error('Failed to establish active MongoDB connection.');
+  }
+
+  return connectedClient;
 }
-clientPromise = global._mongoClientPromise;
 
 /**
  * Returns the active MongoDB Database instance strictly from MongoDB Atlas.
  * Pure native MongoDB connection - zero file-system or JSON database fallbacks.
  */
 export async function getDb() {
-  const clientInstance = await clientPromise;
+  const clientInstance = await getConnectedClient();
   return clientInstance.db();
 }
 
+const clientPromise = getConnectedClient();
 export default clientPromise;
