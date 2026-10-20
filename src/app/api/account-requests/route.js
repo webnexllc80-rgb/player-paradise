@@ -16,7 +16,25 @@ export async function GET(req) {
     const query = {};
 
     if (email) {
-      query.userEmail = email.toLowerCase().trim();
+      const cleanEmail = email.toLowerCase().trim();
+      query.userEmail = cleanEmail;
+
+      // Auto-cleanup stale rejected requests for games the user already has active credentials for
+      try {
+        const activeAccounts = await db.collection('gameAccounts').find({ userEmail: cleanEmail }).toArray();
+        if (activeAccounts.length > 0) {
+          const activeTitles = activeAccounts.map(a => a.gameTitle).filter(Boolean);
+          if (activeTitles.length > 0) {
+            await db.collection('accountRequests').deleteMany({
+              userEmail: cleanEmail,
+              gameTitle: { $in: activeTitles },
+              status: { $in: ['REJECTED', 'CANCELLED'] },
+            });
+          }
+        }
+      } catch (cleanErr) {
+        console.error('Error auto-cleaning stale rejected requests:', cleanErr);
+      }
     }
     if (status && status !== 'all') {
       query.status = status.toUpperCase();
@@ -375,6 +393,17 @@ export async function PUT(req) {
         { upsert: true }
       );
 
+      // Clean up any older REJECTED or CANCELLED requests for this user and game
+      try {
+        await requestsCol.deleteMany({
+          userEmail: cleanEmail,
+          gameTitle: cleanTitle,
+          status: { $in: ['REJECTED', 'CANCELLED'] },
+        });
+      } catch (cleanErr) {
+        console.error('Error cleaning up rejected requests on approval:', cleanErr);
+      }
+
       // Instant in-app & push notification
       if (finalAmount > 0) {
         notifyPlayer({
@@ -456,6 +485,40 @@ export async function PUT(req) {
     }
 
     return NextResponse.json({ success: false, message: 'Unknown action.' }, { status: 400 });
+  } catch (err) {
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  }
+}
+
+// DELETE - Dismiss or remove an account request
+export async function DELETE(req) {
+  try {
+    const session = await getSessionUser();
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ success: false, message: 'ID required.' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const requestsCol = db.collection('accountRequests');
+    const target = await requestsCol.findOne(safeIdFilter(id));
+
+    if (!target) {
+      return NextResponse.json({ success: false, message: 'Request not found.' }, { status: 404 });
+    }
+
+    // Only allow player if it's their own request, or staff
+    const isOwner = session && session.email?.toLowerCase().trim() === target.userEmail?.toLowerCase().trim();
+    const isStaff = session && ['super_admin', 'operation_admin', 'financial_manager', 'coin_manager', 'chat_support'].includes(session.role);
+
+    if (!isOwner && !isStaff) {
+      return NextResponse.json({ success: false, message: 'Unauthorized.' }, { status: 403 });
+    }
+
+    await requestsCol.deleteOne(safeIdFilter(id));
+    return NextResponse.json({ success: true, message: 'Request dismissed successfully.' });
   } catch (err) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }

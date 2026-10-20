@@ -20,7 +20,8 @@ import {
   RefreshCw,
   ExternalLink,
   Coins,
-  Lock
+  Lock,
+  X,
 } from 'lucide-react';
 import LoadCoinsModal from '@/components/modals/LoadCoinsModal';
 
@@ -67,10 +68,11 @@ export default function PlayerGameAccountsHub({
 
       // Check account requests
       if (reqData.success && reqData.accountRequests) {
+        // Step 1: Collect all verified READY credentials first
         reqData.accountRequests.forEach((req) => {
           if (req.status === 'READY') {
             const alreadyExists = readyList.some(
-              (a) => a.gameTitle?.toLowerCase() === req.gameTitle?.toLowerCase()
+              (a) => a.gameTitle?.toLowerCase().trim() === req.gameTitle?.toLowerCase().trim()
             );
             if (!alreadyExists) {
               readyList.push({
@@ -81,10 +83,29 @@ export default function PlayerGameAccountsHub({
                 status: 'READY',
               });
             }
-          } else if (req.status === 'PENDING') {
-            pendingList.push(req);
+          }
+        });
+
+        // Step 2: Only show pending or rejected for games the user does NOT already have accounts for
+        reqData.accountRequests.forEach((req) => {
+          if (req.status === 'READY') return;
+
+          const hasActiveAccount = readyList.some(
+            (a) =>
+              (a.gameTitle && req.gameTitle && a.gameTitle.toLowerCase().trim() === req.gameTitle.toLowerCase().trim()) ||
+              (a.gameId && req.gameId && String(a.gameId) === String(req.gameId))
+          );
+
+          if (req.status === 'PENDING') {
+            // Only add pending if user does not already have an active account for this game, OR if it's a coin load
+            if (!hasActiveAccount || req.requestType === 'COIN_LOAD') {
+              pendingList.push(req);
+            }
           } else if (req.status === 'REJECTED' || req.status === 'CANCELLED') {
-            rejectedList.push(req);
+            // Once account is created/ready, DO NOT show retry/rejected card! It is resolved.
+            if (!hasActiveAccount) {
+              rejectedList.push(req);
+            }
           }
         });
       }
@@ -136,7 +157,18 @@ export default function PlayerGameAccountsHub({
     }));
   };
 
-  const handleRequestAccount = async (game) => {
+  const handleDismissRejected = async (requestId) => {
+    setRejectedRequests((prev) => prev.filter((r) => r.id !== requestId && r._id !== requestId));
+    try {
+      await fetch(`/api/account-requests?id=${encodeURIComponent(requestId)}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      // silently handle
+    }
+  };
+
+  const handleRequestAccount = async (game, previousRequestId = null) => {
     if (!user) {
       if (onOpenAuth) onOpenAuth('login');
       return;
@@ -144,6 +176,26 @@ export default function PlayerGameAccountsHub({
 
     const gameTitle = game.title || game.name;
     const gameId = game.gameId || game.id || game._id;
+
+    // Check if user already has active credentials for this game
+    const existing = activeAccounts.find(
+      (a) =>
+        (a.gameTitle && gameTitle && a.gameTitle.toLowerCase().trim() === gameTitle.toLowerCase().trim()) ||
+        (a.gameId && gameId && String(a.gameId) === String(gameId))
+    );
+
+    if (existing) {
+      if (previousRequestId) {
+        handleDismissRejected(previousRequestId);
+      }
+      setErrorMsg(`You already have active credentials for ${gameTitle} (Username: ${existing.username}).`);
+      return;
+    }
+
+    // Dismiss previous rejected request if retrying
+    if (previousRequestId) {
+      handleDismissRejected(previousRequestId);
+    }
 
     setRequestingGameId(gameId);
     setErrorMsg(null);
@@ -725,19 +777,38 @@ export default function PlayerGameAccountsHub({
                   <h4 style={{ margin: 0, fontFamily: 'Lexend, sans-serif', fontSize: '15px', fontWeight: 800, color: '#FFFFFF' }}>
                     {req.gameTitle}
                   </h4>
-                  <span
-                    style={{
-                      fontSize: '9.5px',
-                      fontFamily: 'Lexend, sans-serif',
-                      fontWeight: 800,
-                      color: '#EF4444',
-                      backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    NOT APPROVED
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span
+                      style={{
+                        fontSize: '9.5px',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontWeight: 800,
+                        color: '#EF4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      NOT APPROVED
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDismissRejected(req.id || req._id)}
+                      title="Dismiss this notification"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#9CA3AF',
+                        cursor: 'pointer',
+                        padding: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 <div
@@ -755,7 +826,7 @@ export default function PlayerGameAccountsHub({
 
                 <button
                   type="button"
-                  onClick={() => handleRequestAccount({ title: req.gameTitle, gameId: req.gameId })}
+                  onClick={() => handleRequestAccount({ title: req.gameTitle, gameId: req.gameId }, req.id || req._id)}
                   style={{
                     width: '100%',
                     padding: '8px',
