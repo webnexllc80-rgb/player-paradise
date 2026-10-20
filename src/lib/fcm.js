@@ -27,20 +27,40 @@ function findServiceAccount() {
     'firebase-admin.json',
   ];
 
+  const attemptLogs = [];
+
   for (const filename of priorityFiles) {
     const fullPath = path.join(/*turbopackIgnore: true*/ process.cwd(), filename);
-    if (fs.existsSync(/*turbopackIgnore: true*/ fullPath)) {
-      try {
+    const logItem = { file: filename, fullPath };
+    try {
+      const exists = fs.existsSync(/*turbopackIgnore: true*/ fullPath);
+      logItem.exists = exists;
+      if (exists) {
         const content = fs.readFileSync(/*turbopackIgnore: true*/ fullPath, 'utf8');
-        const parsed = JSON.parse(content);
-        if (parsed.private_key && parsed.client_email) {
-          loadedAccountSource = filename;
-          return parsed;
+        logItem.byteLength = content.length;
+        try {
+          const parsed = JSON.parse(content);
+          logItem.parsed = true;
+          logItem.keys = Object.keys(parsed);
+          logItem.projectId = parsed.project_id || null;
+          logItem.hasPrivateKey = Boolean(parsed.private_key);
+          logItem.hasClientEmail = Boolean(parsed.client_email);
+          if (parsed.private_key && parsed.client_email) {
+            loadedAccountSource = filename;
+            lastInitAttemptLogs = attemptLogs;
+            return parsed;
+          } else {
+            logItem.failure = 'Missing private_key or client_email in parsed JSON';
+          }
+        } catch (jsonErr) {
+          logItem.parsed = false;
+          logItem.jsonError = jsonErr.message;
         }
-      } catch (err) {
-        console.warn(`[FCM] Could not parse ${filename}:`, err.message);
       }
+    } catch (fsErr) {
+      logItem.fsError = fsErr.message;
     }
+    attemptLogs.push(logItem);
   }
 
   // 3. Dynamic scan of process.cwd() for any adminsdk or firebase json file
@@ -55,24 +75,38 @@ function findServiceAccount() {
         !file.includes('jsconfig')
       ) {
         const fullPath = path.join(/*turbopackIgnore: true*/ process.cwd(), file);
+        const logItem = { file, dynamic: true, fullPath };
         try {
           const content = fs.readFileSync(/*turbopackIgnore: true*/ fullPath, 'utf8');
+          logItem.byteLength = content.length;
           const parsed = JSON.parse(content);
+          logItem.parsed = true;
+          logItem.hasPrivateKey = Boolean(parsed.private_key);
+          logItem.hasClientEmail = Boolean(parsed.client_email);
+          logItem.projectId = parsed.project_id || null;
           if (parsed.private_key && parsed.client_email) {
             loadedAccountSource = file;
+            lastInitAttemptLogs = attemptLogs;
             return parsed;
+          } else {
+            logItem.failure = 'Missing private_key or client_email in dynamic JSON';
           }
-        } catch {}
+        } catch (err) {
+          logItem.error = err.message;
+        }
+        attemptLogs.push(logItem);
       }
     }
   } catch (scanErr) {
-    console.warn('[FCM] Directory scan notice:', scanErr.message);
+    attemptLogs.push({ scanError: scanErr.message });
   }
 
+  lastInitAttemptLogs = attemptLogs;
   return null;
 }
 
 let lastInitError = null;
+let lastInitAttemptLogs = [];
 
 export function getFcmDiagnostics() {
   let rootFiles = [];
@@ -85,6 +119,7 @@ export function getFcmDiagnostics() {
     initialized: Boolean(messagingInstance),
     source: loadedAccountSource,
     lastInitError,
+    attemptLogs: lastInitAttemptLogs,
     cwd: process.cwd(),
     jsonFilesInCwd: rootFiles,
     hasEnvServiceAccount: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT),
