@@ -81,7 +81,7 @@ export default function WalletPage() {
         mobileOpen={mobileSidebarOpen}
         setMobileOpen={setMobileSidebarOpen}
         user={user}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => router.push('/')}
         onOpenChat={() => {}}
         onOpenDailyBonus={() => {}}
@@ -92,7 +92,7 @@ export default function WalletPage() {
           onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={user}
           onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-          onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+          onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
           onOpenDailyBonus={() => {}}
           onOpenNotifications={() => {}}
           onLogout={() => {
@@ -248,7 +248,7 @@ export default function WalletPage() {
       <CyberMobileBottomNav
         user={user}
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => router.push('/')}
       />
 

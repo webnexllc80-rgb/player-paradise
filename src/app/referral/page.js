@@ -105,7 +105,7 @@ export default function ReferralPage() {
         mobileOpen={mobileSidebarOpen}
         setMobileOpen={setMobileSidebarOpen}
         user={user}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => router.push('/games')}
         onOpenSpinWheel={() => setSpinWheelOpen(true)}
       />
@@ -120,7 +120,7 @@ export default function ReferralPage() {
           onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={user}
           onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-          onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+          onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
           onOpenSpinWheel={() => setSpinWheelOpen(true)}
           onOpenNotifications={() => {}}
           onLogout={() => {
@@ -344,7 +344,7 @@ export default function ReferralPage() {
       <CyberMobileBottomNav
         user={user}
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => router.push('/games')}
         onOpenSpinWheel={() => setSpinWheelOpen(true)}
       />

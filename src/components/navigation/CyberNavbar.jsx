@@ -55,11 +55,8 @@ export default function CyberNavbar({
   };
 
   const handleWalletClick = (tab = 'deposit') => {
-    if (typeof onOpenWallet === 'function') {
-      onOpenWallet(tab);
-    } else {
-      router.push(tab === 'withdraw' ? '/withdraw' : '/deposit');
-    }
+    const isRedeem = tab === 'withdraw' || tab === 'redeem' || tab === 'cashout';
+    router.push(isRedeem ? '/withdraw' : '/deposit');
   };
 
   useEffect(() => {

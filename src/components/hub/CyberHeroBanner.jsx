@@ -93,7 +93,7 @@ export default function CyberHeroBanner({
             </button>
 
             <button
-              onClick={() => onOpenWallet('deposit')}
+              onClick={() => router.push('/deposit')}
               className="cyber-btn-purple py-3 px-6 text-sm"
             >
               <Wallet size={17} />

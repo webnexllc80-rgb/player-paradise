@@ -339,7 +339,7 @@ export default function HomePage() {
         mobileOpen={mobileSidebarOpen}
         setMobileOpen={setMobileSidebarOpen}
         user={user}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => handleRequestGame()}
         onOpenChat={() => {
           if (typeof window !== 'undefined') {
@@ -361,7 +361,7 @@ export default function HomePage() {
           onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={user}
           onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-          onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+          onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
           onOpenSpinWheel={() => setSpinWheelOpen(true)}
           onLogout={handleLogout}
         />
@@ -372,7 +372,7 @@ export default function HomePage() {
           <CyberHeroBanner
             user={user}
             onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-            onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+            onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
             onOpenGameRequest={() => handleRequestGame()}
           />
 
@@ -524,7 +524,7 @@ export default function HomePage() {
       <CyberMobileBottomNav
         user={user}
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => handleRequestGame()}
         onOpenSpinWheel={() => setSpinWheelOpen(true)}
       />
@@ -617,7 +617,7 @@ export default function HomePage() {
         game={loadCoinsModal.game}
         user={user}
         onSuccess={loadUser}
-        onOpenDeposit={() => setWalletModal({ open: true, tab: 'deposit' })}
+        onOpenDeposit={() => router.push('/deposit')}
       />
 
       {/* 1-Click Game ID Request Toast Notification */}

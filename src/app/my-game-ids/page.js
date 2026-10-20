@@ -102,7 +102,7 @@ export default function MyGameIdsPage() {
         mobileOpen={mobileSidebarOpen}
         setMobileOpen={setMobileSidebarOpen}
         user={user}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => {}}
         onOpenChat={() => {}}
         onOpenDailyBonus={() => {}}
@@ -114,7 +114,7 @@ export default function MyGameIdsPage() {
           onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={user}
           onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-          onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+          onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
           onOpenDailyBonus={() => {}}
           onOpenNotifications={() => {}}
           onOpenSpinWheel={() => setSpinWheelOpen(true)}
@@ -155,7 +155,7 @@ export default function MyGameIdsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWalletModal({ open: true, tab: 'deposit' })}
+                  onClick={() => router.push('/deposit')}
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black text-xs font-black shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all flex items-center gap-2"
                 >
                   <Sparkles size={16} />
@@ -171,7 +171,7 @@ export default function MyGameIdsPage() {
             games={games}
             onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
             onPlayGame={handlePlayGame}
-            onDeposit={() => setWalletModal({ open: true, tab: 'deposit' })}
+            onDeposit={() => router.push('/deposit')}
           />
         </main>
 
@@ -181,7 +181,7 @@ export default function MyGameIdsPage() {
       <CyberMobileBottomNav
         user={user}
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-        onOpenWallet={(tab) => setWalletModal({ open: true, tab })}
+        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => router.push('/my-game-ids')}
         onOpenSpinWheel={() => setSpinWheelOpen(true)}
       />
