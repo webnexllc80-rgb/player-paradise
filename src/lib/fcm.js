@@ -167,6 +167,10 @@ export async function getFirebaseMessaging() {
       return null;
     }
 
+    if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+
     const apps = getApps();
     const app = apps.length > 0 ? apps[0] : initializeApp({
       credential: cert(serviceAccount),
