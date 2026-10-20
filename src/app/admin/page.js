@@ -59,7 +59,8 @@ import {
   Flame,
   Tag,
   Paperclip,
-  Save
+  Save,
+  Zap,
 } from 'lucide-react';
 import FinanceDepositsView from '@/components/admin/FinanceDepositsView';
 import FinanceRedemptionsView from '@/components/admin/FinanceRedemptionsView';
