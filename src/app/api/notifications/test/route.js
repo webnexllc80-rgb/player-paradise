@@ -316,12 +316,13 @@ async function handleTestNotification(req) {
     const result = await notifsCol.insertOne(testItem);
 
     // Multicast FCM push to all registered devices & topics
-    await sendPushNotification({
+    const fcmResult = await sendPushNotification({
       title,
       body: message,
       data: { url: targetUrl },
     }).catch((err) => {
       console.warn('FCM broadcast notice:', err.message);
+      return { success: false, error: err.message };
     });
 
     return NextResponse.json({
@@ -329,6 +330,7 @@ async function handleTestNotification(req) {
       message: 'Test notification created and broadcasted.',
       id: result.insertedId.toString(),
       notification: testItem,
+      fcm: fcmResult,
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

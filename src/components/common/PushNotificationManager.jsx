@@ -130,6 +130,24 @@ export default function PushNotificationManager() {
 
         if (isNative) {
           const { PushNotifications } = await import('@capacitor/push-notifications');
+
+          // Explicitly create MAX-importance channel for Android 8.0+ Lockscreen popup
+          try {
+            await PushNotifications.createChannel({
+              id: 'default',
+              name: 'Players Paradise Alerts',
+              description: 'VIP bonuses, cashouts and game alerts',
+              importance: 5, // 5 = IMPORTANCE_HIGH (Android heads-up + lockscreen banner)
+              visibility: 1, // 1 = VISIBILITY_PUBLIC (Displays on Lock Screen)
+              sound: 'default',
+              vibration: true,
+              lights: true,
+              lightColor: '#00F0FF',
+            });
+          } catch (chanErr) {
+            console.warn('[PUSH] Channel create notice:', chanErr.message);
+          }
+
           const permStatus = await PushNotifications.requestPermissions();
 
           if (permStatus.receive === 'granted') {
@@ -156,6 +174,13 @@ export default function PushNotificationManager() {
                 url: notification.data?.url || '/',
               });
             });
+
+            PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+              const url = action.notification?.data?.url;
+              if (url && url !== '/') {
+                router.push(url);
+              }
+            });
           }
         }
       } catch (err) {
@@ -164,7 +189,7 @@ export default function PushNotificationManager() {
     };
 
     initCapacitor();
-  }, []);
+  }, [router]);
 
   // 2. Browser Service Worker & Chrome Permission Setup
   useEffect(() => {

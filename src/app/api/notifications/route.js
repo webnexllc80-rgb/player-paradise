@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
-import { sendPushNotification } from '@/lib/fcm';
+import { sendPushNotification, getFirebaseMessaging } from '@/lib/fcm';
 
 // GET: Fetch in-app notifications for player OR broadcast history for admin
 export async function GET(req) {
@@ -148,7 +148,7 @@ export async function POST(req) {
 
     // Send push notification via FCM / WebPush (fail-safe non-blocking)
     sendPushNotification({
-      topic: 'vegas_all_players',
+      topic: 'paradise_all_players',
       title: title.trim(),
       body: message.trim(),
       data: { url },
@@ -252,6 +252,22 @@ export async function PUT(req) {
         getUserFilter(session),
         { $set: { isSubscribed: true } }
       );
+    }
+
+    // Auto-subscribe FCM token to broadcast topics
+    if (fcmToken && fcmToken.length > 15) {
+      (async () => {
+        try {
+          const messaging = await getFirebaseMessaging();
+          if (messaging) {
+            await messaging.subscribeToTopic([fcmToken], 'paradise_all_players');
+            await messaging.subscribeToTopic([fcmToken], 'all_players');
+            await messaging.subscribeToTopic([fcmToken], 'vegas_all_players');
+          }
+        } catch (subErr) {
+          console.warn('[FCM] Auto-subscribe device token note:', subErr.message);
+        }
+      })();
     }
 
     return NextResponse.json({

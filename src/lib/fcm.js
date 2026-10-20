@@ -3,6 +3,74 @@ import path from 'path';
 import { getDb } from '@/lib/mongodb';
 
 let messagingInstance = null;
+let loadedAccountSource = null;
+
+function findServiceAccount() {
+  // 1. Check environment variable
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (parsed.private_key && parsed.client_email) {
+        loadedAccountSource = 'process.env.FIREBASE_SERVICE_ACCOUNT';
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('[FCM] Error parsing FIREBASE_SERVICE_ACCOUNT env var:', e.message);
+    }
+  }
+
+  // 2. High-priority candidate filenames (including VPS 0b970 and local 0b978)
+  const priorityFiles = [
+    'playerparadisehub-firebase-adminsdk-fbsvc-0b970ee61b.json',
+    'playerparadisehub-firebase-adminsdk-fbsvc-0b978ee61b.json',
+    'firebase-service-account.json',
+    'firebase-admin.json',
+  ];
+
+  for (const filename of priorityFiles) {
+    const fullPath = path.join(/*turbopackIgnore: true*/ process.cwd(), filename);
+    if (fs.existsSync(/*turbopackIgnore: true*/ fullPath)) {
+      try {
+        const content = fs.readFileSync(/*turbopackIgnore: true*/ fullPath, 'utf8');
+        const parsed = JSON.parse(content);
+        if (parsed.private_key && parsed.client_email) {
+          loadedAccountSource = filename;
+          return parsed;
+        }
+      } catch (err) {
+        console.warn(`[FCM] Could not parse ${filename}:`, err.message);
+      }
+    }
+  }
+
+  // 3. Dynamic scan of process.cwd() for any adminsdk or firebase json file
+  try {
+    const files = fs.readdirSync(/*turbopackIgnore: true*/ process.cwd());
+    for (const file of files) {
+      if (
+        file.endsWith('.json') &&
+        (file.includes('adminsdk') || file.includes('service-account') || file.includes('firebase')) &&
+        !file.includes('package') &&
+        !file.includes('tsconfig') &&
+        !file.includes('jsconfig')
+      ) {
+        const fullPath = path.join(/*turbopackIgnore: true*/ process.cwd(), file);
+        try {
+          const content = fs.readFileSync(/*turbopackIgnore: true*/ fullPath, 'utf8');
+          const parsed = JSON.parse(content);
+          if (parsed.private_key && parsed.client_email) {
+            loadedAccountSource = file;
+            return parsed;
+          }
+        } catch {}
+      }
+    }
+  } catch (scanErr) {
+    console.warn('[FCM] Directory scan notice:', scanErr.message);
+  }
+
+  return null;
+}
 
 export async function getFirebaseMessaging() {
   if (messagingInstance) return messagingInstance;
@@ -11,34 +79,10 @@ export async function getFirebaseMessaging() {
     const { initializeApp, cert, getApps } = await import('firebase-admin/app');
     const { getMessaging } = await import('firebase-admin/messaging');
 
-    const possiblePaths = [
-      path.join(process.cwd(), 'firebase-service-account.json'),
-      path.join(process.cwd(), 'playerparadisehub-firebase-adminsdk-fbsvc-0b978ee61b.json'),
-      path.join(process.cwd(), 'firebase-admin.json'),
-      path.join(process.cwd(), 'google-services.json'),
-      path.join(process.cwd(), 'android/app/google-services.json'),
-    ];
-
-    let serviceAccount = null;
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      try {
-        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      } catch {}
-    }
+    const serviceAccount = findServiceAccount();
 
     if (!serviceAccount) {
-      for (const p of possiblePaths) {
-        if (fs.existsSync(/*turbopackIgnore: true*/ p)) {
-          try {
-            serviceAccount = JSON.parse(fs.readFileSync(/*turbopackIgnore: true*/ p, 'utf8'));
-            break;
-          } catch {}
-        }
-      }
-    }
-
-    if (!serviceAccount) {
-      console.warn('Firebase Service Account credentials not found in paths.');
+      console.warn('[FCM] Firebase Service Account credentials not found in root directory.');
       return null;
     }
 
@@ -48,24 +92,31 @@ export async function getFirebaseMessaging() {
     });
 
     messagingInstance = getMessaging(app);
+    console.log(`[FCM] Successfully initialized Firebase Messaging using: ${loadedAccountSource}`);
     return messagingInstance;
   } catch (err) {
-    console.warn('Firebase Messaging init error:', err.message);
+    console.warn('[FCM] Firebase Messaging init error:', err.message);
     return null;
   }
 }
 
-// Build Android & WebPush payload for lockscreen & high-priority delivery
+// Build Android & WebPush payload for lockscreen & high-priority heads-up delivery
 function buildFcmPayload({ title, body, data = {} }) {
+  const notifTitle = title || '🎰 LIVE VIP BONUS: 10 SC Drop!';
+  const notifBody = body || 'Instant Flash Bonus credited to your account! Tap to play now.';
+  const targetUrl = data.url || '/';
+
   return {
     notification: {
-      title: title || '🎰 VIP Flash Coin Drop Activated!',
-      body: body || '5.00 SC + 50,000 GC test bonus has been credited to your player account. Enjoy the games!',
+      title: notifTitle,
+      body: notifBody,
     },
     data: {
       ...data,
+      title: notifTitle,
+      body: notifBody,
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
-      url: data.url || '/',
+      url: targetUrl,
     },
     android: {
       priority: 'high',
@@ -75,11 +126,12 @@ function buildFcmPayload({ title, body, data = {} }) {
         sound: 'default',
         defaultSound: true,
         defaultVibrateTimings: true,
-        priority: 'high',
-        visibility: 'public', // Shows on lock screen
+        priority: 'max', // MAX priority ensures heads-up banner & lockscreen popup
+        visibility: 'public', // 'public' shows full banner on Android lock screen
         icon: 'ic_launcher',
         color: '#00F0FF',
         tag: 'players-paradise-alert',
+        clickAction: 'FLUTTER_NOTIFICATION_CLICK',
       },
     },
     webpush: {
@@ -87,8 +139,8 @@ function buildFcmPayload({ title, body, data = {} }) {
         Urgency: 'high',
       },
       notification: {
-        title: title || '🎰 VIP Flash Coin Drop Activated!',
-        body: body || '5.00 SC + 50,000 GC test bonus has been credited to your player account. Enjoy the games!',
+        title: notifTitle,
+        body: notifBody,
         icon: '/logo.png',
         badge: '/logo.png',
         vibrate: [300, 100, 300],
@@ -103,7 +155,7 @@ export async function sendPushNotification({ token, topic, title, body, data = {
   const messaging = await getFirebaseMessaging();
   if (!messaging) {
     console.log(`[FCM SIMULATED PUSH] Title: "${title}" | Body: "${body}"`);
-    return { success: true, simulated: true };
+    return { success: true, simulated: true, error: 'Firebase credentials not found on server' };
   }
 
   const payload = buildFcmPayload({ title, body, data });
@@ -114,13 +166,14 @@ export async function sendPushNotification({ token, topic, title, body, data = {
       const res = await messaging.send({ ...payload, token });
       return { success: true, messageId: res };
     } catch (err) {
-      console.warn('FCM send to token error:', err.message);
+      console.warn('[FCM] Send to token error:', err.message);
       return { success: false, error: err.message };
     }
   }
 
   // 2. Multicast to ALL active device tokens registered in subscriptions
   let multicastCount = 0;
+  let allTokens = [];
   try {
     const db = await getDb();
     const subs = await db
@@ -133,16 +186,16 @@ export async function sendPushNotification({ token, topic, title, body, data = {
       })
       .toArray();
 
-    const allTokens = [
+    allTokens = [
       ...new Set(
         subs
           .map((s) => s.fcmToken || s.token)
-          .filter((t) => typeof t === 'string' && t.length > 15)
+          .filter((t) => typeof t === 'string' && t.trim().length > 15)
       ),
     ];
 
     if (allTokens.length > 0) {
-      // Chunk tokens in batches of 500 for FCM multicast
+      // Chunk tokens in batches of 500 for FCM sendEachForMulticast
       const batchSize = 500;
       for (let i = 0; i < allTokens.length; i += batchSize) {
         const tokenBatch = allTokens.slice(i, i + batchSize);
@@ -153,32 +206,51 @@ export async function sendPushNotification({ token, topic, title, body, data = {
           });
           multicastCount += multiRes.successCount;
         } catch (mErr) {
-          console.warn('FCM multicast batch error:', mErr.message);
+          console.warn('[FCM] Multicast batch error:', mErr.message);
         }
       }
 
       // Also ensure all tokens are subscribed to topics for future pushes
       try {
         await messaging.subscribeToTopic(allTokens, 'paradise_all_players');
+        await messaging.subscribeToTopic(allTokens, 'all_players');
         await messaging.subscribeToTopic(allTokens, 'vegas_all_players');
       } catch {}
     }
   } catch (dbErr) {
-    console.warn('FCM subscription token lookup notice:', dbErr.message);
+    console.warn('[FCM] Subscription token lookup notice:', dbErr.message);
   }
 
-  // 3. Also send to topic as backup
-  const targetTopic = topic || 'paradise_all_players';
-  try {
-    const topicRes = await messaging.send({
-      ...payload,
-      topic: targetTopic,
-    });
-    return { success: true, topicMessageId: topicRes, multicastCount };
-  } catch (topicErr) {
-    if (multicastCount > 0) {
-      return { success: true, multicastCount };
+  // 3. Also send to topics as guaranteed broadcast
+  const topicsToSend = [
+    topic || 'paradise_all_players',
+    'paradise_all_players',
+    'all_players',
+    'vegas_all_players',
+  ];
+  const uniqueTopics = [...new Set(topicsToSend.filter(Boolean))];
+  const topicResults = [];
+
+  for (const t of uniqueTopics) {
+    try {
+      const topicRes = await messaging.send({
+        ...payload,
+        topic: t,
+      });
+      topicResults.push({ topic: t, success: true, messageId: topicRes });
+    } catch (tErr) {
+      topicResults.push({ topic: t, success: false, error: tErr.message });
     }
-    return { success: false, error: topicErr.message };
   }
+
+  const anyTopicSuccess = topicResults.some((r) => r.success);
+  console.log(`[FCM BROADCAST] Multicast delivered: ${multicastCount} devices | Topics: ${JSON.stringify(topicResults)}`);
+
+  return {
+    success: multicastCount > 0 || anyTopicSuccess,
+    multicastCount,
+    totalTokens: allTokens.length,
+    topicResults,
+    source: loadedAccountSource,
+  };
 }
