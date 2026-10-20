@@ -118,7 +118,7 @@
       "email": "ahmadnabeel634@gmail.com",
       "passwordHash": "$2b$10$o2lesOQ20LJ2It780EzoHevnof7Njg3KnfeHRbFZgpAfKdobsEhBO",
       "role": "player",
-      "balanceSC": 5,
+      "balanceSC": 8,
       "balanceGC": 50000,
       "kycStatus": "none",
       "state": "US",
@@ -137,7 +137,19 @@
       "totalDeposited": 0,
       "totalRedeemed": 0,
       "isBanned": false,
-      "createdAt": "2026-10-19T14:42:42.872Z"
+      "createdAt": "2026-10-19T14:42:42.872Z",
+      "lastDailySpin": "2026-10-20T13:14:14.841Z",
+      "balance": 3
+    },
+    {
+      "_id": "6ad756b7ddea93b09ef923cf",
+      "username": "nabil",
+      "email": "vougueecho@gmail.com",
+      "referralCode": "PP-L9ZXB",
+      "referredBy": "ahmad634",
+      "referredByCode": "PP-CCZFE",
+      "createdAt": "2026-10-20T13:08:17.989Z",
+      "balanceSC": 5
     }
   ],
   "accountRequests": [
@@ -570,6 +582,19 @@
       "performedBy": "system",
       "notes": "Sign-up welcome bonus ($5.00 wallet credit)",
       "createdAt": "2026-10-19T14:42:42.873Z"
+    },
+    {
+      "_id": "anp9b11n8m",
+      "userId": "zqp1rnpfph",
+      "username": "ahmad634",
+      "type": "daily_spin_bonus",
+      "currency": "USD",
+      "amount": 3,
+      "balanceBefore": 5,
+      "balanceAfter": 8,
+      "referenceId": "SPIN-1792502054841",
+      "notes": "Daily Lucky Spin Wheel Prize of $3.00",
+      "createdAt": "2026-10-20T13:14:14.841Z"
     }
   ],
   "chat": [],

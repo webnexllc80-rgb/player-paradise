@@ -53,6 +53,28 @@ export default function AuthModal({
     setErrorMsg(null);
     setSuccessMsg(null);
     setOtp('');
+
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const urlRef = sp.get('ref') || sp.get('referralCode') || sp.get('referrer');
+      if (urlRef) {
+        const clean = urlRef.trim().toUpperCase();
+        setReferralCode(clean);
+        setShowReferralInput(true);
+        try {
+          localStorage.setItem('paradise_ref_code', clean);
+          sessionStorage.setItem('paradise_ref_code', clean);
+        } catch {}
+      } else {
+        try {
+          const stored = localStorage.getItem('paradise_ref_code') || sessionStorage.getItem('paradise_ref_code');
+          if (stored) {
+            setReferralCode(stored.trim().toUpperCase());
+            setShowReferralInput(true);
+          }
+        } catch {}
+      }
+    }
   }, [initialTab, isOpen]);
 
   // Resend OTP countdown timer

@@ -41,24 +41,39 @@ export default function ReferralPage() {
   const [walletModal, setWalletModal] = useState({ open: false, tab: 'deposit' });
   const [spinWheelOpen, setSpinWheelOpen] = useState(false);
 
-  const loadUserAndStats = async () => {
+  const loadUserAndStats = async (isSilent = false) => {
     try {
-      const meRes = await fetch('/api/auth/me');
+      const meRes = await fetch('/api/auth/me', { cache: 'no-store' });
       const meData = await meRes.json();
       if (meData.authenticated && meData.user) {
         setUser(meData.user);
-        const affRes = await fetch('/api/affiliates');
+        const affRes = await fetch('/api/affiliates', { cache: 'no-store' });
         const affData = await affRes.json();
         if (affData.success && affData.stats) {
           setStats(affData.stats);
         }
       }
     } catch {}
-    setLoading(false);
+    if (!isSilent) setLoading(false);
   };
 
   useEffect(() => {
     loadUserAndStats();
+
+    // Fast zero-refresh polling (2.5s) so new referrals immediately show up
+    const interval = setInterval(() => {
+      if (!document.hidden) loadUserAndStats(true);
+    }, 2500);
+
+    const handleFocus = () => loadUserAndStats(true);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   const copyToClipboard = (text, isCode = false) => {
@@ -93,8 +108,11 @@ export default function ReferralPage() {
     }
   };
 
-  const referralUrl = stats?.referralLink || (user ? `https://playersparadisehub.com/register?ref=${user.referralCode || user.username}` : 'https://playersparadisehub.com/register');
+  const origin = typeof window !== 'undefined' && window.location.origin
+    ? window.location.origin
+    : (process.env.NEXT_PUBLIC_APP_URL || 'https://playersparadisehub.com');
   const referralCode = stats?.referralCode || user?.referralCode || user?.username || 'PARADISE';
+  const referralUrl = `${origin}/register?ref=${referralCode}`;
 
   return (
     <div className="min-h-screen bg-[var(--bg-deep)] text-white flex flex-col selection:bg-[var(--neon-cyan)] selection:text-black">

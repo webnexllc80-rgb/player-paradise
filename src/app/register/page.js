@@ -15,12 +15,31 @@ function RegisterForm() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [otp, setOtp] = useState('');
   const [ageVerified, setAgeVerified] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Auto-capture referral code from URL parameter (?ref=PP-CCZFE) or saved cache
+  useEffect(() => {
+    const urlRef = searchParams.get('ref') || searchParams.get('referralCode') || searchParams.get('referrer');
+    if (urlRef) {
+      const clean = urlRef.trim().toUpperCase();
+      setReferralCode(clean);
+      try {
+        localStorage.setItem('paradise_ref_code', clean);
+        sessionStorage.setItem('paradise_ref_code', clean);
+      } catch {}
+    } else {
+      try {
+        const stored = localStorage.getItem('paradise_ref_code') || sessionStorage.getItem('paradise_ref_code');
+        if (stored) setReferralCode(stored.trim().toUpperCase());
+      } catch {}
+    }
+  }, [searchParams]);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -138,6 +157,7 @@ function RegisterForm() {
           email: email.trim().toLowerCase(),
           password: password.trim(),
           otp: otp.trim(),
+          referralCode: referralCode.trim(),
           ageVerified: true,
         }),
       });
@@ -146,6 +166,11 @@ function RegisterForm() {
       if (!res.ok || !data.success) {
         throw new Error(data.error || data.message || 'Registration failed. Please check your verification code.');
       }
+
+      try {
+        localStorage.removeItem('paradise_ref_code');
+        sessionStorage.removeItem('paradise_ref_code');
+      } catch {}
 
       setSuccessMsg('Account verified! $5.00 Bonus Added. Redirecting...');
 
@@ -258,6 +283,28 @@ function RegisterForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="cyber-input"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-sub font-bold text-slate-300">
+                VIP REFERRAL / AGENT CODE (OPTIONAL)
+              </label>
+              {referralCode && (
+                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 font-mono">
+                  <CheckCircle2 size={12} /> Code Applied
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="e.g. PP-CCZFE"
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                className="cyber-input uppercase font-mono tracking-wider text-[var(--neon-cyan)]"
               />
             </div>
           </div>

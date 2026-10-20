@@ -39,16 +39,41 @@ export async function GET(req) {
         .limit(100)
         .toArray();
 
-      // Aggregate all referees for these users
+      // Aggregate all referees for these users (by username, referralCode, or referrerId)
+      const allReferrerKeys = [];
+      candidates.forEach((c) => {
+        if (c.username) allReferrerKeys.push(c.username);
+        if (c.referralCode) allReferrerKeys.push(c.referralCode);
+        if (c._id) allReferrerKeys.push(c._id.toString());
+      });
+
       const allReferees = await usersCol
-        .find({ referredBy: { $in: candidates.map(c => c.username).filter(Boolean) } })
-        .project({ username: 1, email: 1, referredBy: 1, createdAt: 1, totalDeposited: 1, balanceSC: 1 })
+        .find({
+          $or: [
+            { referredBy: { $in: allReferrerKeys } },
+            { referredByCode: { $in: allReferrerKeys } },
+            { referrerId: { $in: allReferrerKeys } },
+          ],
+        })
+        .project({ username: 1, email: 1, referredBy: 1, referredByCode: 1, referrerId: 1, createdAt: 1, totalDeposited: 1, balanceSC: 1 })
         .toArray();
 
       const refereesByReferrer = {};
-      allReferees.forEach(r => {
-        if (!refereesByReferrer[r.referredBy]) refereesByReferrer[r.referredBy] = [];
-        refereesByReferrer[r.referredBy].push(r);
+      allReferees.forEach((r) => {
+        const keys = [r.referredBy, r.referredByCode, r.referrerId].filter(Boolean);
+        candidates.forEach((c) => {
+          if (
+            keys.includes(c.username) ||
+            keys.includes(c.referralCode) ||
+            keys.includes(c._id.toString())
+          ) {
+            if (!refereesByReferrer[c.username]) refereesByReferrer[c.username] = [];
+            // Prevent duplicate insertion
+            if (!refereesByReferrer[c.username].some((existing) => existing.username === r.username)) {
+              refereesByReferrer[c.username].push(r);
+            }
+          }
+        });
       });
 
       const affiliates = candidates.map(u => {
@@ -100,15 +125,44 @@ export async function GET(req) {
     }
 
     // Player stats
-    const user = await usersCol.findOne(getUserFilter(session));
+    let user = await usersCol.findOne(getUserFilter(session));
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    // Find all users referred by this player
+    // Ensure user has a persistent unique referral code
+    if (!user.referralCode) {
+      const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+      const newRefCode = `PP-${randomSuffix}`;
+      await usersCol.updateOne({ _id: user._id }, { $set: { referralCode: newRefCode } });
+      user.referralCode = newRefCode;
+    }
+
+    // Comprehensive query: match referred users by username, referralCode, or userId
+    const searchConditions = [
+      { referredBy: user.username },
+      { referredBy: { $regex: new RegExp(`^${user.username}$`, 'i') } },
+    ];
+    if (user.referralCode) {
+      const safeCode = user.referralCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      searchConditions.push(
+        { referredBy: user.referralCode },
+        { referredByCode: user.referralCode },
+        { referredBy: { $regex: new RegExp(`^${safeCode}$`, 'i') } },
+        { referredByCode: { $regex: new RegExp(`^${safeCode}$`, 'i') } }
+      );
+    }
+    if (user._id) {
+      searchConditions.push(
+        { referrerId: user._id.toString() },
+        { referrerId: user._id }
+      );
+    }
+
     const referredUsers = await usersCol
-      .find({ referredBy: user.username })
-      .project({ username: 1, createdAt: 1, totalDeposited: 1 })
+      .find({ $or: searchConditions })
+      .project({ username: 1, email: 1, createdAt: 1, totalDeposited: 1, balanceSC: 1 })
+      .sort({ createdAt: -1 })
       .toArray();
 
     return NextResponse.json({
@@ -119,12 +173,13 @@ export async function GET(req) {
         commissionRate: user.affiliateRate || defaultReferralPercent,
         totalReferrals: referredUsers.length,
         activeDepositors: referredUsers.filter(u => (u.totalDeposited || 0) > 0).length,
-        commissionsEarned: user.affiliateCommissionsEarned || 0,
-        commissionsUnpaid: user.affiliateCommissionsUnpaid || 0,
+        commissionsEarned: Number(user.affiliateCommissionsEarned || 0),
+        commissionsUnpaid: Number(user.affiliateCommissionsUnpaid || 0),
         referees: referredUsers.map(r => ({
-          username: r.username.substring(0, 3) + '***',
+          username: r.username,
           joinedAt: r.createdAt,
           hasDeposited: (r.totalDeposited || 0) > 0,
+          totalDeposited: Number(r.totalDeposited || 0),
         })),
       },
     });

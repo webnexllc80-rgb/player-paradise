@@ -108,15 +108,22 @@ export async function POST(req) {
 
     // 3. Check referrer if provided
     let referrer = null;
+    let fallbackRefCode = null;
     if (inputRef && typeof inputRef === 'string') {
       const cleanRef = inputRef.trim();
-      referrer = await usersCol.findOne({
-        $or: [
-          { referralCode: cleanRef.toUpperCase() },
-          { username: cleanRef.toLowerCase() },
-          { username: cleanRef },
-        ],
-      });
+      if (cleanRef) {
+        fallbackRefCode = cleanRef.toUpperCase();
+        const safeRef = cleanRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        referrer = await usersCol.findOne({
+          $or: [
+            { referralCode: cleanRef.toUpperCase() },
+            { referralCode: { $regex: new RegExp(`^${safeRef}$`, 'i') } },
+            { username: cleanRef.toLowerCase() },
+            { username: cleanRef },
+            { username: { $regex: new RegExp(`^${safeRef}$`, 'i') } },
+          ],
+        });
+      }
     }
 
     const deviceId = getDeviceIdFromRequest(req, rawDeviceId);
@@ -143,7 +150,9 @@ export async function POST(req) {
       state: (state || 'CA').toUpperCase(),
       country: 'US',
       referralCode: myReferralCode,
-      referredBy: referrer ? referrer.username : null,
+      referredBy: referrer ? referrer.username : (fallbackRefCode || null),
+      referredByCode: referrer?.referralCode || fallbackRefCode || null,
+      referrerId: referrer?._id ? referrer._id.toString() : null,
       deviceId: deviceId,
       boundDevices: deviceId ? [deviceId] : [],
       sessionVersion,
