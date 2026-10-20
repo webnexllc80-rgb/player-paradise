@@ -619,20 +619,40 @@ export default function ChatPage() {
       {selectedPreviewImage && (
         <div
           onClick={() => setSelectedPreviewImage(null)}
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-[99999] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 cursor-pointer animate-in fade-in duration-200"
         >
-          <div className="relative max-w-3xl max-h-[85vh] p-2">
+          <div
+            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center cursor-default p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               onClick={() => setSelectedPreviewImage(null)}
-              className="absolute -top-10 right-0 p-2 text-white bg-slate-800 rounded-full hover:bg-slate-700"
+              className="absolute -top-12 right-0 p-2 text-white bg-slate-800/90 rounded-full hover:bg-rose-600 transition shadow-xl border border-white/20"
+              title="Close"
             >
               <X size={20} />
             </button>
             <img
               src={selectedPreviewImage}
               alt="Enlarged"
-              className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl border border-cyan-400/40"
+              className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-2xl border border-cyan-400 shadow-[0_0_40px_rgba(0,240,255,0.3)]"
             />
+            <div className="mt-3 flex items-center gap-3">
+              <a
+                href={selectedPreviewImage}
+                download="chat-attachment.jpg"
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-black font-black text-xs transition flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
+              >
+                <span>Download / Save Image</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setSelectedPreviewImage(null)}
+                className="px-4 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -294,6 +294,7 @@ export default function AdminPortal({ initialTab }) {
   const [isSendingChat, setIsSendingChat] = useState(false);
   const chatMessagesEndRef = useRef(null);
   const adminChatFileInputRef = useRef(null);
+  const [selectedChatImagePreview, setSelectedChatImagePreview] = useState(null);
 
   // Push Notifications & Omnichannel Broadcast state
   const [pushTitle, setPushTitle] = useState('');
@@ -4072,7 +4073,7 @@ export default function AdminPortal({ initialTab }) {
                                             <img
                                               src={m.imageUrl}
                                               alt="Attachment"
-                                              onClick={() => window.open(m.imageUrl, '_blank')}
+                                              onClick={() => setSelectedChatImagePreview(m.imageUrl)}
                                               className="max-h-60 max-w-full rounded-xl object-cover cursor-pointer hover:opacity-90 border border-white/20 shadow-md transition"
                                             />
                                           </div>
@@ -4282,6 +4283,49 @@ export default function AdminPortal({ initialTab }) {
                       </div>
                     )}
                   </div>
+
+                  {/* Admin Chat Fullscreen Lightbox Modal */}
+                  {selectedChatImagePreview && (
+                    <div
+                      className="fixed inset-0 z-[99999] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 cursor-pointer animate-in fade-in duration-200"
+                      onClick={() => setSelectedChatImagePreview(null)}
+                    >
+                      <div
+                        className="relative max-w-4xl max-h-[90vh] flex flex-col items-center cursor-default"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedChatImagePreview(null)}
+                          className="absolute -top-12 right-0 p-2 rounded-full bg-slate-800/90 hover:bg-red-600 text-white border border-white/20 shadow-xl transition"
+                          title="Close"
+                        >
+                          <X size={20} />
+                        </button>
+                        <img
+                          src={selectedChatImagePreview}
+                          alt="Enlarged Attachment"
+                          className="max-h-[80vh] max-w-full rounded-2xl object-contain border border-cyan-400 shadow-[0_0_50px_rgba(0,240,255,0.35)]"
+                        />
+                        <div className="mt-3.5 flex items-center gap-3">
+                          <a
+                            href={selectedChatImagePreview}
+                            download="chat-attachment.jpg"
+                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-black font-black text-xs transition flex items-center gap-1.5 shadow-lg hover:scale-105 active:scale-95"
+                          >
+                            <span>Download / Save Image</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedChatImagePreview(null)}
+                            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
