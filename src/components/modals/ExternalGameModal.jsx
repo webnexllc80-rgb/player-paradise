@@ -10,7 +10,9 @@ import {
   KeyRound,
   Download,
   ShieldCheck,
-  Play
+  Play,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function ExternalGameModal({
@@ -22,22 +24,35 @@ export default function ExternalGameModal({
   onOpenAuth,
 }) {
   const [credentials, setCredentials] = useState(null);
+  const [isPending, setIsPending] = useState(false);
   const [copiedUser, setCopiedUser] = useState(false);
   const [copiedPass, setCopiedPass] = useState(false);
 
   useEffect(() => {
     if (isOpen && user && game) {
-      fetch('/api/game-accounts')
+      const emailParam = user.email ? `?email=${encodeURIComponent(user.email)}` : '';
+      fetch(`/api/game-accounts${emailParam}`, { cache: 'no-store' })
         .then((res) => res.json())
         .then((data) => {
-          if (data.success && data.gameAccounts) {
-            const found = data.gameAccounts.find(
-              (a) => a.gameTitle?.toLowerCase() === game.title?.toLowerCase()
-            );
+          if (data.success) {
+            const cleanGameTitle = (game.title || '').toLowerCase().trim();
+            const found = (data.gameAccounts || []).find((a) => {
+              const t = (a.gameTitle || '').toLowerCase().trim();
+              return t === cleanGameTitle || (cleanGameTitle && t.includes(cleanGameTitle)) || (t && cleanGameTitle.includes(t));
+            });
             setCredentials(found || null);
+
+            const pending = (data.pendingRequests || []).find((p) => {
+              const t = (p.gameTitle || '').toLowerCase().trim();
+              return t === cleanGameTitle || (cleanGameTitle && t.includes(cleanGameTitle)) || (t && cleanGameTitle.includes(t));
+            });
+            setIsPending(Boolean(pending));
           }
         })
         .catch(() => {});
+    } else {
+      setCredentials(null);
+      setIsPending(false);
     }
   }, [isOpen, user, game]);
 
@@ -131,6 +146,22 @@ export default function ExternalGameModal({
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        ) : isPending ? (
+          <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-2.5 mb-5 text-center">
+            <Clock size={24} className="mx-auto text-amber-400 animate-spin" />
+            <div>
+              <div className="font-heading font-bold text-xs text-amber-200">
+                ID GENERATION IN PROGRESS
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                Your request for {game.title} is being processed by staff. Please wait a few moments.
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-amber-900/40 border border-amber-500/40 text-amber-300 text-[11px] font-bold">
+              <Clock size={12} className="animate-spin" />
+              <span>REQUEST PENDING ⏳</span>
             </div>
           </div>
         ) : (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   X,
@@ -9,7 +9,8 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  Clock,
 } from 'lucide-react';
 
 export default function GameRequestModal({
@@ -31,17 +32,79 @@ export default function GameRequestModal({
     { title: 'Golden Treasure', category: 'Fish Hunter', badge: 'CLASSIC' },
   ];
 
+  const [existingAccounts, setExistingAccounts] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [selectedGame, setSelectedGame] = useState(initialGame?.title || platforms[0].title);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ error: '', success: '' });
 
+  useEffect(() => {
+    if (isOpen && user?.email) {
+      fetch(`/api/game-accounts?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setExistingAccounts(data.gameAccounts || []);
+            setPendingRequests(data.pendingRequests || []);
+
+            // Auto-select first platform that does not have credentials or pending request
+            const accTitles = (data.gameAccounts || []).map((a) => (a.gameTitle || '').toLowerCase().trim());
+            const pendTitles = (data.pendingRequests || []).map((p) => (p.gameTitle || '').toLowerCase().trim());
+
+            if (initialGame?.title) {
+              const initLower = initialGame.title.toLowerCase().trim();
+              if (!accTitles.includes(initLower) && !pendTitles.includes(initLower)) {
+                setSelectedGame(initialGame.title);
+                return;
+              }
+            }
+
+            const firstAvailable = platforms.find((p) => {
+              const t = p.title.toLowerCase().trim();
+              return !accTitles.includes(t) && !pendTitles.includes(t);
+            });
+            if (firstAvailable) {
+              setSelectedGame(firstAvailable.title);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, user?.email, initialGame]);
+
   if (!isOpen) return null;
+
+  const isPlatformReady = (title) => {
+    const t = title.toLowerCase().trim();
+    return existingAccounts.some((a) => (a.gameTitle || '').toLowerCase().trim() === t);
+  };
+
+  const isPlatformPending = (title) => {
+    const t = title.toLowerCase().trim();
+    return pendingRequests.some((p) => (p.gameTitle || '').toLowerCase().trim() === t);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) {
       onClose();
       onOpenAuth('login');
+      return;
+    }
+
+    if (isPlatformReady(selectedGame)) {
+      setStatus({
+        error: `Aap ke paas pehle se hi ${selectedGame} ke credentials majood hain! Dobara request nahi ki ja sakti.`,
+        success: '',
+      });
+      return;
+    }
+
+    if (isPlatformPending(selectedGame)) {
+      setStatus({
+        error: `Aap ki ${selectedGame} ki request pehle se pending hai. Staff jald credentials issue karega.`,
+        success: '',
+      });
       return;
     }
 
@@ -67,6 +130,9 @@ export default function GameRequestModal({
       }
 
       if (onRequestCreated) onRequestCreated();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('accountRequestUpdated'));
+      }
       onClose();
       router.push(`/game-accounts/provisioning?requestId=${data.requestId || ''}&game=${encodeURIComponent(selectedGame)}`);
     } catch (err) {
@@ -127,24 +193,50 @@ export default function GameRequestModal({
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
               {platforms.map((p) => {
                 const isSelected = selectedGame === p.title;
+                const isReady = isPlatformReady(p.title);
+                const isPending = isPlatformPending(p.title);
+                const isDisabled = isReady || isPending;
+
                 return (
                   <div
                     key={p.title}
-                    onClick={() => setSelectedGame(p.title)}
-                    className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                      isSelected
-                        ? 'bg-[var(--neon-purple)]/20 border-[var(--neon-purple)] shadow-[0_0_15px_rgba(192,38,211,0.3)]'
-                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                    onClick={() => {
+                      if (!isDisabled) setSelectedGame(p.title);
+                    }}
+                    className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                      isDisabled
+                        ? 'opacity-60 bg-slate-950/80 border-slate-800 cursor-not-allowed'
+                        : isSelected
+                        ? 'bg-[var(--neon-purple)]/20 border-[var(--neon-purple)] shadow-[0_0_15px_rgba(192,38,211,0.3)] cursor-pointer'
+                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <Gamepad2
                         size={18}
-                        className={isSelected ? 'text-[var(--neon-cyan)]' : 'text-slate-500'}
+                        className={
+                          isReady
+                            ? 'text-emerald-400'
+                            : isPending
+                            ? 'text-amber-400'
+                            : isSelected
+                            ? 'text-[var(--neon-cyan)]'
+                            : 'text-slate-500'
+                        }
                       />
                       <div>
-                        <div className="font-heading font-bold text-xs text-white">
-                          {p.title}
+                        <div className="font-heading font-bold text-xs text-white flex items-center gap-2">
+                          <span>{p.title}</span>
+                          {isReady && (
+                            <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-1.5 py-0.5 rounded">
+                              ✓ ID CREATED
+                            </span>
+                          )}
+                          {isPending && (
+                            <span className="text-[9px] font-bold text-amber-400 bg-amber-950/80 border border-amber-500/40 px-1.5 py-0.5 rounded">
+                              ⏳ PENDING
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-400">{p.category}</div>
                       </div>
@@ -152,12 +244,16 @@ export default function GameRequestModal({
 
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                        isSelected
+                        isReady
+                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                          : isPending
+                          ? 'bg-amber-950 text-amber-400 border border-amber-500/30'
+                          : isSelected
                           ? 'bg-[var(--neon-purple)] text-white'
                           : 'bg-slate-800 text-slate-400'
                       }`}
                     >
-                      {p.badge}
+                      {isReady ? 'ACTIVE' : isPending ? 'WAITING' : p.badge}
                     </span>
                   </div>
                 );
@@ -177,10 +273,16 @@ export default function GameRequestModal({
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full cyber-btn-cyan py-3 rounded-xl font-heading font-black text-sm tracking-wider"
+            disabled={loading || isPlatformReady(selectedGame) || isPlatformPending(selectedGame)}
+            className="w-full cyber-btn-cyan py-3 rounded-xl font-heading font-black text-sm tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'SUBMITTING REQUEST...' : 'SUBMIT ID REQUEST'}
+            {loading
+              ? 'SUBMITTING REQUEST...'
+              : isPlatformReady(selectedGame)
+              ? 'ID ALREADY CREATED ✓'
+              : isPlatformPending(selectedGame)
+              ? 'REQUEST ALREADY PENDING ⏳'
+              : 'SUBMIT ID REQUEST'}
           </button>
         </form>
       </div>

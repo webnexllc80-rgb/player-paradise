@@ -142,9 +142,55 @@ export async function POST(req) {
       }
     }
 
+    // If this is an ACCOUNT_CREATION request, check if user ALREADY has credentials generated
+    if (requestType !== 'COIN_LOAD') {
+      const gameAccountsCol = db.collection('gameAccounts');
+      const gameRegex = new RegExp(`^${gameTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+
+      // 1. Check if user already has active credentials in gameAccounts collection
+      const existingAccount = await gameAccountsCol.findOne({
+        userEmail: { $regex: new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        gameTitle: gameRegex,
+        status: 'READY',
+      });
+
+      if (existingAccount) {
+        return NextResponse.json({
+          success: false,
+          alreadyHasAccount: true,
+          message: `You already have active credentials for ${existingAccount.gameTitle || gameTitle} (Username: ${existingAccount.username}). You cannot request duplicate credentials.`,
+          gameAccount: {
+            gameTitle: existingAccount.gameTitle,
+            username: existingAccount.username,
+            password: existingAccount.password,
+          },
+        }, { status: 400 });
+      }
+
+      // 2. Check if user already has an approved READY request in accountRequests
+      const existingReadyRequest = await requestsCol.findOne({
+        userEmail: { $regex: new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        gameTitle: gameRegex,
+        status: 'READY',
+      });
+
+      if (existingReadyRequest) {
+        return NextResponse.json({
+          success: false,
+          alreadyHasAccount: true,
+          message: `Your credentials for ${existingReadyRequest.gameTitle || gameTitle} are already generated! (Username: ${existingReadyRequest.gameAccountUsername || 'Ready'}). You can view them under My Game IDs.`,
+          gameAccount: {
+            gameTitle: existingReadyRequest.gameTitle,
+            username: existingReadyRequest.gameAccountUsername,
+            password: existingReadyRequest.gameAccountPassword,
+          },
+        }, { status: 400 });
+      }
+    }
+
     // Check if player already has a PENDING request for this game of this exact type
     const existingPendingQuery = {
-      userEmail,
+      userEmail: { $regex: new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       gameTitle: new RegExp(`^${gameTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
       status: 'PENDING',
     };
@@ -168,9 +214,10 @@ export async function POST(req) {
     const existingPending = await requestsCol.findOne(existingPendingQuery);
 
     if (existingPending) {
-      const typeLabel = requestType === 'COIN_LOAD' ? 'load' : 'account creation';
+      const typeLabel = requestType === 'COIN_LOAD' ? 'coin load' : 'account creation';
       return NextResponse.json({
         success: false,
+        isPending: true,
         message: `You already have a pending ${typeLabel} request for ${gameTitle}. Please wait for staff approval.`,
       }, { status: 400 });
     }

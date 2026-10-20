@@ -9,13 +9,18 @@ import {
   Flame,
   Star,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 
 export default function GameCard({
   game,
   onPlay,
   onRequestAccount,
+  hasAccount = false,
+  isPending = false,
+  onViewCredentials = null,
 }) {
   const imgSrc =
     game.thumbnail ||
@@ -101,13 +106,33 @@ export default function GameCard({
             <span>PLAY NOW</span>
           </button>
 
-          <button
-            onClick={() => onRequestAccount(game)}
-            className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200 font-heading font-bold text-xs transition-colors"
-          >
-            <KeyRound size={13} className="text-amber-400" />
-            <span>GET ID</span>
-          </button>
+          {hasAccount ? (
+            <button
+              onClick={() => (onViewCredentials ? onViewCredentials(game) : onPlay(game))}
+              title="Credentials already created. Click to view credentials."
+              className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/60 hover:border-emerald-400 text-emerald-300 font-heading font-bold text-xs transition-all shadow-[0_0_10px_rgba(16,185,129,0.25)]"
+            >
+              <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+              <span>ID READY</span>
+            </button>
+          ) : isPending ? (
+            <button
+              disabled
+              title="ID request submitted to admin desk. Waiting for approval."
+              className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300/90 font-heading font-bold text-xs cursor-not-allowed opacity-85"
+            >
+              <Clock size={13} className="text-amber-400 animate-spin shrink-0" />
+              <span>PENDING ⏳</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => onRequestAccount(game)}
+              className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200 font-heading font-bold text-xs transition-colors"
+            >
+              <KeyRound size={13} className="text-amber-400 shrink-0" />
+              <span>GET ID</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

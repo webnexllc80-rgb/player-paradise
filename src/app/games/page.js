@@ -46,12 +46,42 @@ export default function GamesPage() {
   const [slotsOpen, setSlotsOpen] = useState(false);
   const [crashOpen, setCrashOpen] = useState(false);
 
+  const [userGameAccounts, setUserGameAccounts] = useState([]);
+  const [pendingAccountRequests, setPendingAccountRequests] = useState([]);
+
+  const loadUserGameAccounts = async (userEmail) => {
+    if (!userEmail) {
+      setUserGameAccounts([]);
+      setPendingAccountRequests([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/game-accounts?email=${encodeURIComponent(userEmail)}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) {
+        setUserGameAccounts(data.gameAccounts || []);
+        setPendingAccountRequests(data.pendingRequests || []);
+      }
+    } catch {}
+  };
+
   const loadUser = async () => {
     try {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
-      if (data.authenticated && data.user) setUser(data.user);
-    } catch {}
+      if (data.authenticated && data.user) {
+        setUser(data.user);
+        loadUserGameAccounts(data.user.email);
+      } else {
+        setUser(null);
+        setUserGameAccounts([]);
+        setPendingAccountRequests([]);
+      }
+    } catch {
+      setUser(null);
+      setUserGameAccounts([]);
+      setPendingAccountRequests([]);
+    }
   };
 
   const loadGames = async () => {
@@ -72,7 +102,25 @@ export default function GamesPage() {
 
   useEffect(() => {
     loadUser();
+
+    const handleAccountSync = () => {
+      loadUser();
+    };
+
+    window.addEventListener('accountRequestUpdated', handleAccountSync);
+    window.addEventListener('focus', handleAccountSync);
+
+    return () => {
+      window.removeEventListener('accountRequestUpdated', handleAccountSync);
+      window.removeEventListener('focus', handleAccountSync);
+    };
   }, []);
+
+  useEffect(() => {
+    if (user?.email) {
+      loadUserGameAccounts(user.email);
+    }
+  }, [user?.email]);
 
   useEffect(() => {
     loadGames();
@@ -101,8 +149,42 @@ export default function GamesPage() {
       return;
     }
 
-    // Direct 1-click submission for the game - NO MODAL OPENS!
     const gameTitle = game.title;
+    const cleanTitle = (gameTitle || '').toLowerCase().trim();
+
+    // 1. Guard against duplicate if credentials already exist
+    const existing = userGameAccounts.find((a) => {
+      const t = (a.gameTitle || '').toLowerCase().trim();
+      return t === cleanTitle || (cleanTitle && t.includes(cleanTitle)) || (t && cleanTitle.includes(t));
+    });
+
+    if (existing) {
+      setActiveExternalGame(game);
+      setRequestToast({
+        type: 'success',
+        title: 'ID Already Created! 🔑',
+        message: `Your credentials for ${gameTitle} are already generated (Username: ${existing.username}). View them below.`,
+      });
+      setTimeout(() => setRequestToast(null), 5000);
+      return;
+    }
+
+    // 2. Guard against duplicate if request is already pending
+    const existingPending = pendingAccountRequests.find((p) => {
+      const t = (p.gameTitle || '').toLowerCase().trim();
+      return t === cleanTitle || (cleanTitle && t.includes(cleanTitle)) || (t && cleanTitle.includes(t));
+    });
+
+    if (existingPending) {
+      setRequestToast({
+        type: 'info',
+        title: 'Request Already Pending ⏳',
+        message: `Your credentials request for ${gameTitle} is already in queue with staff. Please wait.`,
+      });
+      setTimeout(() => setRequestToast(null), 5000);
+      return;
+    }
+
     setActiveExternalGame(null);
 
     setRequestToast({
@@ -134,13 +216,18 @@ export default function GamesPage() {
           title: 'ID Request Sent! 🎯',
           message: `Your request for ${gameTitle} credentials has been sent to Admin. Staff will issue your ID shortly!`,
         });
+        loadUserGameAccounts(user.email);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('accountRequestUpdated'));
         }
       } else {
+        if (data.alreadyHasAccount) {
+          loadUserGameAccounts(user.email);
+          setActiveExternalGame(game);
+        }
         setRequestToast({
           type: 'info',
-          title: 'Request Notice',
+          title: data.alreadyHasAccount ? 'ID Ready' : 'Request Notice',
           message: data.message || `Unable to request ID for ${gameTitle}.`,
         });
       }
@@ -245,14 +332,29 @@ export default function GamesPage() {
             <p className="text-xs text-center text-slate-400 py-16">No games found in this category.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {games.map((g) => (
-                <GameCard
-                  key={g.id}
-                  game={g}
-                  onPlay={handlePlayGame}
-                  onRequestAccount={handleRequestGame}
-                />
-              ))}
+              {games.map((g) => {
+                const cleanGTitle = (g.title || '').toLowerCase().trim();
+                const hasAcc = userGameAccounts.some((a) => {
+                  const t = (a.gameTitle || '').toLowerCase().trim();
+                  return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
+                });
+                const isPend = !hasAcc && pendingAccountRequests.some((p) => {
+                  const t = (p.gameTitle || '').toLowerCase().trim();
+                  return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
+                });
+
+                return (
+                  <GameCard
+                    key={g.id}
+                    game={g}
+                    hasAccount={hasAcc}
+                    isPending={isPend}
+                    onPlay={handlePlayGame}
+                    onViewCredentials={handlePlayGame}
+                    onRequestAccount={handleRequestGame}
+                  />
+                );
+              })}
             </div>
           )}
         </main>
