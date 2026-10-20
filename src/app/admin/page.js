@@ -664,12 +664,20 @@ export default function AdminPortal({ initialTab }) {
 
   useEffect(() => {
     fetchSession();
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setDesktopNotifPerm(Notification.permission);
-      // Auto-unlock audio on user click anywhere
-      const unlockOnClick = () => unlockAudioContext();
-      window.addEventListener('click', unlockOnClick, { once: true });
-      return () => window.removeEventListener('click', unlockOnClick);
+    if (typeof window !== 'undefined') {
+      if ('Notification' in window) {
+        setDesktopNotifPerm(Notification.permission);
+      }
+      // Auto-unlock audio on user interaction anywhere
+      const unlockInteraction = () => unlockAudioContext();
+      window.addEventListener('click', unlockInteraction);
+      window.addEventListener('keydown', unlockInteraction);
+      window.addEventListener('pointerdown', unlockInteraction);
+      return () => {
+        window.removeEventListener('click', unlockInteraction);
+        window.removeEventListener('keydown', unlockInteraction);
+        window.removeEventListener('pointerdown', unlockInteraction);
+      };
     }
   }, []);
 
@@ -683,6 +691,7 @@ export default function AdminPortal({ initialTab }) {
     coinCashouts: 0,
     chat: 0,
   });
+  const seenRequestIdsRef = React.useRef(new Set());
   const isInitialLoadRef = React.useRef(true);
 
   const syncRequestsAndAlerts = async () => {
@@ -748,6 +757,7 @@ export default function AdminPortal({ initialTab }) {
       }
 
       if (isInitialLoadRef.current) {
+        pendingReqs.forEach((r) => seenRequestIdsRef.current.add(r.id || r._id));
         prevCountsRef.current = {
           deposits: pendingDeps.length,
           redemptions: pendingWith.length,
@@ -763,8 +773,11 @@ export default function AdminPortal({ initialTab }) {
       // Check each category independently so no request is swallowed!
 
       // 1. Account creation request (Game ID request from "GET ID")
-      if (pendingReqs.length > (prevCountsRef.current.requests || 0)) {
-        const newest = pendingReqs[0];
+      const newPendingReqs = pendingReqs.filter((r) => !seenRequestIdsRef.current.has(r.id || r._id));
+      if (newPendingReqs.length > 0 || pendingReqs.length > (prevCountsRef.current.requests || 0)) {
+        pendingReqs.forEach((r) => seenRequestIdsRef.current.add(r.id || r._id));
+        const newest = newPendingReqs[0] || pendingReqs[0];
+        unlockAudioContext();
         playAdminChime();
         const alertTitle = '🎯 New Game ID Request!';
         const alertBody = `${newest?.gameTitle || 'Game'} ID requested by ${newest?.userName || 'Player'}`;
@@ -874,13 +887,65 @@ export default function AdminPortal({ initialTab }) {
     }
   };
 
-  // Run persistent poller every 3 seconds - continues running in background tab!
+  // Real-time zero-delay cross-tab listener for instant admin chime!
+  useEffect(() => {
+    if (!user) return;
+
+    let channel = null;
+    try {
+      channel = new BroadcastChannel('paradise_staff_alerts');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'NEW_REQUEST') {
+          unlockAudioContext();
+          playAdminChime();
+          const gTitle = event.data.gameTitle || 'Game';
+          const uName = event.data.userName || 'Player';
+          setActiveAlertToast({
+            type: 'account',
+            title: '🎯 New Game ID Request!',
+            message: `${gTitle} requested by ${uName}`,
+            subtext: 'Tap to review & issue credentials',
+            targetTab: 'account_requests',
+          });
+          syncRequestsAndAlerts();
+        }
+      };
+    } catch {}
+
+    const handleStorage = (e) => {
+      if (e.key === 'paradise_staff_event' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.type === 'NEW_REQUEST') {
+            unlockAudioContext();
+            playAdminChime();
+            setActiveAlertToast({
+              type: 'account',
+              title: '🎯 New Game ID Request!',
+              message: `${parsed.gameTitle || 'Game'} requested by ${parsed.userName || 'Player'}`,
+              subtext: 'Tap to review & issue credentials',
+              targetTab: 'account_requests',
+            });
+            syncRequestsAndAlerts();
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      if (channel) channel.close();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [user]);
+
+  // Run persistent poller every 1.2 seconds for lightning-fast responsiveness!
   useEffect(() => {
     if (!user) return;
     syncRequestsAndAlerts();
     const interval = setInterval(() => {
       syncRequestsAndAlerts();
-    }, 3000);
+    }, 1200);
 
     const handleFocus = () => {
       syncRequestsAndAlerts();

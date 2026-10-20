@@ -130,6 +130,30 @@ export default function GameRequestModal({
       }
 
       if (onRequestCreated) onRequestCreated();
+
+      // Instant cross-tab broadcast so admin tab receives alert in 0ms!
+      try {
+        const ch = new BroadcastChannel('paradise_staff_alerts');
+        ch.postMessage({
+          type: 'NEW_REQUEST',
+          category: 'ACCOUNT_CREATION',
+          gameTitle: selectedGame,
+          userName: user.username,
+          userEmail: user.email,
+          timestamp: Date.now(),
+        });
+        ch.close();
+      } catch {}
+      try {
+        localStorage.setItem('paradise_staff_event', JSON.stringify({
+          type: 'NEW_REQUEST',
+          category: 'ACCOUNT_CREATION',
+          gameTitle: selectedGame,
+          userName: user.username,
+          time: Date.now(),
+        }));
+      } catch {}
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('accountRequestUpdated'));
       }

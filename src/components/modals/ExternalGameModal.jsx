@@ -22,11 +22,29 @@ export default function ExternalGameModal({
   user,
   onRequestAccount,
   onOpenAuth,
+  userGameAccounts = [],
+  pendingAccountRequests = [],
 }) {
   const [credentials, setCredentials] = useState(null);
   const [isPending, setIsPending] = useState(false);
   const [copiedUser, setCopiedUser] = useState(false);
   const [copiedPass, setCopiedPass] = useState(false);
+
+  const cleanGameTitle = (game?.title || '').toLowerCase().trim();
+
+  // Instant check from props passed by parent
+  const propCredentials = (userGameAccounts || []).find((a) => {
+    const t = (a.gameTitle || '').toLowerCase().trim();
+    return t === cleanGameTitle || (cleanGameTitle && t.includes(cleanGameTitle)) || (t && cleanGameTitle.includes(t));
+  });
+
+  const propIsPending = !propCredentials && (pendingAccountRequests || []).some((p) => {
+    const t = (p.gameTitle || '').toLowerCase().trim();
+    return t === cleanGameTitle || (cleanGameTitle && t.includes(cleanGameTitle)) || (t && cleanGameTitle.includes(t));
+  });
+
+  const effectiveCredentials = credentials || propCredentials;
+  const effectiveIsPending = !effectiveCredentials && (isPending || propIsPending);
 
   useEffect(() => {
     if (isOpen && user && game) {
@@ -35,16 +53,16 @@ export default function ExternalGameModal({
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            const cleanGameTitle = (game.title || '').toLowerCase().trim();
+            const cleanTitle = (game.title || '').toLowerCase().trim();
             const found = (data.gameAccounts || []).find((a) => {
               const t = (a.gameTitle || '').toLowerCase().trim();
-              return t === cleanGameTitle || (cleanGameTitle && t.includes(cleanGameTitle)) || (t && cleanGameTitle.includes(t));
+              return t === cleanTitle || (cleanTitle && t.includes(cleanTitle)) || (t && cleanTitle.includes(t));
             });
             setCredentials(found || null);
 
             const pending = (data.pendingRequests || []).find((p) => {
               const t = (p.gameTitle || '').toLowerCase().trim();
-              return t === cleanGameTitle || (cleanGameTitle && t.includes(cleanGameTitle)) || (t && cleanGameTitle.includes(t));
+              return t === cleanTitle || (cleanTitle && t.includes(cleanTitle)) || (t && cleanTitle.includes(t));
             });
             setIsPending(Boolean(pending));
           }
@@ -113,7 +131,7 @@ export default function ExternalGameModal({
         </div>
 
         {/* Credentials Box */}
-        {credentials ? (
+        {effectiveCredentials ? (
           <div className="p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/40 space-y-3 mb-5">
             <div className="flex items-center justify-between text-xs">
               <span className="font-sub font-bold text-slate-400">YOUR LOGIN CREDENTIALS</span>
@@ -124,9 +142,9 @@ export default function ExternalGameModal({
               <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
                 <span className="text-slate-400">Username:</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-white">{credentials.username}</span>
+                  <span className="font-mono font-bold text-white">{effectiveCredentials.username}</span>
                   <button
-                    onClick={() => copyText(credentials.username, 'user')}
+                    onClick={() => copyText(effectiveCredentials.username, 'user')}
                     className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-[var(--neon-cyan)]"
                   >
                     {copiedUser ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
@@ -137,9 +155,9 @@ export default function ExternalGameModal({
               <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs">
                 <span className="text-slate-400">Password:</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-amber-300">{credentials.password}</span>
+                  <span className="font-mono font-bold text-amber-300">{effectiveCredentials.password}</span>
                   <button
-                    onClick={() => copyText(credentials.password, 'pass')}
+                    onClick={() => copyText(effectiveCredentials.password, 'pass')}
                     className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-amber-400"
                   >
                     {copiedPass ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
@@ -148,7 +166,7 @@ export default function ExternalGameModal({
               </div>
             </div>
           </div>
-        ) : isPending ? (
+        ) : effectiveIsPending ? (
           <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 space-y-2.5 mb-5 text-center">
             <Clock size={24} className="mx-auto text-amber-400 animate-spin" />
             <div>

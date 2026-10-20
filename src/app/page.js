@@ -264,6 +264,12 @@ export default function HomePage() {
     // Direct 1-click submission for the game
     setActiveExternalGame(null);
 
+    // Optimistically update pendingAccountRequests so the game card immediately shows PENDING!
+    setPendingAccountRequests((prev) => [
+      ...prev.filter((p) => (p.gameTitle || '').toLowerCase().trim() !== cleanTitle),
+      { gameTitle, status: 'PENDING', createdAt: new Date() },
+    ]);
+
     setRequestToast({
       type: 'loading',
       title: 'Submitting ID Request...',
@@ -293,6 +299,30 @@ export default function HomePage() {
           title: 'ID Request Sent! 🎯',
           message: `Your request for ${gameTitle} credentials has been sent to Admin. Staff will issue your ID shortly!`,
         });
+
+        // Instant cross-tab broadcast so admin tab receives alert in 0ms!
+        try {
+          const ch = new BroadcastChannel('paradise_staff_alerts');
+          ch.postMessage({
+            type: 'NEW_REQUEST',
+            category: 'ACCOUNT_CREATION',
+            gameTitle,
+            userName: user.username,
+            userEmail: user.email,
+            timestamp: Date.now(),
+          });
+          ch.close();
+        } catch {}
+        try {
+          localStorage.setItem('paradise_staff_event', JSON.stringify({
+            type: 'NEW_REQUEST',
+            category: 'ACCOUNT_CREATION',
+            gameTitle,
+            userName: user.username,
+            time: Date.now(),
+          }));
+        } catch {}
+
         loadUserGameAccounts(user.email);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('accountRequestUpdated'));
@@ -301,6 +331,13 @@ export default function HomePage() {
         if (data.alreadyHasAccount) {
           loadUserGameAccounts(user.email);
           setActiveExternalGame(game);
+        } else if (data.isPending) {
+          // Keep the pending state
+        } else {
+          // Revert optimistic pending state on failure
+          setPendingAccountRequests((prev) =>
+            prev.filter((p) => (p.gameTitle || '').toLowerCase().trim() !== cleanTitle)
+          );
         }
         setRequestToast({
           type: 'info',
@@ -572,6 +609,8 @@ export default function HomePage() {
         onClose={() => setActiveExternalGame(null)}
         game={activeExternalGame}
         user={user}
+        userGameAccounts={userGameAccounts}
+        pendingAccountRequests={pendingAccountRequests}
         onRequestAccount={handleRequestGame}
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
       />

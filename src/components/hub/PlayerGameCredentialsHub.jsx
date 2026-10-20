@@ -219,6 +219,29 @@ export default function PlayerGameAccountsHub({
       setRequestingGameId(null);
 
       if (data.success) {
+        // Instant cross-tab broadcast so admin tab receives alert in 0ms!
+        try {
+          const ch = new BroadcastChannel('paradise_staff_alerts');
+          ch.postMessage({
+            type: 'NEW_REQUEST',
+            category: 'ACCOUNT_CREATION',
+            gameTitle,
+            userName: user.username,
+            userEmail: user.email,
+            timestamp: Date.now(),
+          });
+          ch.close();
+        } catch {}
+        try {
+          localStorage.setItem('paradise_staff_event', JSON.stringify({
+            type: 'NEW_REQUEST',
+            category: 'ACCOUNT_CREATION',
+            gameTitle,
+            userName: user.username,
+            time: Date.now(),
+          }));
+        } catch {}
+
         router.push(`/game-accounts/provisioning?requestId=${data.requestId || ''}&game=${encodeURIComponent(gameTitle)}`);
       } else {
         setErrorMsg(data.message || 'Failed to submit request.');
