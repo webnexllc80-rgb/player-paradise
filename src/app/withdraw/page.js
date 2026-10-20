@@ -41,6 +41,7 @@ export default function WithdrawPage() {
   const [method, setMethod] = useState('Cash App');
   const [recipientTag, setRecipientTag] = useState('');
   const [selectedGame, setSelectedGame] = useState('Fire Kirin');
+  const [userGameAccounts, setUserGameAccounts] = useState([]);
 
   // Proof uploads (Required by rules)
   const [gameScreenshot, setGameScreenshot] = useState('');
@@ -89,15 +90,33 @@ export default function WithdrawPage() {
     }
   };
 
+  // 3. Fetch user active game credentials
+  const fetchGameAccounts = async () => {
+    try {
+      const res = await fetch('/api/game-accounts', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.gameAccounts)) {
+        setUserGameAccounts(data.gameAccounts);
+        if (data.gameAccounts.length > 0 && !data.gameAccounts.some(a => a.gameTitle?.toLowerCase().trim() === selectedGame.toLowerCase().trim())) {
+          setSelectedGame(data.gameAccounts[0].gameTitle || selectedGame);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchUser();
     fetchHistory();
+    fetchGameAccounts();
 
     // Zero-refresh live polling: fast updates as soon as admin approves/rejects
     const pollInterval = setInterval(() => {
       if (!document.hidden) {
         fetchHistory(true);
         fetchUser(true);
+        fetchGameAccounts();
       }
     }, 1500);
 
@@ -236,6 +255,18 @@ export default function WithdrawPage() {
       return;
     }
 
+    const linkedAccount = userGameAccounts.find(
+      (a) => (a.gameTitle || '').toLowerCase().trim() === selectedGame.toLowerCase().trim()
+    );
+
+    if (!linkedAccount) {
+      setStatusMessage({
+        type: 'error',
+        text: `Withdrawal Blocked: You do not have an active game account for "${selectedGame}". You must have an approved game account and play first before requesting a cashout.`,
+      });
+      return;
+    }
+
     setSubmitting(true);
     setStatusMessage(null);
 
@@ -246,6 +277,7 @@ export default function WithdrawPage() {
         destinationTag: recipientTag.trim(),
         destinationAddress: recipientTag.trim(),
         gameTitle: selectedGame,
+        gameAccountUsername: linkedAccount.username,
         gameScreenshot,
         qrCodeImage,
       };
@@ -425,22 +457,84 @@ export default function WithdrawPage() {
                   <span className="text-xs text-slate-400">Min $20.00</span>
                 </div>
 
-                {/* Game Select */}
+                {/* Game Select & Account Detection */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase">
-                    Select Game Won From *
-                  </label>
-                  <select
-                    value={selectedGame}
-                    onChange={(e) => setSelectedGame(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-heading font-bold text-sm focus:outline-none focus:border-[var(--neon-cyan)]"
-                  >
-                    {popularGames.map((g) => (
-                      <option key={g} value={g} className="bg-slate-900 text-white">
-                        {g}
-                      </option>
-                    ))}
-                  </select>
+                  {(() => {
+                    const linkedAcc = userGameAccounts.find(
+                      (a) => (a.gameTitle || '').toLowerCase().trim() === selectedGame.toLowerCase().trim()
+                    );
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-bold text-slate-300 uppercase flex items-center gap-1.5">
+                            <Gamepad2 size={13} className="text-[var(--neon-cyan)]" />
+                            Select Game Won From *
+                          </label>
+                          {linkedAcc ? (
+                            <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-full font-mono">
+                              <CheckCircle2 size={10} />
+                              ID: @{linkedAcc.username}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-red-400 font-bold flex items-center gap-1 bg-red-950/70 border border-red-500/40 px-2 py-0.5 rounded-full">
+                              <AlertCircle size={10} />
+                              No Account Found
+                            </span>
+                          )}
+                        </div>
+
+                        <select
+                          value={selectedGame}
+                          onChange={(e) => setSelectedGame(e.target.value)}
+                          className={`w-full px-4 py-3 rounded-xl bg-slate-900 border text-white font-heading font-bold text-sm focus:outline-none transition-colors ${
+                            linkedAcc
+                              ? 'border-slate-700 focus:border-[var(--neon-cyan)]'
+                              : 'border-red-500/80 focus:border-red-400'
+                          }`}
+                        >
+                          {popularGames.map((g) => {
+                            const acc = userGameAccounts.find(
+                              (a) => (a.gameTitle || '').toLowerCase().trim() === g.toLowerCase().trim()
+                            );
+                            return (
+                              <option key={g} value={g} className="bg-slate-900 text-white">
+                                {g} {acc ? `— (Username: @${acc.username})` : '— (No account)'}
+                              </option>
+                            );
+                          })}
+                        </select>
+
+                        {linkedAcc ? (
+                          <div className="p-2.5 rounded-xl bg-emerald-950/50 border border-emerald-500/30 flex items-center gap-2 mt-2 text-emerald-300 text-xs">
+                            <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                            <span>
+                              Verified Game Account: <strong className="font-mono text-white bg-emerald-900/60 px-1.5 py-0.5 rounded">@{linkedAcc.username}</strong> will be submitted to Coin Allotment.
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="p-3.5 rounded-2xl bg-red-950/70 border border-red-500/60 flex items-start gap-3 mt-2 text-red-200">
+                            <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold text-red-300">
+                                Withdrawal Blocked: No Active Account for {selectedGame}
+                              </p>
+                              <p className="text-[11px] text-red-300/80 leading-relaxed">
+                                You do not have active credentials for <strong>{selectedGame}</strong>. Cashouts can only be processed from games where you have an active account.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => router.push('/games')}
+                                className="text-[11px] font-bold text-cyan-300 underline hover:text-cyan-200 mt-1 cursor-pointer block"
+                              >
+                                Request a {selectedGame} Account Under Games Hub ➔
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Payout Method Grid */}
@@ -770,7 +864,14 @@ export default function WithdrawPage() {
                           <td className="py-3 px-3 text-slate-400">
                             {w.createdAt ? new Date(w.createdAt).toLocaleDateString() : 'Recent'}
                           </td>
-                          <td className="py-3 px-3 text-white font-bold">{w.gameTitle || 'Game Platform'}</td>
+                          <td className="py-3 px-3">
+                            <span className="text-white font-bold block">{w.gameTitle || 'Game Platform'}</span>
+                            {w.gameAccountUsername && (
+                              <span className="text-[10px] text-emerald-400 font-mono block">
+                                @{w.gameAccountUsername}
+                              </span>
+                            )}
+                          </td>
                           <td className="py-3 px-3 text-[var(--neon-cyan)] font-black">
                             ${Number(w.amount || 0).toFixed(2)} SC
                           </td>

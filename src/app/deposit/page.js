@@ -23,6 +23,7 @@ import {
   Eye,
   X,
   FileText,
+  Gamepad2,
 } from 'lucide-react';
 import CyberNavbar from '@/components/navigation/CyberNavbar';
 import CyberSidebar from '@/components/navigation/CyberSidebar';
@@ -54,6 +55,8 @@ export default function DepositPage() {
   const [transactionId, setTransactionId] = useState('');
   const [proofImage, setProofImage] = useState('');
   const [proofFileName, setProofFileName] = useState('');
+  const [selectedGame, setSelectedGame] = useState('Ultra Panda');
+  const [userGameAccounts, setUserGameAccounts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [copiedField, setCopiedField] = useState(null);
@@ -154,16 +157,31 @@ export default function DepositPage() {
     }
   };
 
+  // 4. Fetch player active game accounts
+  const fetchGameAccounts = async () => {
+    try {
+      const res = await fetch('/api/game-accounts', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.gameAccounts)) {
+        setUserGameAccounts(data.gameAccounts);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchUserAndSettings();
     fetchGateways();
     fetchHistory();
+    fetchGameAccounts();
 
     // Zero-refresh live polling: updates pending deposits as soon as admin approves/rejects
     const pollInterval = setInterval(() => {
       if (!document.hidden) {
         fetchHistory(true);
         fetchUserAndSettings(true);
+        fetchGameAccounts();
       }
     }, 4000);
 
@@ -305,6 +323,10 @@ export default function DepositPage() {
       const chosenMethodName = activeGateway?.name || 'Cash App';
       const chosenMethodId = activeGateway?.id || 'cashapp';
 
+      const linkedAccount = userGameAccounts.find(
+        (a) => (a.gameTitle || '').toLowerCase().trim() === selectedGame.toLowerCase().trim()
+      );
+
       const payload = {
         amount: finalAmount,
         method: chosenMethodName,
@@ -316,6 +338,8 @@ export default function DepositPage() {
         transactionId: transactionId.trim(),
         txHash: transactionId.trim(),
         proofImage,
+        gameTitle: selectedGame,
+        gameAccountUsername: linkedAccount ? linkedAccount.username : '',
       };
 
       const res = await fetch('/api/payments/deposit', {
@@ -576,6 +600,80 @@ export default function DepositPage() {
                 </h3>
 
                 <div className="space-y-3.5">
+                  {/* Field: Target Game Platform */}
+                  <div>
+                    {(() => {
+                      const linkedAcc = userGameAccounts.find(
+                        (a) => (a.gameTitle || '').toLowerCase().trim() === selectedGame.toLowerCase().trim()
+                      );
+                      const popularGames = [
+                        'Ultra Panda',
+                        'Fire Kirin',
+                        'Orion Stars',
+                        'Game Vault 999',
+                        'Milky Way',
+                        'Juwa 777',
+                        'Panda 777 Slots',
+                        'Golden Treasure',
+                      ];
+
+                      return (
+                        <>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-xs font-bold text-slate-300 uppercase flex items-center gap-1.5">
+                              <Gamepad2 size={13} className="text-cyan-400" />
+                              Select Target Game Platform *
+                            </label>
+                            {linkedAcc ? (
+                              <span className="text-[10px] text-emerald-300 font-bold flex items-center gap-1 bg-emerald-950/80 border border-emerald-500/40 px-2 py-0.5 rounded-full font-mono">
+                                <CheckCircle2 size={10} className="text-emerald-400" />
+                                Linked ID: @{linkedAcc.username}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-300 font-bold flex items-center gap-1 bg-amber-950/80 border border-amber-500/40 px-2 py-0.5 rounded-full">
+                                <Sparkles size={10} className="text-amber-400" />
+                                No Account Yet (Auto Queued)
+                              </span>
+                            )}
+                          </div>
+
+                          <select
+                            value={selectedGame}
+                            onChange={(e) => setSelectedGame(e.target.value)}
+                            className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-heading font-bold text-sm focus:outline-none focus:border-cyan-400"
+                          >
+                            {popularGames.map((g) => {
+                              const match = userGameAccounts.find(
+                                (a) => (a.gameTitle || '').toLowerCase().trim() === g.toLowerCase().trim()
+                              );
+                              return (
+                                <option key={g} value={g} className="bg-slate-900 text-white">
+                                  {g} {match ? `— (Username: @${match.username})` : '— (No account yet)'}
+                                </option>
+                              );
+                            })}
+                          </select>
+
+                          {linkedAcc ? (
+                            <p className="text-[11px] text-emerald-400/90 mt-1.5 flex items-center gap-1.5">
+                              <CheckCircle2 size={12} className="shrink-0" />
+                              <span>
+                                Your deposit will be associated with your active <strong>{selectedGame}</strong> ID: <code className="text-emerald-300 bg-emerald-950/60 px-1 py-0.5 rounded">@{linkedAcc.username}</code>
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-amber-300/90 mt-1.5 flex items-center gap-1.5 bg-amber-950/30 border border-amber-500/20 p-2 rounded-xl">
+                              <Sparkles size={13} className="shrink-0 text-amber-400" />
+                              <span>
+                                You don&apos;t have an account for <strong>{selectedGame}</strong> yet. You can deposit now! Once verified by Finance, an account request will automatically be created so staff can issue your credentials.
+                              </span>
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
                   {/* Field: Player Tag Name (Required) */}
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">
@@ -842,6 +940,7 @@ export default function DepositPage() {
                   <thead className="text-[10px] font-bold text-slate-400 uppercase border-b border-slate-800">
                     <tr>
                       <th className="pb-3 px-3">Date</th>
+                      <th className="pb-3 px-3">Game Platform</th>
                       <th className="pb-3 px-3">Method</th>
                       <th className="pb-3 px-3">Base USD</th>
                       <th className="pb-3 px-3">Total Coins</th>
@@ -858,6 +957,20 @@ export default function DepositPage() {
                         <tr key={d.id || d._id} className="hover:bg-slate-900/40">
                           <td className="py-3 px-3 text-slate-400">
                             {d.createdAt ? new Date(d.createdAt).toLocaleDateString() : 'Recent'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-heading font-bold text-white text-xs block">
+                              {d.gameTitle || 'Standard'}
+                            </span>
+                            {d.gameAccountUsername ? (
+                              <span className="text-[10.5px] text-emerald-400 font-mono block">
+                                @{d.gameAccountUsername}
+                              </span>
+                            ) : d.gameTitle ? (
+                              <span className="text-[9.5px] text-amber-300 font-sans block">
+                                Auto-request pending
+                              </span>
+                            ) : null}
                           </td>
                           <td className="py-3 px-3 text-white font-bold">{d.methodName || d.method || 'Cash App'}</td>
                           <td className="py-3 px-3 text-slate-300 font-bold">

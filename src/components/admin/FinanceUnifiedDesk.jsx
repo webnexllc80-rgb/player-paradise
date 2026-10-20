@@ -451,6 +451,7 @@ export default function FinanceUnifiedDesk({
                   <thead style={{ backgroundColor: '#050711', borderBottom: '1px solid rgba(255, 255, 255, 0.12)' }}>
                     <tr>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Player</th>
+                      <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Game &amp; Account</th>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Deposit USD</th>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Coins to Credit</th>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Method</th>
@@ -515,7 +516,51 @@ export default function FinanceUnifiedDesk({
                             </div>
                           </td>
 
-                          {/* 2. Deposit USD */}
+                          {/* 2. Game & Account */}
+                          <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                            {d.gameTitle ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                <span style={{ fontWeight: 800, fontSize: '12.5px', color: '#00F0FF' }}>
+                                  🎮 {d.gameTitle}
+                                </span>
+                                {d.gameAccountUsername ? (
+                                  <span
+                                    style={{
+                                      fontSize: '11px',
+                                      fontFamily: 'monospace',
+                                      color: '#34D399',
+                                      backgroundColor: 'rgba(16, 185, 129, 0.14)',
+                                      padding: '2px 7px',
+                                      borderRadius: '6px',
+                                      width: 'fit-content',
+                                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                                    }}
+                                  >
+                                    ID: @{d.gameAccountUsername}
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      fontSize: '9.5px',
+                                      fontWeight: 800,
+                                      color: '#FBBF24',
+                                      backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                                      padding: '2px 7px',
+                                      borderRadius: '6px',
+                                      width: 'fit-content',
+                                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                                    }}
+                                  >
+                                    ⚡ No Account (Auto Queues ID)
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '11px', color: '#64748B' }}>Direct Top-up</span>
+                            )}
+                          </td>
+
+                          {/* 3. Deposit USD */}
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                             <div
                               style={{
@@ -896,6 +941,7 @@ export default function FinanceUnifiedDesk({
                   <thead style={{ backgroundColor: '#050711', borderBottom: '1px solid rgba(255, 255, 255, 0.12)' }}>
                     <tr>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Player</th>
+                      <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Game &amp; Account</th>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Redeem Amount</th>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Payout Method</th>
                       <th style={{ padding: '14px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Destination Address / Cashtag</th>
@@ -945,7 +991,34 @@ export default function FinanceUnifiedDesk({
                             </div>
                           </td>
 
-                          {/* 2. Redeem Amount */}
+                          {/* 2. Game Platform & Verified ID */}
+                          <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <span style={{ fontWeight: 800, fontSize: '12.5px', color: '#C084FC' }}>
+                                🎮 {r.gameTitle || 'Game'}
+                              </span>
+                              {r.gameAccountUsername ? (
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    fontFamily: 'monospace',
+                                    color: '#34D399',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.14)',
+                                    padding: '2px 7px',
+                                    borderRadius: '6px',
+                                    width: 'fit-content',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                                  }}
+                                >
+                                  ID: @{r.gameAccountUsername}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '10px', color: '#94A3B8' }}>Verified Platform</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 3. Redeem Amount */}
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                             <span
                               style={{
@@ -1160,6 +1233,7 @@ export default function FinanceUnifiedDesk({
               <thead style={{ backgroundColor: '#050711', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
                 <tr>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Player</th>
+                  <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Game &amp; Account</th>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Deposit Amount</th>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Coins Credited</th>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Method</th>
@@ -1176,6 +1250,16 @@ export default function FinanceUnifiedDesk({
                   return (
                     <tr key={depositId} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                       <td style={{ padding: '12px 16px', fontWeight: 800, color: '#FFFFFF', fontSize: '12px' }}>{d.username}</td>
+                      <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontWeight: 800, fontSize: '12px', color: '#00F0FF', display: 'block' }}>
+                          {d.gameTitle || 'Direct'}
+                        </span>
+                        {d.gameAccountUsername && (
+                          <span style={{ fontSize: '10px', color: '#34D399', fontFamily: 'monospace' }}>
+                            @{d.gameAccountUsername}
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 16px', fontWeight: 900, color: '#FBBF24', fontSize: '12px' }}>${d.amount} USD</td>
                       <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: '#34D399', fontSize: '12px' }}>
                         {d.creditedSC ? `${Number(d.creditedSC).toFixed(2)} SC` : `${d.totalSC || d.amount} SC`}
@@ -1264,6 +1348,7 @@ export default function FinanceUnifiedDesk({
               <thead style={{ backgroundColor: '#050711', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
                 <tr>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Player</th>
+                  <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Game &amp; Account</th>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Redeem Amount</th>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Payout Method</th>
                   <th style={{ padding: '12px 16px', fontSize: '10.5px', fontWeight: 900, color: '#94A3B8', textTransform: 'uppercase' }}>Destination</th>
@@ -1277,6 +1362,16 @@ export default function FinanceUnifiedDesk({
                   return (
                     <tr key={redeemId} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                       <td style={{ padding: '12px 16px', fontWeight: 800, color: '#FFFFFF', fontSize: '12px' }}>{r.username}</td>
+                      <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontWeight: 800, fontSize: '12px', color: '#C084FC', display: 'block' }}>
+                          {r.gameTitle || 'Game'}
+                        </span>
+                        {r.gameAccountUsername && (
+                          <span style={{ fontSize: '10px', color: '#34D399', fontFamily: 'monospace' }}>
+                            @{r.gameAccountUsername}
+                          </span>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 16px', fontWeight: 900, color: '#C084FC', fontSize: '12px' }}>${r.amount} SC</td>
                       <td style={{ padding: '12px 16px', color: '#E2E8F0', fontSize: '12px' }}>{r.payoutMethod || 'Direct'}</td>
                       <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: '#94A3B8', fontSize: '11.5px' }}>{r.destinationAddress}</td>

@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { notifyPlayer } from '@/lib/notify';
+import { findUserGameAccount } from '@/lib/gameAccounts';
 
 // GET Account Requests
 export async function GET(req) {
@@ -263,12 +264,30 @@ export async function POST(req) {
       });
     }
 
-    // 2. Create the Request with explicit requestType
+    // 2. Resolve Game Account Username if existing for this player and game
+    let resolvedGameUsername = String(body.gameAccountUsername || '').trim();
+    if (!resolvedGameUsername && gameTitle) {
+      const accCheck = await findUserGameAccount(
+        db,
+        {
+          userId: user?._id || session?.userId,
+          userEmail,
+          username: userName,
+        },
+        gameTitle
+      );
+      if (accCheck.exists) {
+        resolvedGameUsername = accCheck.username;
+      }
+    }
+
+    // 3. Create the Request with explicit requestType and attached gameAccountUsername
     const newRequest = {
       userEmail,
       userName,
       gameTitle,
       gameId,
+      gameAccountUsername: resolvedGameUsername || '',
       requestType,
       transferAmount,
       status: 'PENDING',

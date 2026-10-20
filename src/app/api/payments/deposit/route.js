@@ -4,6 +4,7 @@ import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 import { notifyPlayer } from '@/lib/notify';
+import { findUserGameAccount } from '@/lib/gameAccounts';
 
 // GET: List Deposits (Admin / Financial Manager) or Player's own
 export async function GET(req) {
@@ -69,6 +70,10 @@ export async function GET(req) {
           totalSC,
           totalGC,
           creditedSC: d.creditedSC || null,
+          gameTitle: d.gameTitle || null,
+          gameId: d.gameId || null,
+          gameAccountUsername: d.gameAccountUsername || null,
+          hasGameAccount: Boolean(d.gameAccountUsername),
           status: d.status,
           processedBy: d.processedBy || null,
           rejectReason: d.rejectReason || null,
@@ -99,6 +104,8 @@ export async function POST(req) {
       senderNote,
       proofImage,
       txHash,
+      gameTitle,
+      gameId,
     } = body;
 
     const depositAmount = Number(amount);
@@ -156,6 +163,24 @@ export async function POST(req) {
 
     const resolvedUserId = (user && user._id) ? user._id.toString() : (session.userId || 'custom');
 
+    const requestedGame = String(gameTitle || body.game || '').trim();
+    let resolvedGameUsername = String(body.gameAccountUsername || '').trim();
+
+    if (requestedGame && !resolvedGameUsername) {
+      const accCheck = await findUserGameAccount(
+        db,
+        {
+          userId: user?._id || session.userId,
+          userEmail: user?.email || session.email,
+          username: user?.username || session.username,
+        },
+        requestedGame
+      );
+      if (accCheck.exists) {
+        resolvedGameUsername = accCheck.username;
+      }
+    }
+
     const newDeposit = {
       userId: resolvedUserId,
       username: user?.username || session.username,
@@ -168,6 +193,10 @@ export async function POST(req) {
       senderNote: tagName,
       proofImage: proofImage || null,
       txHash: resolvedTxHash,
+      gameTitle: requestedGame || null,
+      gameId: gameId || (requestedGame ? requestedGame.toLowerCase().replace(/\s+/g, '-') : null),
+      gameAccountUsername: resolvedGameUsername || null,
+      hasGameAccount: Boolean(resolvedGameUsername),
       bonusType,
       bonusPercent,
       bonusSC,
@@ -477,6 +506,61 @@ export async function PUT(req) {
         type: 'deposit_approved',
         data: { amount: String(creditedSC) },
       });
+
+      // 5. Automatic Game Account Request Creation if Player Deposited without an Existing Account
+      let autoAccountRequestCreated = false;
+      if (deposit.gameTitle) {
+        const cleanEmail = (user.email || deposit.playerPaymentEmail || '').toLowerCase().trim();
+        const cleanGameTitle = deposit.gameTitle.trim();
+
+        const accCheck = await findUserGameAccount(
+          db,
+          {
+            userId: user._id,
+            userEmail: cleanEmail,
+            username: user.username,
+          },
+          cleanGameTitle
+        );
+
+        if (!accCheck.exists) {
+          // Check if an account request is already pending
+          const existingPending = await db.collection('accountRequests').findOne({
+            userEmail: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+            gameTitle: { $regex: new RegExp(`^${cleanGameTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+            status: 'PENDING',
+            requestType: { $ne: 'COIN_LOAD' },
+          });
+
+          if (!existingPending) {
+            autoAccountRequestCreated = true;
+            await db.collection('accountRequests').insertOne({
+              userEmail: cleanEmail,
+              userName: user.username,
+              gameTitle: cleanGameTitle,
+              gameId: deposit.gameId || cleanGameTitle.toLowerCase().replace(/\s+/g, '-'),
+              requestType: 'ACCOUNT_CREATION',
+              transferAmount: 0,
+              status: 'PENDING',
+              sourceDepositId: deposit._id.toString(),
+              depositAmount: deposit.amount,
+              notes: `Auto-generated from approved deposit of $${deposit.amount.toFixed(2)} via ${deposit.methodName || 'Payment'}`,
+              createdAt: new Date(),
+            });
+
+            // Instant notification to player informing them their account request is now queued for staff
+            notifyPlayer({
+              userId: user._id,
+              userEmail: cleanEmail,
+              username: user.username,
+              title: `Game Account Request Queued: ${cleanGameTitle}! 🎮`,
+              message: `Deposit approved! Since you don't have a ${cleanGameTitle} account yet, an account creation request has been automatically sent to staff. Your login credentials will appear under My Game IDs shortly.`,
+              type: 'account_request_created',
+              data: { gameTitle: cleanGameTitle, depositId: deposit._id.toString() },
+            });
+          }
+        }
+      }
 
       return NextResponse.json({ success: true, message: `Deposit approved! Credited ${creditedSC} SC to ${user.username}.` });
     } else if (action === 'reject') {

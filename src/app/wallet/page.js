@@ -221,8 +221,13 @@ export default function WalletPage() {
                           {tx.isDeposit ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
                         </div>
                         <div>
-                          <div className="font-heading font-bold text-white">
-                            {tx.isDeposit ? `Deposit via ${tx.method}` : `Cashout to ${tx.destinationTag}`}
+                          <div className="font-heading font-bold text-white flex items-center gap-2 flex-wrap">
+                            <span>{tx.isDeposit ? `Deposit via ${tx.method || tx.methodName || 'Payment'}` : `Cashout to ${tx.destinationTag}`}</span>
+                            {tx.gameTitle && (
+                              <span className="text-[10px] text-cyan-300 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-full font-sans font-semibold">
+                                🎮 {tx.gameTitle} {tx.gameAccountUsername ? `(@${tx.gameAccountUsername})` : ''}
+                              </span>
+                            )}
                           </div>
                           <div className="text-[10px] text-slate-500 font-mono">
                             {new Date(tx.createdAt).toLocaleString()}

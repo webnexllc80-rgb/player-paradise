@@ -4,6 +4,7 @@ import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 import { notifyPlayer } from '@/lib/notify';
+import { findUserGameAccount } from '@/lib/gameAccounts';
 
 // GET: List Redemptions
 export async function GET(req) {
@@ -55,6 +56,7 @@ export async function GET(req) {
         username: r.username,
         amount: r.amount,
         gameTitle: r.gameTitle || 'Standard Platform',
+        gameAccountUsername: r.gameAccountUsername || '',
         gameScreenshot: r.gameScreenshot
           ? (r.gameScreenshot.startsWith('data:') && r.gameScreenshot.length > 50000
               ? `/api/payments/withdraw/proof?id=${r._id}&type=gameScreenshot`
@@ -154,6 +156,38 @@ export async function POST(req) {
     const frozen = Number(user.frozenBalance || 0);
     const availableSC = Math.max(0, Number((currentSC - frozen).toFixed(2)));
 
+    // Verify player has an active game account for this game (Withdrawal blocked without game account!)
+    const requestedGame = String(gameTitle || '').trim();
+    if (!requestedGame) {
+      return NextResponse.json(
+        { success: false, error: 'Please select the game platform you won from.' },
+        { status: 400 }
+      );
+    }
+
+    const accountCheck = await findUserGameAccount(
+      db,
+      {
+        userId: user._id,
+        userEmail: user.email,
+        username: user.username,
+      },
+      requestedGame
+    );
+
+    if (!accountCheck.exists) {
+      return NextResponse.json(
+        {
+          success: false,
+          noAccount: true,
+          error: `Withdrawal Blocked: You do not have an active game account for "${requestedGame}". You must first create and play on a verified game account before requesting a cashout.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const gameAccountUsername = accountCheck.username;
+
     if (redeemAmount > availableSC) {
       return NextResponse.json(
         {
@@ -179,7 +213,8 @@ export async function POST(req) {
       userId: user._id.toString(),
       username: user.username,
       amount: redeemAmount,
-      gameTitle: gameTitle || 'Game Platform',
+      gameTitle: requestedGame,
+      gameAccountUsername: gameAccountUsername,
       gameScreenshot: gameScreenshot || null,
       qrCodeImage: qrCodeImage || null,
       destinationTag: finalTag,
@@ -203,7 +238,7 @@ export async function POST(req) {
       balanceAfter: currentSC,
       performedBy: 'player',
       referenceId: insertRes.insertedId.toString(),
-      notes: `Cashout requested: $${redeemAmount.toFixed(2)} SC for ${gameTitle || 'Game'} via ${payoutMethod} to tag ${finalTag} (Frozen in escrow, routed to Coin Allotment)`,
+      notes: `Cashout requested: $${redeemAmount.toFixed(2)} SC for ${requestedGame} (Game Account: @${gameAccountUsername}) via ${payoutMethod} to tag ${finalTag} (Frozen in escrow, routed to Coin Allotment)`,
       createdAt: new Date(),
     });
 

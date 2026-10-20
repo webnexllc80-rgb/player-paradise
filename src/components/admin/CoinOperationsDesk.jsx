@@ -755,16 +755,23 @@ export default function CoinOperationsDesk({ sessionUser }) {
                       </div>
 
                       <div className="flex items-center justify-between text-xs pt-2 border-t border-white/5">
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold"
-                          style={{
-                            backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            color: '#FFFFFF',
-                          }}
-                        >
-                          <Gamepad2 size={12} className="text-[#00F0FF]" /> {item.gameTitle}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold"
+                            style={{
+                              backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                              color: '#FFFFFF',
+                            }}
+                          >
+                            <Gamepad2 size={12} className="text-[#00F0FF]" /> {item.gameTitle}
+                          </span>
+                          {item.gameAccountUsername && (
+                            <span className="text-[10.5px] font-mono font-bold text-[#34D399] bg-emerald-950/70 border border-emerald-500/35 px-2 py-0.5 rounded-lg">
+                              @{item.gameAccountUsername}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[10.5px] text-gray-400 font-mono">
                           {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -1398,6 +1405,16 @@ export default function CoinOperationsDesk({ sessionUser }) {
                         }}
                       >
                         <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-gray-400 font-medium">Game Platform:</span>
+                          <span className="text-[#00F0FF] font-bold">{item.gameTitle || 'Game Platform'}</span>
+                        </div>
+                        {item.gameAccountUsername && (
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-gray-400 font-medium">Game User ID:</span>
+                            <span className="text-[#34D399] font-mono font-bold">@{item.gameAccountUsername}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between text-[11px]">
                           <span className="text-gray-400 font-medium">Payout Method:</span>
                           <span className="text-white font-bold">{item.payoutMethod}</span>
                         </div>
@@ -1512,6 +1529,11 @@ export default function CoinOperationsDesk({ sessionUser }) {
                             >
                               {item.gameTitle || 'Platform'}
                             </span>
+                            {item.gameAccountUsername && (
+                              <div style={{ fontSize: '10.5px', color: '#34D399', fontFamily: 'monospace', marginTop: '3px' }}>
+                                @{item.gameAccountUsername}
+                              </div>
+                            )}
                           </td>
 
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
