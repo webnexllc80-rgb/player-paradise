@@ -29,6 +29,7 @@ export async function GET(req) {
       success: true,
       games: games.map(g => {
         const sid = g._id ? g._id.toString() : (g.id || g.gameId);
+        const resolvedImage = g.thumbnail || g.image || g.imageUrl || '/images/vegas-777.svg';
         return {
           id: sid,
           _id: sid,
@@ -36,14 +37,23 @@ export async function GET(req) {
           title: g.title,
           category: g.category || 'sweepstakes',
           provider: g.provider || 'Players Paradise Studio',
-          thumbnail: g.thumbnail || '/images/vegas-777.webp',
+          thumbnail: resolvedImage,
+          image: resolvedImage,
+          imageUrl: resolvedImage,
+          fallbackImage: resolvedImage,
           type: g.type || 'internal',
           url: g.url || null,
+          playUrl: g.playUrl || g.url || null,
           badge: g.badge || (g.isHot ? 'HOT' : (g.isFeatured ? 'EXCLUSIVE' : '')),
           isActive: g.isActive !== false,
           isHot: g.isHot ?? false,
           isFeatured: g.isFeatured ?? false,
           playsCount: g.playsCount || 0,
+          description: g.description || '',
+          platform: g.platform || g.provider || 'Players Paradise',
+          isInternal: g.isInternal ?? (g.type === 'internal'),
+          rtp: g.rtp || 98.2,
+          rating: g.rating || 4.9,
         };
       }),
     });
@@ -90,12 +100,15 @@ export async function POST(req) {
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const normalizedBadge = (badge || '').toUpperCase().trim();
     const gameId = slug + '-' + Math.floor(Math.random() * 1000);
+    const resolvedImage = thumbnail || body.image || body.imageUrl || '/images/vegas-777.svg';
     const newGame = {
       gameId,
       title,
       category: body.category ? body.category.toLowerCase() : 'sweepstakes',
       provider: provider || 'Players Paradise Studio',
-      thumbnail: thumbnail || '/images/vegas-777.webp',
+      thumbnail: resolvedImage,
+      image: resolvedImage,
+      imageUrl: resolvedImage,
       type: type || 'internal',
       url: url || '',
       badge: normalizedBadge,
@@ -103,6 +116,7 @@ export async function POST(req) {
       isHot: normalizedBadge === 'HOT',
       isFeatured: normalizedBadge === 'EXCLUSIVE' || normalizedBadge === 'POPULAR',
       playsCount: 0,
+      description: body.description || '',
       createdAt: new Date(),
     };
 
@@ -140,9 +154,17 @@ export async function PUT(req) {
     const updateFields = {};
     if (title !== undefined) updateFields.title = title;
     if (provider !== undefined) updateFields.provider = provider;
-    if (thumbnail !== undefined) updateFields.thumbnail = thumbnail;
+    
+    const resolvedThumb = thumbnail !== undefined ? thumbnail : (body.image !== undefined ? body.image : body.imageUrl);
+    if (resolvedThumb !== undefined) {
+      updateFields.thumbnail = resolvedThumb;
+      updateFields.image = resolvedThumb;
+      updateFields.imageUrl = resolvedThumb;
+    }
+
     if (url !== undefined) updateFields.url = url;
     if (category !== undefined) updateFields.category = category.toLowerCase();
+    if (body.description !== undefined) updateFields.description = body.description;
     if (isActive !== undefined) updateFields.isActive = Boolean(isActive);
     if (badge !== undefined) {
       const normalizedBadge = (badge || '').toUpperCase().trim();

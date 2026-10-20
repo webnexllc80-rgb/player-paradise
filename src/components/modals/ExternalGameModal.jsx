@@ -74,11 +74,17 @@ export default function ExternalGameModal({
             className="relative w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_20px_rgba(0,240,255,0.4)] bg-slate-950"
             style={{ position: 'relative', width: '80px', height: '80px', minWidth: '80px', margin: '0 auto' }}
           >
-            <Image
-              src={game.image || game.fallbackImage || '/images/vegas-777.svg'}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={game.thumbnail || game.image || game.imageUrl || game.fallbackImage || '/images/vegas-777.svg'}
               alt={game.title}
-              fill
-              className="object-cover"
+              onError={(e) => {
+                if (e.currentTarget.src !== '/images/vegas-777.svg') {
+                  e.currentTarget.src = '/images/vegas-777.svg';
+                }
+              }}
+              className="w-full h-full object-cover"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           </div>
           <div>
