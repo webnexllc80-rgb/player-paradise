@@ -20,6 +20,7 @@ import {
   Coins,
   Sparkles,
   Lock,
+  Users,
 } from 'lucide-react';
 import CyberNavbar from '@/components/navigation/CyberNavbar';
 import CyberSidebar from '@/components/navigation/CyberSidebar';
@@ -87,23 +88,58 @@ export default function LedgerPage() {
     };
   }, []);
 
+  // Granular Classification Helpers
+  const isDeposit = (r) => {
+    const t = (r.type || r.rawType || '').toLowerCase();
+    return t === 'deposit' || t === 'deposit_pending' || (t.includes('deposit') && !t.includes('bonus'));
+  };
+  const isCashout = (r) => {
+    const t = (r.type || r.rawType || '').toLowerCase();
+    return t.includes('withdraw') || t.includes('redemption');
+  };
+  const isDailySpin = (r) => {
+    const t = (r.type || r.rawType || '').toLowerCase();
+    const notes = (r.notes || '').toLowerCase();
+    return t.includes('spin') || notes.includes('wheel') || notes.includes('daily lucky spin') || notes.includes('daily spin');
+  };
+  const isReferral = (r) => {
+    const t = (r.type || r.rawType || '').toLowerCase();
+    const notes = (r.notes || '').toLowerCase();
+    return t.includes('referral') || notes.includes('referral');
+  };
+  const isBonus = (r) => {
+    const t = (r.type || r.rawType || '').toLowerCase();
+    const notes = (r.notes || '').toLowerCase();
+    return (
+      (t.includes('bonus') || t.includes('welcome') || t.includes('promo') || t.includes('freeplay') || notes.includes('bonus')) &&
+      !isDailySpin(r) &&
+      !isReferral(r)
+    );
+  };
+  const isTransfer = (r) => {
+    const t = (r.type || r.rawType || '').toLowerCase();
+    return t.includes('transfer') || t.includes('load') || t.includes('freeze') || t.includes('allotment');
+  };
+
   // Filtered records
   const filteredRecords = useMemo(() => {
     return records.filter((r) => {
-      const typeStr = (r.type || r.rawType || '').toLowerCase();
       const notesStr = (r.notes || '').toLowerCase();
+      const typeStr = (r.type || r.rawType || '').toLowerCase();
       const search = searchQuery.toLowerCase().trim();
 
       // Type filter
-      if (filterType === 'deposits' && !typeStr.includes('deposit')) return false;
-      if (filterType === 'withdrawals' && !typeStr.includes('withdraw') && !typeStr.includes('redemption')) return false;
-      if (filterType === 'bonuses' && !typeStr.includes('bonus') && !typeStr.includes('spin') && !typeStr.includes('promo') && !typeStr.includes('welcome')) return false;
-      if (filterType === 'transfers' && !typeStr.includes('transfer') && !typeStr.includes('freeze') && !typeStr.includes('load')) return false;
+      if (filterType === 'deposits' && !isDeposit(r)) return false;
+      if (filterType === 'bonuses' && !isBonus(r)) return false;
+      if (filterType === 'withdrawals' && !isCashout(r)) return false;
+      if (filterType === 'referrals' && !isReferral(r)) return false;
+      if (filterType === 'spins' && !isDailySpin(r)) return false;
+      if (filterType === 'transfers' && !isTransfer(r)) return false;
 
       // Text search
       if (search) {
         const matchesNote = notesStr.includes(search);
-        const matchesType = typeStr.includes(search);
+        const matchesType = typeStr.includes(search) || (r.displayType || '').toLowerCase().includes(search);
         const matchesId = (r.id || r.referenceId || '').toLowerCase().includes(search);
         if (!matchesNote && !matchesType && !matchesId) return false;
       }
@@ -117,18 +153,20 @@ export default function LedgerPage() {
     let depositsTotal = 0;
     let withdrawalsTotal = 0;
     let bonusesTotal = 0;
+    let rewardsTotal = 0;
 
     for (const r of records) {
       const amt = Math.abs(Number(r.amount ?? r.amountSC ?? 0));
       if (isNaN(amt)) continue;
 
-      const t = (r.type || r.rawType || '').toLowerCase();
-      if (t.includes('deposit')) {
+      if (isDeposit(r)) {
         depositsTotal += amt;
-      } else if (t.includes('withdraw') || t.includes('redemption')) {
+      } else if (isCashout(r)) {
         withdrawalsTotal += amt;
-      } else if (t.includes('bonus') || t.includes('spin') || t.includes('welcome') || t.includes('promo')) {
+      } else if (isBonus(r)) {
         bonusesTotal += amt;
+      } else if (isReferral(r) || isDailySpin(r)) {
+        rewardsTotal += amt;
       }
     }
 
@@ -136,49 +174,61 @@ export default function LedgerPage() {
       depositsTotal,
       withdrawalsTotal,
       bonusesTotal,
+      rewardsTotal,
       totalCount: records.length,
     };
   }, [records]);
 
   const filterTabs = [
-    { id: 'all', label: 'All Transactions', count: records.length },
-    { id: 'deposits', label: 'Deposits', count: records.filter(r => (r.type || '').toLowerCase().includes('deposit')).length },
-    { id: 'withdrawals', label: 'Withdrawals', count: records.filter(r => (r.type || '').toLowerCase().includes('withdraw') || (r.type || '').toLowerCase().includes('redemption')).length },
-    { id: 'bonuses', label: 'Bonuses & Spins', count: records.filter(r => (r.type || '').toLowerCase().includes('bonus') || (r.type || '').toLowerCase().includes('spin')).length },
-    { id: 'transfers', label: 'Game Transfers', count: records.filter(r => (r.type || '').toLowerCase().includes('transfer') || (r.type || '').toLowerCase().includes('freeze') || (r.type || '').toLowerCase().includes('load')).length },
+    { id: 'all', label: 'All Activity', count: records.length },
+    { id: 'deposits', label: 'Deposits', count: records.filter(isDeposit).length },
+    { id: 'bonuses', label: 'Deposit & Welcome Bonuses', count: records.filter(isBonus).length },
+    { id: 'withdrawals', label: 'Cashouts', count: records.filter(isCashout).length },
+    { id: 'referrals', label: 'Referral Rewards', count: records.filter(isReferral).length },
+    { id: 'spins', label: 'Daily Spins', count: records.filter(isDailySpin).length },
+    { id: 'transfers', label: 'Game Transfers', count: records.filter(isTransfer).length },
   ];
 
   const getRecordBadge = (r) => {
-    const t = (r.type || r.rawType || '').toLowerCase();
-    if (t.includes('deposit')) {
-      return {
-        label: 'DEPOSIT',
-        color: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
-        icon: ArrowDownLeft,
-      };
-    }
-    if (t.includes('withdraw') || t.includes('redemption')) {
-      return {
-        label: 'CASHOUT',
-        color: 'text-rose-400 bg-rose-500/15 border-rose-500/30',
-        icon: ArrowUpRight,
-      };
-    }
-    if (t.includes('spin')) {
+    if (isDailySpin(r)) {
       return {
         label: 'DAILY SPIN',
-        color: 'text-amber-400 bg-amber-500/15 border-amber-500/30',
+        color: 'text-amber-400 bg-amber-500/15 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]',
         icon: Sparkles,
       };
     }
-    if (t.includes('welcome') || t.includes('bonus')) {
+    if (isReferral(r)) {
       return {
-        label: 'BONUS',
-        color: 'text-purple-400 bg-purple-500/15 border-purple-500/30',
+        label: 'REFERRAL BONUS',
+        color: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]',
+        icon: Users,
+      };
+    }
+    if (isBonus(r)) {
+      const isWelcome = (r.type || '').toLowerCase().includes('welcome') || (r.notes || '').toLowerCase().includes('welcome');
+      return {
+        label: isWelcome ? 'WELCOME BONUS' : 'DEPOSIT BONUS',
+        color: isWelcome
+          ? 'text-fuchsia-400 bg-fuchsia-500/15 border-fuchsia-500/30 shadow-[0_0_10px_rgba(217,70,239,0.2)]'
+          : 'text-purple-400 bg-purple-500/15 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.2)]',
         icon: Gift,
       };
     }
-    if (t.includes('transfer') || t.includes('load') || t.includes('freeze')) {
+    if (isCashout(r)) {
+      return {
+        label: 'CASHOUT',
+        color: 'text-rose-400 bg-rose-500/15 border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.2)]',
+        icon: ArrowUpRight,
+      };
+    }
+    if (isDeposit(r)) {
+      return {
+        label: 'DEPOSIT',
+        color: 'text-cyan-400 bg-cyan-500/15 border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]',
+        icon: ArrowDownLeft,
+      };
+    }
+    if (isTransfer(r)) {
       return {
         label: 'GAME LOAD',
         color: 'text-[var(--neon-cyan)] bg-[var(--neon-cyan)]/15 border-[var(--neon-cyan)]/30',
@@ -186,7 +236,7 @@ export default function LedgerPage() {
       };
     }
     return {
-      label: (r.displayType || r.type || 'TRANSFER').toUpperCase(),
+      label: (r.displayType || r.type || 'ACTIVITY').toUpperCase(),
       color: 'text-slate-300 bg-slate-800 border-slate-700',
       icon: Receipt,
     };
@@ -299,28 +349,28 @@ export default function LedgerPage() {
               <span className="text-[10px] text-slate-400">Dispatched to wallet</span>
             </div>
 
-            {/* Card 3: Free Bonuses */}
-            <div className="p-4 rounded-2xl bg-[#0d102b] border border-amber-500/30 space-y-1 shadow-md">
+            {/* Card 3: Deposit & Welcome Bonuses */}
+            <div className="p-4 rounded-2xl bg-[#0d102b] border border-fuchsia-500/30 space-y-1 shadow-md">
               <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span className="font-bold uppercase tracking-wider text-[10px]">Bonuses & Spins</span>
-                <Gift size={16} className="text-amber-400" />
+                <span className="font-bold uppercase tracking-wider text-[10px]">Bonuses Earned</span>
+                <Gift size={16} className="text-fuchsia-400" />
               </div>
-              <div className="font-mono font-black text-xl sm:text-2xl text-amber-400">
+              <div className="font-mono font-black text-xl sm:text-2xl text-fuchsia-400">
                 ${stats.bonusesTotal.toFixed(2)}
               </div>
-              <span className="text-[10px] text-slate-400">Free daily wheel prizes</span>
+              <span className="text-[10px] text-slate-400">Welcome & deposit reload</span>
             </div>
 
-            {/* Card 4: Total Logged Events */}
-            <div className="p-4 rounded-2xl bg-[#0d102b] border border-purple-500/30 space-y-1 shadow-md">
+            {/* Card 4: Daily Spin & Referral Rewards */}
+            <div className="p-4 rounded-2xl bg-[#0d102b] border border-amber-500/30 space-y-1 shadow-md">
               <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span className="font-bold uppercase tracking-wider text-[10px]">Audit Records</span>
-                <ShieldCheck size={16} className="text-purple-400" />
+                <span className="font-bold uppercase tracking-wider text-[10px]">Spins & Referrals</span>
+                <Sparkles size={16} className="text-amber-400" />
               </div>
-              <div className="font-mono font-black text-xl sm:text-2xl text-purple-300">
-                {stats.totalCount}
+              <div className="font-mono font-black text-xl sm:text-2xl text-amber-400">
+                ${stats.rewardsTotal.toFixed(2)}
               </div>
-              <span className="text-[10px] text-slate-400">100% On-chain / immutable</span>
+              <span className="text-[10px] text-slate-400">Daily lucky wheel & invites</span>
             </div>
           </div>
 

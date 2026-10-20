@@ -291,20 +291,60 @@ export async function PUT(req) {
       );
 
       // 3. Write Immutable Ledger
-      await ledgerCol.insertOne({
-        userId: user._id.toString(),
-        username: user.username,
-        type: 'deposit',
-        currency: 'SC',
-        amount: creditedSC,
-        balanceBefore: oldSC,
-        balanceAfter: newSC,
-        performedBy: session.username,
-        staffRole: session.role,
-        referenceId: depositId,
-        notes: `Deposit $${deposit.amount} approved (${creditedSC} SC credited: $${deposit.amount} base + ${deposit.bonusSC || 0} SC ${deposit.bonusType || 'welcome'} bonus). Method: ${deposit.methodName}. TXID: ${deposit.txHash || 'N/A'}`,
-        createdAt: new Date(),
-      });
+      const baseDepositAmount = Number(deposit.amount || 0);
+      const bonusAmount = Number(deposit.bonusSC || 0);
+      const bonusTypeLabel = (deposit.bonusType || 'Welcome').trim();
+
+      if (bonusAmount > 0) {
+        const intermediateSC = Number((oldSC + baseDepositAmount).toFixed(2));
+        // 3a. Base Deposit Record
+        await ledgerCol.insertOne({
+          userId: user._id.toString(),
+          username: user.username,
+          type: 'deposit',
+          currency: 'SC',
+          amount: baseDepositAmount,
+          balanceBefore: oldSC,
+          balanceAfter: intermediateSC,
+          performedBy: session.username,
+          staffRole: session.role,
+          referenceId: depositId,
+          notes: `Deposit $${baseDepositAmount.toFixed(2)} approved via ${deposit.methodName}. TXID: ${deposit.txHash || 'N/A'}`,
+          createdAt: new Date(),
+        });
+
+        // 3b. Bonus Record
+        await ledgerCol.insertOne({
+          userId: user._id.toString(),
+          username: user.username,
+          type: bonusTypeLabel.toLowerCase().includes('welcome') ? 'welcome_bonus' : 'deposit_bonus',
+          currency: 'SC',
+          amount: bonusAmount,
+          balanceBefore: intermediateSC,
+          balanceAfter: newSC,
+          performedBy: session.username,
+          staffRole: session.role,
+          referenceId: depositId,
+          notes: `${bonusTypeLabel} Bonus: +$${bonusAmount.toFixed(2)} SC credited on deposit ($${baseDepositAmount.toFixed(2)})`,
+          createdAt: new Date(Date.now() + 500),
+        });
+      } else {
+        // Standard single deposit without bonus
+        await ledgerCol.insertOne({
+          userId: user._id.toString(),
+          username: user.username,
+          type: 'deposit',
+          currency: 'SC',
+          amount: creditedSC,
+          balanceBefore: oldSC,
+          balanceAfter: newSC,
+          performedBy: session.username,
+          staffRole: session.role,
+          referenceId: depositId,
+          notes: `Deposit $${deposit.amount} approved via ${deposit.methodName}. TXID: ${deposit.txHash || 'N/A'}`,
+          createdAt: new Date(),
+        });
+      }
 
       // 4. Dynamic Referral Bonus Engine: Trigger on Referred Friend's First Approved Deposit
       const approvedCount = await depositsCol.countDocuments({

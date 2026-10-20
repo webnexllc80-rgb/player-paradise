@@ -3603,13 +3603,14 @@ export default function AdminPortal({ initialTab }) {
                   >
                     <option value="all">All Types</option>
                     <option value="deposit">Deposits</option>
-                    <option value="redemption">Redemptions</option>
+                    <option value="redemption">Cashouts / Redemptions</option>
+                    <option value="bonus">Deposit & Welcome Bonuses</option>
+                    <option value="daily_spin">Daily Spin Bonuses</option>
+                    <option value="referral_bonus">Referral Bonuses</option>
                     <option value="game_bet">Bets</option>
                     <option value="game_win">Wins</option>
                     <option value="admin_allotment">Allotments (+)</option>
                     <option value="admin_deduction">Deductions (-)</option>
-                    <option value="referral_bonus">Referrals</option>
-                    <option value="daily_bonus">Daily Bonuses</option>
                   </select>
                   <a
                     href={`/api/ledger?format=csv&username=${encodeURIComponent(ledgerFilterUser)}&type=${ledgerFilterType}`}
@@ -3641,9 +3642,9 @@ export default function AdminPortal({ initialTab }) {
                         <tr key={r.id} className="hover:bg-white/5">
                           <td className="p-3 text-gray-400">{new Date(r.createdAt).toLocaleString()}</td>
                           <td className="p-3 font-bold text-white">{r.username}</td>
-                          <td className="p-3 uppercase text-[10px] font-black text-purple-300">{r.type.replace('_', ' ')}</td>
+                          <td className="p-3 uppercase text-[10px] font-black text-purple-300">{r.displayType || r.type.replace(/_/g, ' ')}</td>
                           <td className={`p-3 font-bold ${r.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {r.amount >= 0 ? `+${r.amount}` : r.amount} {r.currency}
+                            {r.amount >= 0 ? `+$${Number(r.amount).toFixed(2)}` : `-$${Math.abs(Number(r.amount)).toFixed(2)}`} {r.currency || 'SC'}
                           </td>
                           <td className="p-3 text-gray-400">{r.balanceBefore?.toFixed(2) ?? '—'}</td>
                           <td className="p-3 text-white font-semibold">{r.balanceAfter?.toFixed(2) ?? '—'}</td>
