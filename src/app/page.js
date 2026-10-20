@@ -173,6 +173,12 @@ export default function HomePage() {
   useEffect(() => {
     if (user?.email) {
       loadUserGameAccounts(user.email);
+      const interval = setInterval(() => {
+        if (!document.hidden) {
+          loadUserGameAccounts(user.email);
+        }
+      }, 3000);
+      return () => clearInterval(interval);
     }
   }, [user?.email]);
 

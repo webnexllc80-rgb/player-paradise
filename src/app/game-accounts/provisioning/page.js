@@ -125,21 +125,80 @@ function ProvisioningContent() {
     return () => clearInterval(interval);
   }, [gameParam]);
 
-  // Live Status Polling
+  // Live Status Polling (No refresh needed - auto-detects approval immediately)
   useEffect(() => {
     if (!user || isApproved) return;
 
-    async function pollStatus() {
-      try {
-        const res = await fetch(`/api/account-requests?email=${encodeURIComponent(user.email)}`);
-        const data = await res.json();
-        if (data.success && data.accountRequests) {
-          // Find target request by ID or by gameTitle
-          const target = requestId
-            ? data.accountRequests.find(r => r.id === requestId)
-            : data.accountRequests.find(r => r.gameTitle?.toLowerCase() === gameParam.toLowerCase() && (r.status === 'READY' || r.status === 'PENDING'));
+    let isMounted = true;
 
-          if (target) {
+    async function pollStatus() {
+      if (!user?.email || !isMounted) return;
+      try {
+        const cleanGame = (gameParam || '').toLowerCase().trim();
+
+        // 1. Fetch both account-requests and game-accounts with no-store cache
+        const [reqRes, credRes] = await Promise.allSettled([
+          fetch(`/api/account-requests?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' }),
+          fetch(`/api/game-accounts?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' }),
+        ]);
+
+        const reqData = reqRes.status === 'fulfilled' ? await reqRes.value.json().catch(() => ({})) : {};
+        const credData = credRes.status === 'fulfilled' ? await credRes.value.json().catch(() => ({})) : {};
+
+        // 2. Check if credentials are ready in gameAccounts
+        if (credData.success && Array.isArray(credData.gameAccounts)) {
+          const directCred = credData.gameAccounts.find((a) => {
+            const t = (a.gameTitle || '').toLowerCase().trim();
+            return t === cleanGame || (cleanGame && t.includes(cleanGame)) || (t && cleanGame.includes(t));
+          });
+
+          if (directCred && isMounted) {
+            setRequestData({
+              gameTitle: directCred.gameTitle || gameParam,
+              gameAccountUsername: directCred.username,
+              gameAccountPassword: directCred.password,
+              status: 'READY',
+            });
+            setIsApproved(true);
+            setProgress(100);
+            setCurrentStage(3);
+
+            confetti({
+              particleCount: 90,
+              spread: 70,
+              origin: { y: 0.6 },
+              colors: ['#00F0FF', '#10B981', '#F59E0B', '#C026D3'],
+            });
+            return;
+          }
+        }
+
+        // 3. Check in accountRequests
+        if (reqData.success && Array.isArray(reqData.accountRequests)) {
+          let target = null;
+          if (requestId) {
+            target = reqData.accountRequests.find(
+              (r) => String(r.id) === String(requestId) || String(r._id) === String(requestId)
+            );
+          }
+          if (!target || target.status !== 'READY') {
+            const readyByGame = reqData.accountRequests.find((r) => {
+              const t = (r.gameTitle || '').toLowerCase().trim();
+              return (
+                (t === cleanGame || (cleanGame && t.includes(cleanGame)) || (t && cleanGame.includes(t))) &&
+                r.status === 'READY'
+              );
+            });
+            if (readyByGame) target = readyByGame;
+          }
+          if (!target) {
+            target = reqData.accountRequests.find((r) => {
+              const t = (r.gameTitle || '').toLowerCase().trim();
+              return t === cleanGame || (cleanGame && t.includes(cleanGame)) || (t && cleanGame.includes(t));
+            });
+          }
+
+          if (target && isMounted) {
             setRequestData(target);
             if (target.status === 'READY' || target.status === 'APPROVED') {
               setIsApproved(true);
@@ -161,8 +220,12 @@ function ProvisioningContent() {
     }
 
     pollStatus();
-    const pollInterval = setInterval(pollStatus, 3000);
-    return () => clearInterval(pollInterval);
+    // Fast 1.5-second polling interval for real-time unlock
+    const pollInterval = setInterval(pollStatus, 1500);
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
   }, [user, requestId, gameParam, isApproved]);
 
   const handleCopy = (text, field) => {

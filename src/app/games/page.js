@@ -119,6 +119,12 @@ export default function GamesPage() {
   useEffect(() => {
     if (user?.email) {
       loadUserGameAccounts(user.email);
+      const interval = setInterval(() => {
+        if (!document.hidden) {
+          loadUserGameAccounts(user.email);
+        }
+      }, 3000);
+      return () => clearInterval(interval);
     }
   }, [user?.email]);
 
