@@ -1,9 +1,17 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Bell, ArrowRight, X, DollarSign, Wallet, Gamepad2, Headphones, KeyRound } from 'lucide-react';
 
 export default function IncomingRequestToast({ alert, onDismiss, onViewRequest }) {
+  useEffect(() => {
+    if (!alert) return;
+    const timer = setTimeout(() => {
+      if (onDismiss) onDismiss();
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [alert, onDismiss]);
+
   if (!alert) return null;
 
   const getIcon = () => {

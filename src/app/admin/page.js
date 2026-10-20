@@ -472,8 +472,9 @@ export default function AdminPortal({ initialTab }) {
       )
     );
 
-    // 2. Dismiss modal immediately for instant 0ms user feedback
+    // 2. Dismiss modal and toast immediately for instant 0ms user feedback
     setApprovalModal({ open: false, request: null, username: '', password: '' });
+    setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
 
     try {
       const res = await fetch('/api/account-requests', {
@@ -509,6 +510,7 @@ export default function AdminPortal({ initialTab }) {
     setAccountRequests((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: 'REJECTED', rejectionReason: reason } : r))
     );
+    setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
 
     try {
       await fetch('/api/account-requests', {
@@ -774,6 +776,8 @@ export default function AdminPortal({ initialTab }) {
           subtext: 'Tap to review & issue credentials',
           targetTab: 'account_requests',
         });
+      } else if (pendingReqs.length === 0) {
+        setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
       }
 
       // 2. Incoming new deposits
@@ -791,6 +795,8 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'finance',
           targetSubTab: 'deposits',
         });
+      } else if (pendingDeps.length === 0) {
+        setActiveAlertToast((curr) => (curr?.type === 'deposit' ? null : curr));
       }
 
       // 3. Incoming new redemptions / cashouts
@@ -808,6 +814,8 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'finance',
           targetSubTab: 'redemptions',
         });
+      } else if (pendingWith.length === 0) {
+        setActiveAlertToast((curr) => (curr?.type === 'redemption' ? null : curr));
       }
 
       // 4. Incoming coin load requests
@@ -825,6 +833,8 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'coins_allotment',
           targetSubTab: 'loads',
         });
+      } else if (pendingCoinLoads.length === 0) {
+        setActiveAlertToast((curr) => (curr?.type === 'coin_load' ? null : curr));
       }
 
       // 5. Incoming coin cashout proof verifications
@@ -842,6 +852,8 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'coins_allotment',
           targetSubTab: 'cashouts',
         });
+      } else if (pendingCoinCashouts.length === 0) {
+        setActiveAlertToast((curr) => (curr?.type === 'coin_verification' ? null : curr));
       }
 
       // 6. Incoming Live Support Chat messages
@@ -3286,6 +3298,7 @@ export default function AdminPortal({ initialTab }) {
                 syncRequestsAndAlerts().finally(() => setRefreshingFinance(false));
               }}
               onApproveDeposit={async (depositId, scToCredit) => {
+                setActiveAlertToast((curr) => (curr?.type === 'deposit' ? null : curr));
                 // Optimistic UI update: immediately mark deposit as approved (0ms)
                 setDeposits((prev) =>
                   prev.map((item) =>
@@ -3314,6 +3327,7 @@ export default function AdminPortal({ initialTab }) {
                 }
               }}
               onRejectDeposit={async (depositId, reason) => {
+                setActiveAlertToast((curr) => (curr?.type === 'deposit' ? null : curr));
                 // Optimistic UI update: immediately mark deposit as rejected (0ms)
                 setDeposits((prev) =>
                   prev.map((item) => (item.id === depositId ? { ...item, status: 'rejected' } : item))
@@ -3338,6 +3352,7 @@ export default function AdminPortal({ initialTab }) {
                 }
               }}
               onApproveRedemption={async (redemptionId) => {
+                setActiveAlertToast((curr) => (curr?.type === 'redemption' ? null : curr));
                 // Optimistic UI update: immediately mark redemption as approved & dispatched (0ms)
                 setRedemptions((prev) =>
                   prev.map((item) =>
@@ -3364,6 +3379,7 @@ export default function AdminPortal({ initialTab }) {
                 }
               }}
               onRejectRedemption={async (redemptionId, reason) => {
+                setActiveAlertToast((curr) => (curr?.type === 'redemption' ? null : curr));
                 // Optimistic UI update: immediately mark redemption as rejected (0ms)
                 setRedemptions((prev) =>
                   prev.map((item) => (item.id === redemptionId ? { ...item, status: 'rejected', stage: 'rejected' } : item))
