@@ -33,6 +33,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const lastStaffMsgCountRef = useRef(0);
+  const fetchMessagesRef = useRef(null);
 
   // Synchronous and persistent guestId generation
   useEffect(() => {
@@ -206,6 +207,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
     };
 
     fetchMessages();
+    fetchMessagesRef.current = fetchMessages;
     const pollInterval = isOpen ? 3500 : 12000;
     const interval = setInterval(fetchMessages, pollInterval);
 
@@ -214,6 +216,43 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
       clearInterval(interval);
     };
   }, [isOpen, currentUser, guestId, soundEnabled]);
+
+  // Real-time zero-delay listener for Staff Replies from Admin Concierge Desk
+  useEffect(() => {
+    const handleStaffReply = (payload) => {
+      if (!payload || payload.type !== 'STAFF_CHAT_REPLY') return;
+      const myConvId = String(
+        currentUser
+          ? (currentUser.userId || currentUser.id || currentUser._id)
+          : (guestId || (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') || '')
+      );
+      if (!payload.conversationId || String(payload.conversationId) === myConvId) {
+        if (fetchMessagesRef.current) {
+          fetchMessagesRef.current();
+        }
+      }
+    };
+
+    let pChannel = null;
+    try {
+      pChannel = new BroadcastChannel('paradise_player_chat_sync');
+      pChannel.onmessage = (event) => handleStaffReply(event.data);
+    } catch {}
+
+    const handleStorage = (e) => {
+      if (e.key === 'paradise_player_chat_event' && e.newValue) {
+        try {
+          handleStaffReply(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      if (pChannel) pChannel.close();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [currentUser, guestId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -335,6 +374,27 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
           prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
         );
       }
+
+      // Immediately notify Admin Concierge Desk via BroadcastChannel & localStorage
+      const convId = String(
+        currentUser ? (currentUser.userId || currentUser.id || currentUser._id) : effectiveGuestId
+      );
+      const senderName = currentUser?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`;
+      const staffAlert = {
+        type: 'NEW_CHAT_MESSAGE',
+        username: senderName,
+        text: currentText || (currentAttachment ? '📷 [Image Attachment]' : 'New inquiry'),
+        conversationId: convId,
+        time: Date.now(),
+      };
+      try {
+        const ch = new BroadcastChannel('paradise_staff_alerts');
+        ch.postMessage(staffAlert);
+        ch.close();
+      } catch {}
+      try {
+        localStorage.setItem('paradise_staff_event', JSON.stringify(staffAlert));
+      } catch {}
     } catch (err) {
       // Restore input text so the user doesn't lose it
       setInputMessage(currentText);

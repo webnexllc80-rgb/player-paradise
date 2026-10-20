@@ -871,7 +871,34 @@ export default function AdminPortal({ initialTab }) {
 
       // 6. Incoming Live Support Chat messages
       if (unreadChatCount > (prevCountsRef.current.chat || 0)) {
-        playAdminChime('bell');
+        const newestChat = unreadChatConvs[0];
+        const sender = newestChat?.username || 'Player';
+        const snippet = newestChat?.lastMessage ? newestChat.lastMessage.slice(0, 80) : 'New inquiry received';
+        const alertTitle = `💬 Support Message: ${sender}`;
+        const alertBody = snippet;
+        unlockAudioContext();
+        playAdminChime();
+        sendDesktopNotification(alertTitle, alertBody, `/admin/chat?cid=${newestChat?._id || ''}`);
+        setActiveAlertToast({
+          type: 'chat',
+          title: alertTitle,
+          message: alertBody,
+          subtext: 'Tap to open & reply directly',
+          targetTab: 'chat',
+          cid: newestChat?._id || '',
+          username: sender,
+        });
+
+        if (activeTab === 'chat' && activeChatConv?._id) {
+          fetch(`/api/chat?conversationId=${encodeURIComponent(activeChatConv._id)}`, { cache: 'no-store' })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success) setChatMessages(d.messages);
+            })
+            .catch(() => {});
+        }
+      } else if (unreadChatCount === 0) {
+        setActiveAlertToast((curr) => (curr?.type === 'chat' ? null : curr));
       }
 
       prevCountsRef.current = {
@@ -942,6 +969,42 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'coins_allotment',
           targetSubTab: 'cashouts',
         });
+        syncRequestsAndAlerts();
+      } else if (payload.type === 'NEW_CHAT_MESSAGE') {
+        unlockAudioContext();
+        playAdminChime();
+        const uName = payload.username || 'Player';
+        const msgSnippet = (payload.text || 'New message attachment').slice(0, 80);
+        const alertTitle = `💬 Support Message: ${uName}`;
+        const alertBody = msgSnippet;
+        sendDesktopNotification(alertTitle, alertBody, `/admin/chat?cid=${payload.conversationId || ''}`);
+        setActiveAlertToast({
+          type: 'chat',
+          title: alertTitle,
+          message: alertBody,
+          subtext: 'Tap to open & reply directly',
+          targetTab: 'chat',
+          cid: payload.conversationId || '',
+          username: uName,
+        });
+
+        // Fast zero-delay inbox refresh
+        fetch('/api/chat?inbox=true', { cache: 'no-store' })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) setChatConversations(d.conversations || []);
+          })
+          .catch(() => {});
+
+        // If conversation is currently open or matches payload, fetch its messages
+        if (payload.conversationId) {
+          fetch(`/api/chat?conversationId=${encodeURIComponent(payload.conversationId)}`, { cache: 'no-store' })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success) setChatMessages(d.messages);
+            })
+            .catch(() => {});
+        }
         syncRequestsAndAlerts();
       }
     };
@@ -1077,7 +1140,7 @@ export default function AdminPortal({ initialTab }) {
         .then(d => { if (d.success) setChatMessages(d.messages); });
     };
     fetchChatMsgs();
-    const interval = setInterval(fetchChatMsgs, 3000);
+    const interval = setInterval(fetchChatMsgs, 1200);
     return () => clearInterval(interval);
   }, [activeChatConv]);
 
@@ -3672,6 +3735,27 @@ export default function AdminPortal({ initialTab }) {
                 const cRes = await fetch('/api/chat?inbox=true');
                 const cD = await cRes.json();
                 if (cD.success) setChatConversations(cD.conversations);
+
+                // Instant cross-tab broadcast to player widget & /chat
+                try {
+                  const pChannel = new BroadcastChannel('paradise_player_chat_sync');
+                  pChannel.postMessage({
+                    type: 'STAFF_CHAT_REPLY',
+                    conversationId: activeChatConv._id,
+                    time: Date.now(),
+                  });
+                  pChannel.close();
+                } catch {}
+                try {
+                  localStorage.setItem(
+                    'paradise_player_chat_event',
+                    JSON.stringify({
+                      type: 'STAFF_CHAT_REPLY',
+                      conversationId: activeChatConv._id,
+                      time: Date.now(),
+                    })
+                  );
+                } catch {}
               } catch (err) {
                 console.error('Failed to send chat message:', err);
               } finally {

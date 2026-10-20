@@ -41,6 +41,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const lastStaffMsgCountRef = useRef(0);
+  const fetchMsgsRef = useRef(null);
 
   // Load user & listen to global user sync
   useEffect(() => {
@@ -128,10 +129,48 @@ export default function ChatPage() {
     };
 
     fetchMsgs();
+    fetchMsgsRef.current = fetchMsgs;
     const interval = setInterval(fetchMsgs, 3000);
     return () => {
       isCancelled = true;
       clearInterval(interval);
+    };
+  }, [user, guestId]);
+
+  // Real-time zero-delay listener for Staff Replies from Admin Concierge Desk
+  useEffect(() => {
+    const handleStaffReply = (payload) => {
+      if (!payload || payload.type !== 'STAFF_CHAT_REPLY') return;
+      const myConvId = String(
+        user
+          ? (user.userId || user.id || user._id)
+          : (guestId || (typeof window !== 'undefined' ? localStorage.getItem('pp_guest_chat_id') : '') || '')
+      );
+      if (!payload.conversationId || String(payload.conversationId) === myConvId) {
+        if (fetchMsgsRef.current) {
+          fetchMsgsRef.current();
+        }
+      }
+    };
+
+    let pChannel = null;
+    try {
+      pChannel = new BroadcastChannel('paradise_player_chat_sync');
+      pChannel.onmessage = (event) => handleStaffReply(event.data);
+    } catch {}
+
+    const handleStorage = (e) => {
+      if (e.key === 'paradise_player_chat_event' && e.newValue) {
+        try {
+          handleStaffReply(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      if (pChannel) pChannel.close();
+      window.removeEventListener('storage', handleStorage);
     };
   }, [user, guestId]);
 
@@ -246,6 +285,27 @@ export default function ChatPage() {
           prev.map((m) => (m.id === optimisticMsg.id ? data.message : m))
         );
       }
+
+      // Immediately notify Admin Concierge Desk via BroadcastChannel & localStorage
+      const convId = String(
+        user ? (user.userId || user.id || user._id) : effectiveGuestId
+      );
+      const senderName = user?.username || `Guest #${effectiveGuestId.slice(-4).toUpperCase()}`;
+      const staffAlert = {
+        type: 'NEW_CHAT_MESSAGE',
+        username: senderName,
+        text: currentText || (currentAttachment ? '📷 [Image Attachment]' : 'New inquiry'),
+        conversationId: convId,
+        time: Date.now(),
+      };
+      try {
+        const ch = new BroadcastChannel('paradise_staff_alerts');
+        ch.postMessage(staffAlert);
+        ch.close();
+      } catch {}
+      try {
+        localStorage.setItem('paradise_staff_event', JSON.stringify(staffAlert));
+      } catch {}
     } catch (err) {
       setInputMessage(currentText);
       setAttachedImage(currentAttachment);

@@ -33,7 +33,11 @@ export default function IncomingRequestToast({ alert, onDismiss, onViewRequest }
   return (
     <div className="fixed top-20 right-4 z-[90] max-w-sm w-full animate-slideInRight">
       <div
-        className={`p-4 rounded-2xl bg-[#0e1224]/95 backdrop-blur-xl border ${getBorderColor()} shadow-2xl flex flex-col gap-3 transition-all`}
+        onClick={() => {
+          if (onViewRequest) onViewRequest(alert);
+          onDismiss();
+        }}
+        className={`p-4 rounded-2xl bg-[#0e1224]/95 backdrop-blur-xl border ${getBorderColor()} shadow-2xl flex flex-col gap-3 transition-all cursor-pointer hover:scale-[1.02]`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -52,7 +56,10 @@ export default function IncomingRequestToast({ alert, onDismiss, onViewRequest }
             </div>
           </div>
           <button
-            onClick={onDismiss}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss();
+            }}
             className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
           >
             <X size={15} />
@@ -61,13 +68,18 @@ export default function IncomingRequestToast({ alert, onDismiss, onViewRequest }
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               if (onViewRequest) onViewRequest(alert);
               onDismiss();
             }}
-            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black text-xs font-black flex items-center gap-1.5 transition shadow-lg shadow-amber-500/20"
+            className={
+              alert.type === 'chat'
+                ? 'px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white text-xs font-black flex items-center gap-1.5 transition shadow-lg shadow-pink-500/20'
+                : 'px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black text-xs font-black flex items-center gap-1.5 transition shadow-lg shadow-amber-500/20'
+            }
           >
-            <span>Review Request</span>
+            <span>{alert.type === 'chat' ? 'Open Chat & Reply' : 'Review Request'}</span>
             <ArrowRight size={13} />
           </button>
         </div>
