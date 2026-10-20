@@ -188,11 +188,20 @@ export default function CyberNavbar({
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('balanceUpdate', handleCustomEvent);
+    let balanceChan = null;
+    try {
+      balanceChan = new BroadcastChannel('paradise_balance_sync');
+      balanceChan.onmessage = () => syncUserData();
+    } catch {}
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'paradise_user_balance_sync') syncUserData();
+    });
     window.addEventListener('refreshUser', handleCustomEvent);
 
     return () => {
       isCancelled = true;
       clearInterval(syncInterval);
+      if (balanceChan) balanceChan.close();
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('balanceUpdate', handleCustomEvent);

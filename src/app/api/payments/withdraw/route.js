@@ -86,6 +86,16 @@ export async function GET(req) {
   }
 }
 
+// Safe ID filter helper
+const safeFilter = (targetId) => {
+  if (!targetId) return { _id: null };
+  const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
+  if (is24Hex && ObjectId.isValid(targetId)) {
+    return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { id: targetId }] };
+  }
+  return { $or: [{ _id: targetId }, { id: targetId }] };
+};
+
 // POST: Player Request Redemption
 export async function POST(req) {
   try {
@@ -139,9 +149,30 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
     }
 
-    // Per rules: Withdrawal winnings are verified from the external game, no wallet balance deduction/freeze
-    const initialStatus = 'pending';
-    const initialStage = 'finance_payout';
+    // Verify user has sufficient available SC balance (Total SC - currently frozen)
+    const currentSC = Number(user.balanceSC ?? user.balance ?? 0);
+    const frozen = Number(user.frozenBalance || 0);
+    const availableSC = Math.max(0, Number((currentSC - frozen).toFixed(2)));
+
+    if (redeemAmount > availableSC) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Insufficient redeemable SC balance. Available: $${availableSC.toFixed(2)} SC. (Requested: $${redeemAmount.toFixed(2)} SC)`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Freeze cashout amount in user's wallet escrow
+    await usersCol.updateOne(
+      safeFilter(user._id),
+      { $inc: { frozenBalance: redeemAmount } }
+    );
+
+    // Initial cashout must go to Coin Allotment (Coin Operations Desk) first
+    const initialStatus = 'pending_coin';
+    const initialStage = 'coin_verification';
 
     // Create Redemption Record
     const insertRes = await redemptionsCol.insertOne({
@@ -168,17 +199,26 @@ export async function POST(req) {
       type: 'redemption_request',
       currency: 'SC',
       amount: redeemAmount,
-      balanceBefore: user.balanceSC || 0,
-      balanceAfter: user.balanceSC || 0,
+      balanceBefore: currentSC,
+      balanceAfter: currentSC,
       performedBy: 'player',
       referenceId: insertRes.insertedId.toString(),
-      notes: `Cashout requested: $${redeemAmount} SC for ${gameTitle || 'Game'} via ${payoutMethod} to tag ${finalTag} (Game proof & payout QR attached)`,
+      notes: `Cashout requested: $${redeemAmount.toFixed(2)} SC for ${gameTitle || 'Game'} via ${payoutMethod} to tag ${finalTag} (Frozen in escrow, routed to Coin Allotment)`,
       createdAt: new Date(),
+    });
+
+    notifyPlayer({
+      userId: user._id.toString(),
+      userEmail: user.email,
+      username: user.username,
+      title: 'Cashout Request Submitted ⏳',
+      message: `Your cashout request for $${redeemAmount.toFixed(2)} SC has been sent to Coin Allotment Desk for game verification.`,
+      type: 'withdraw_pending_coin',
     });
 
     return NextResponse.json({
       success: true,
-      message: `Cashout request for $${redeemAmount.toFixed(2)} submitted! Desk agents will verify your game screenshot & QR tag to dispatch your payout.`,
+      message: `Cashout request for $${redeemAmount.toFixed(2)} submitted! It has been routed to Coin Allotment for game screenshot verification.`,
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -210,15 +250,6 @@ export async function PUT(req) {
     const usersCol = db.collection('users');
     const ledgerCol = db.collection('ledger');
 
-    const safeFilter = (targetId) => {
-      if (!targetId) return { _id: null };
-      const is24Hex = typeof targetId === 'string' && targetId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetId);
-      if (is24Hex && ObjectId.isValid(targetId)) {
-        return { $or: [{ _id: new ObjectId(targetId) }, { _id: targetId }, { id: targetId }] };
-      }
-      return { $or: [{ _id: targetId }, { id: targetId }] };
-    };
-
     const redemption = await redemptionsCol.findOne(safeFilter(redemptionId));
     if (!redemption) {
       return NextResponse.json({ success: false, error: 'Redemption not found.' }, { status: 404 });
@@ -230,7 +261,7 @@ export async function PUT(req) {
       email: redemption.userEmail || redemption.email,
     }));
 
-    // ACTION 1: COIN DESK APPROVAL (Verify game score & forward to Finance / Ledger)
+    // ACTION 1: COIN DESK APPROVAL (Verify game score & forward to Finance / Cashier)
     if (action === 'coin_approve') {
       await redemptionsCol.updateOne(
         { _id: redemption._id },
@@ -245,24 +276,34 @@ export async function PUT(req) {
         }
       );
 
+      const currentSC = user ? Number(user.balanceSC ?? user.balance ?? 0) : 0;
       await ledgerCol.insertOne({
         userId: redemption.userId,
         username: redemption.username,
         type: 'coin_verification_passed',
         currency: 'SC',
         amount: redemption.amount,
-        balanceBefore: user ? user.balanceSC : 0,
-        balanceAfter: user ? user.balanceSC : 0,
+        balanceBefore: currentSC,
+        balanceAfter: currentSC,
         performedBy: session.username,
         staffRole: session.role,
         referenceId: redemptionId,
-        notes: `Game score screenshot verified for ${redemption.gameTitle || 'platform'}. Forwarded to Finance Ledger for payout.`,
+        notes: `Game score screenshot verified for ${redemption.gameTitle || 'platform'}. Forwarded to Finance Ledger for payout dispatch.`,
         createdAt: new Date(),
+      });
+
+      notifyPlayer({
+        userId: redemption.userId,
+        userEmail: user?.email,
+        username: redemption.username,
+        title: 'Cashout Verified by Coin Desk! 🎮',
+        message: `Your winnings of $${redemption.amount} SC from ${redemption.gameTitle} have been verified by Coin Operations and forwarded to Finance Cashier for payout dispatch!`,
+        type: 'withdraw_coin_approved',
       });
 
       return NextResponse.json({
         success: true,
-        message: 'Game score verified! Cashout passed to Finance Ledger for payout.',
+        message: 'Game score verified! Cashout passed to Finance Cashier for payout dispatch.',
       });
     }
 
@@ -271,9 +312,11 @@ export async function PUT(req) {
       const reason = rejectReason || 'Game winning screenshot could not be verified or score mismatch.';
 
       // Unfreeze player's balance
+      const currentFrozen = Number(user?.frozenBalance || 0);
+      const newFrozen = Math.max(0, Number((currentFrozen - redemption.amount).toFixed(2)));
       await usersCol.updateOne(
         safeFilter(redemption.userId),
-        { $inc: { frozenBalance: -redemption.amount } }
+        { $set: { frozenBalance: newFrozen } }
       );
 
       await redemptionsCol.updateOne(
@@ -290,7 +333,7 @@ export async function PUT(req) {
         }
       );
 
-      const currentSC = user ? user.balanceSC || 0 : 0;
+      const currentSC = user ? Number(user.balanceSC ?? user.balance ?? 0) : 0;
       await ledgerCol.insertOne({
         userId: redemption.userId,
         username: redemption.username,
@@ -306,17 +349,45 @@ export async function PUT(req) {
         createdAt: new Date(),
       });
 
+      notifyPlayer({
+        userId: redemption.userId,
+        userEmail: user?.email,
+        username: redemption.username,
+        title: 'Cashout Rejected by Coin Desk ⚠️',
+        message: `Your cashout request ($${redemption.amount} SC) was not approved by Coin Operations: ${reason}. Your balance has been unfrozen.`,
+        type: 'withdraw_rejected_by_coin',
+      });
+
       return NextResponse.json({
         success: true,
         message: 'Cashout rejected by Coin Desk. Reason saved and balance unfrozen for player.',
       });
     }
 
-    // ACTION: APPROVE / DISPATCH PAYOUT
-    if (action === 'approve' || action === 'finance_dispatch' || action === 'coin_approve') {
+    // ACTION 3: FINANCE DESK APPROVAL & PAYOUT DISPATCH (Permanently deducts balance!)
+    if (action === 'approve' || action === 'finance_dispatch') {
       if (redemption.status === 'approved') {
         return NextResponse.json({ success: false, error: 'Redemption is already approved.' }, { status: 400 });
       }
+
+      const withdrawAmount = Number(redemption.amount);
+      const currentSC = user ? Number(user.balanceSC ?? user.balance ?? 0) : 0;
+      const currentFrozen = user ? Number(user.frozenBalance || 0) : 0;
+
+      const newBalanceSC = Math.max(0, Number((currentSC - withdrawAmount).toFixed(2)));
+      const newFrozen = Math.max(0, Number((currentFrozen - withdrawAmount).toFixed(2)));
+
+      // Deduct player balance and clear escrow frozen balance
+      await usersCol.updateOne(
+        safeFilter(redemption.userId),
+        {
+          $set: {
+            balanceSC: newBalanceSC,
+            balance: newBalanceSC,
+            frozenBalance: newFrozen,
+          },
+        }
+      );
 
       await redemptionsCol.updateOne(
         { _id: redemption._id },
@@ -331,40 +402,28 @@ export async function PUT(req) {
         }
       );
 
-      // Record dispatch in ledger (wallet balance is untouched as winnings were in external game)
+      // Record dispatch in ledger with accurate balanceBefore and balanceAfter
       await ledgerCol.insertOne({
         userId: redemption.userId,
         username: redemption.username,
         type: 'redemption_payout',
         currency: 'SC',
-        amount: redemption.amount,
-        balanceBefore: user ? user.balanceSC || 0 : 0,
-        balanceAfter: user ? user.balanceSC || 0 : 0,
+        amount: withdrawAmount,
+        balanceBefore: currentSC,
+        balanceAfter: newBalanceSC,
         performedBy: session.username,
         staffRole: session.role,
         referenceId: redemptionId,
-        notes: `Cashout approved & dispatched ($${redemption.amount} SC) via ${redemption.payoutMethod} to tag ${redemption.destinationTag || redemption.destinationAddress}`,
+        notes: `Cashout approved & dispatched ($${withdrawAmount.toFixed(2)} SC deducted from wallet) via ${redemption.payoutMethod} to tag ${redemption.destinationTag || redemption.destinationAddress}`,
         createdAt: new Date(),
       });
-
-      // ACTION 1: COIN DESK APPROVAL (Pass to Finance)
-      if (action === 'coin_approve' && redemption.stage !== 'finance_payout' && redemption.status === 'pending_coin') {
-        notifyPlayer({
-          userId: redemption.userId,
-          userEmail: user?.email,
-          username: redemption.username,
-          title: 'Cashout Verified! 🎮',
-          message: `Your winnings of $${redemption.amount} SC from ${redemption.gameTitle} have been verified and passed to Finance for final dispatch!`,
-          type: 'withdraw_coin_approved',
-        });
-      }
 
       // Email notification if player has email
       if (user?.email) {
         sendEmail({
           to: user.email,
           subject: 'Players Paradise Cashout Dispatched!',
-          html: `<p>Hi ${user.username}, your cashout of $${redemption.amount} via ${redemption.payoutMethod} to ${redemption.destinationTag || redemption.destinationAddress} has been approved and dispatched!</p>`,
+          html: `<p>Hi ${user.username}, your cashout of $${withdrawAmount.toFixed(2)} via ${redemption.payoutMethod} to ${redemption.destinationTag || redemption.destinationAddress} has been approved and dispatched!</p>`,
         }).catch(() => {});
       }
 
@@ -374,17 +433,29 @@ export async function PUT(req) {
         userEmail: user?.email,
         username: redemption.username,
         title: 'Cashout Dispatched! 💸',
-        message: `Your cashout of $${redemption.amount} via ${redemption.payoutMethod} has been approved and dispatched!`,
+        message: `Your cashout of $${withdrawAmount.toFixed(2)} via ${redemption.payoutMethod} has been approved and dispatched! $${withdrawAmount.toFixed(2)} SC deducted.`,
         type: 'withdraw_approved',
-        data: { amount: String(redemption.amount) },
+        data: { amount: String(withdrawAmount), newBalance: String(newBalanceSC) },
       });
 
-      return NextResponse.json({ success: true, message: `Cashout of $${redemption.amount} approved and marked as dispatched to ${redemption.username}!` });
+      return NextResponse.json({
+        success: true,
+        newBalance: newBalanceSC,
+        message: `Cashout of $${withdrawAmount.toFixed(2)} approved, $${withdrawAmount.toFixed(2)} SC deducted, and dispatched to ${redemption.username}!`,
+      });
     }
 
-    // ACTION: REJECT PAYOUT WITH MANDATORY NOTE
-    if (action === 'reject' || action === 'finance_reject' || action === 'coin_reject') {
+    // ACTION 4: REJECT PAYOUT (Finance Rejection)
+    if (action === 'reject' || action === 'finance_reject') {
       const reason = rejectReason || 'Game winning screenshot or payout tag could not be verified.';
+
+      // Unfreeze player's balance
+      const currentFrozen = Number(user?.frozenBalance || 0);
+      const newFrozen = Math.max(0, Number((currentFrozen - redemption.amount).toFixed(2)));
+      await usersCol.updateOne(
+        safeFilter(redemption.userId),
+        { $set: { frozenBalance: newFrozen } }
+      );
 
       await redemptionsCol.updateOne(
         { _id: redemption._id },
@@ -393,6 +464,7 @@ export async function PUT(req) {
             status: 'rejected',
             stage: 'rejected',
             rejectReason: reason,
+            financeRejectReason: reason,
             processedBy: `${session.username} (${session.role})`,
             rejectedAt: new Date(),
             updatedAt: new Date(),
@@ -400,18 +472,19 @@ export async function PUT(req) {
         }
       );
 
+      const currentSC = user ? Number(user.balanceSC ?? user.balance ?? 0) : 0;
       await ledgerCol.insertOne({
         userId: redemption.userId,
         username: redemption.username,
         type: 'redemption_rejected',
         currency: 'SC',
         amount: redemption.amount,
-        balanceBefore: user ? user.balanceSC || 0 : 0,
-        balanceAfter: user ? user.balanceSC || 0 : 0,
+        balanceBefore: currentSC,
+        balanceAfter: currentSC,
         performedBy: session.username,
         staffRole: session.role,
         referenceId: redemptionId,
-        notes: `Cashout rejected by staff: ${reason}`,
+        notes: `Cashout rejected by finance ($${redemption.amount} SC unfrozen): ${reason}`,
         createdAt: new Date(),
       });
 
@@ -420,11 +493,14 @@ export async function PUT(req) {
         userEmail: user?.email,
         username: redemption.username,
         title: 'Cashout Update ⚠️',
-        message: `Your cashout request ($${redemption.amount} SC) could not be processed: ${reason}`,
+        message: `Your cashout request ($${redemption.amount} SC) could not be processed: ${reason}. Your balance has been unfrozen.`,
         type: 'withdraw_rejected',
       });
 
-      return NextResponse.json({ success: true, message: 'Cashout rejected. Rejection reason saved and sent to player.' });
+      return NextResponse.json({
+        success: true,
+        message: 'Cashout rejected. Rejection reason saved, balance unfrozen, and sent to player.',
+      });
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });

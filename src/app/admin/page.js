@@ -887,28 +887,70 @@ export default function AdminPortal({ initialTab }) {
     }
   };
 
-  // Real-time zero-delay cross-tab listener for instant admin chime!
+  // Real-time zero-delay cross-tab listener for instant admin chime & Chrome alerts!
   useEffect(() => {
     if (!user) return;
+
+    const handleIncomingAlert = (payload) => {
+      if (!payload || !payload.type) return;
+
+      if (payload.type === 'NEW_REQUEST') {
+        unlockAudioContext();
+        playAdminChime();
+        const gTitle = payload.gameTitle || 'Game';
+        const uName = payload.userName || 'Player';
+        setActiveAlertToast({
+          type: 'account',
+          title: '🎯 New Game ID Request!',
+          message: `${gTitle} requested by ${uName}`,
+          subtext: 'Tap to review & issue credentials',
+          targetTab: 'account_requests',
+        });
+        syncRequestsAndAlerts();
+      } else if (payload.type === 'NEW_FINANCE_REDEMPTION') {
+        unlockAudioContext();
+        playAdminChime();
+        const amt = Number(payload.amount || 0).toFixed(2);
+        const uName = payload.username || payload.userName || 'Player';
+        const gTitle = payload.gameTitle || 'Game';
+        const alertTitle = '💸 Cashout Passed to Finance!';
+        const alertBody = `$${amt} SC for ${uName} (${gTitle}) verified by Coin Desk!`;
+        sendDesktopNotification(alertTitle, alertBody, '/admin/finance');
+        setActiveAlertToast({
+          type: 'redemption',
+          title: alertTitle,
+          message: alertBody,
+          subtext: 'Tap to review & dispatch payout',
+          targetTab: 'finance',
+          targetSubTab: 'redemptions',
+        });
+        syncRequestsAndAlerts();
+      } else if (payload.type === 'NEW_COIN_CASHOUT') {
+        unlockAudioContext();
+        playAdminChime();
+        const amt = Number(payload.amount || 0).toFixed(2);
+        const uName = payload.username || payload.userName || 'Player';
+        const gTitle = payload.gameTitle || 'Game';
+        const alertTitle = '🎮 New Cashout Verification (Coins Desk)!';
+        const alertBody = `$${amt} SC for ${uName} (${gTitle}) submitted!`;
+        sendDesktopNotification(alertTitle, alertBody, '/admin/coins_allotment');
+        setActiveAlertToast({
+          type: 'coin_verification',
+          title: alertTitle,
+          message: alertBody,
+          subtext: 'Tap to inspect score screenshot & verify',
+          targetTab: 'coins_allotment',
+          targetSubTab: 'cashouts',
+        });
+        syncRequestsAndAlerts();
+      }
+    };
 
     let channel = null;
     try {
       channel = new BroadcastChannel('paradise_staff_alerts');
       channel.onmessage = (event) => {
-        if (event.data?.type === 'NEW_REQUEST') {
-          unlockAudioContext();
-          playAdminChime();
-          const gTitle = event.data.gameTitle || 'Game';
-          const uName = event.data.userName || 'Player';
-          setActiveAlertToast({
-            type: 'account',
-            title: '🎯 New Game ID Request!',
-            message: `${gTitle} requested by ${uName}`,
-            subtext: 'Tap to review & issue credentials',
-            targetTab: 'account_requests',
-          });
-          syncRequestsAndAlerts();
-        }
+        handleIncomingAlert(event.data);
       };
     } catch {}
 
@@ -916,18 +958,7 @@ export default function AdminPortal({ initialTab }) {
       if (e.key === 'paradise_staff_event' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          if (parsed.type === 'NEW_REQUEST') {
-            unlockAudioContext();
-            playAdminChime();
-            setActiveAlertToast({
-              type: 'account',
-              title: '🎯 New Game ID Request!',
-              message: `${parsed.gameTitle || 'Game'} requested by ${parsed.userName || 'Player'}`,
-              subtext: 'Tap to review & issue credentials',
-              targetTab: 'account_requests',
-            });
-            syncRequestsAndAlerts();
-          }
+          handleIncomingAlert(parsed);
         } catch {}
       }
     };
@@ -3437,6 +3468,13 @@ export default function AdminPortal({ initialTab }) {
                     syncRequestsAndAlerts();
                   } else {
                     syncRequestsAndAlerts();
+                    // Broadcast instant balance deduction to player windows (Zero Page Refresh)
+                    try {
+                      const balanceChan = new BroadcastChannel('paradise_balance_sync');
+                      balanceChan.postMessage({ type: 'BALANCE_UPDATED', time: Date.now() });
+                      balanceChan.close();
+                    } catch {}
+                    localStorage.setItem('paradise_user_balance_sync', String(Date.now()));
                   }
                 } catch (e) {
                   console.error(e);
@@ -3462,6 +3500,13 @@ export default function AdminPortal({ initialTab }) {
                     syncRequestsAndAlerts();
                   } else {
                     syncRequestsAndAlerts();
+                    // Broadcast instant unfreeze of balance to player windows (Zero Page Refresh)
+                    try {
+                      const balanceChan = new BroadcastChannel('paradise_balance_sync');
+                      balanceChan.postMessage({ type: 'BALANCE_UPDATED', time: Date.now() });
+                      balanceChan.close();
+                    } catch {}
+                    localStorage.setItem('paradise_user_balance_sync', String(Date.now()));
                   }
                 } catch (e) {
                   console.error(e);

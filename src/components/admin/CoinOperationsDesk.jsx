@@ -76,8 +76,37 @@ export default function CoinOperationsDesk({ sessionUser }) {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 8000);
-    return () => clearInterval(interval);
+    // Fast polling (1500ms) for real-time live desk operations
+    const interval = setInterval(fetchData, 1500);
+
+    // Cross-tab broadcast listener for instant (0ms) cashout detection
+    let channel = null;
+    try {
+      channel = new BroadcastChannel('paradise_staff_alerts');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'NEW_COIN_CASHOUT' || event.data?.type === 'NEW_COIN_LOAD') {
+          fetchData();
+        }
+      };
+    } catch {}
+
+    const handleStorage = (e) => {
+      if (e.key === 'paradise_staff_event' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.type === 'NEW_COIN_CASHOUT' || parsed.type === 'NEW_COIN_LOAD') {
+            fetchData();
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      clearInterval(interval);
+      if (channel) channel.close();
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   // Filtered Load Requests (Strictly COIN_LOAD requests only)
@@ -228,6 +257,8 @@ export default function CoinOperationsDesk({ sessionUser }) {
 
   // Handle Cashout Coin Approval (Pass to Finance)
   const handleApproveCashout = async (redemptionId) => {
+    const targetItem = cashoutRequests.find((c) => c.id === redemptionId);
+
     // 1. Optimistic state update (0ms)
     setCashoutRequests((prev) =>
       prev.map((c) => (c.id === redemptionId ? { ...c, stage: 'finance_payout', coinApprovedBy: 'Coin Desk' } : c))
@@ -248,6 +279,31 @@ export default function CoinOperationsDesk({ sessionUser }) {
       if (!data.success) {
         showAlert('error', data.error || 'Failed to verify cashout.');
         fetchData();
+      } else {
+        // Broadcast instant notification to Finance / Cashier desk (0ms sound + Chrome desktop notification)
+        try {
+          const staffChannel = new BroadcastChannel('paradise_staff_alerts');
+          staffChannel.postMessage({
+            type: 'NEW_FINANCE_REDEMPTION',
+            redemptionId,
+            amount: targetItem?.amount || 0,
+            username: targetItem?.username || '',
+            gameTitle: targetItem?.gameTitle || '',
+          });
+          staffChannel.close();
+        } catch {}
+
+        localStorage.setItem(
+          'paradise_staff_event',
+          JSON.stringify({
+            type: 'NEW_FINANCE_REDEMPTION',
+            redemptionId,
+            amount: targetItem?.amount || 0,
+            username: targetItem?.username || '',
+            gameTitle: targetItem?.gameTitle || '',
+            time: Date.now(),
+          })
+        );
       }
     } catch {
       showAlert('error', 'Network error verifying cashout.');
@@ -294,6 +350,14 @@ export default function CoinOperationsDesk({ sessionUser }) {
       if (!data.success) {
         showAlert('error', data.message || 'Failed to reject cashout.');
         fetchData();
+      } else {
+        // Unfreeze balance in player window in real time without refresh
+        try {
+          const syncChan = new BroadcastChannel('paradise_balance_sync');
+          syncChan.postMessage({ type: 'BALANCE_UPDATED', time: Date.now() });
+          syncChan.close();
+        } catch {}
+        localStorage.setItem('paradise_user_balance_sync', String(Date.now()));
       }
     } catch {
       showAlert('error', 'Network error rejecting cashout.');

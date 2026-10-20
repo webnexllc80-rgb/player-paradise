@@ -53,7 +53,7 @@ export default function WalletPage() {
 
     const interval = setInterval(() => {
       if (!document.hidden) loadData();
-    }, 4500);
+    }, 2000);
 
     const handleUserSync = (e) => {
       if (e.detail) setUser(e.detail);
@@ -61,13 +61,26 @@ export default function WalletPage() {
 
     const handleFocus = () => loadData();
 
+    let balanceChan = null;
+    try {
+      balanceChan = new BroadcastChannel('paradise_balance_sync');
+      balanceChan.onmessage = () => loadData();
+    } catch {}
+
+    const handleStorageSync = (e) => {
+      if (e.key === 'paradise_user_balance_sync') loadData();
+    };
+
     window.addEventListener('paradise-user-sync', handleUserSync);
+    window.addEventListener('storage', handleStorageSync);
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
 
     return () => {
       clearInterval(interval);
+      if (balanceChan) balanceChan.close();
       window.removeEventListener('paradise-user-sync', handleUserSync);
+      window.removeEventListener('storage', handleStorageSync);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
     };

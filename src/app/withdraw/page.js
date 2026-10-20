@@ -93,13 +93,13 @@ export default function WithdrawPage() {
     fetchUser();
     fetchHistory();
 
-    // Zero-refresh live polling: updates pending cashouts as soon as admin approves/rejects
+    // Zero-refresh live polling: fast updates as soon as admin approves/rejects
     const pollInterval = setInterval(() => {
       if (!document.hidden) {
         fetchHistory(true);
         fetchUser(true);
       }
-    }, 4000);
+    }, 1500);
 
     const handleUserSync = (e) => {
       if (e.detail) setUser(e.detail);
@@ -110,13 +110,33 @@ export default function WithdrawPage() {
       fetchUser(true);
     };
 
+    // Instant cross-tab balance sync listener
+    let balanceChan = null;
+    try {
+      balanceChan = new BroadcastChannel('paradise_balance_sync');
+      balanceChan.onmessage = () => {
+        fetchHistory(true);
+        fetchUser(true);
+      };
+    } catch {}
+
+    const handleStorageSync = (e) => {
+      if (e.key === 'paradise_user_balance_sync') {
+        fetchHistory(true);
+        fetchUser(true);
+      }
+    };
+
     window.addEventListener('paradise-user-sync', handleUserSync);
+    window.addEventListener('storage', handleStorageSync);
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
 
     return () => {
       clearInterval(pollInterval);
+      if (balanceChan) balanceChan.close();
       window.removeEventListener('paradise-user-sync', handleUserSync);
+      window.removeEventListener('storage', handleStorageSync);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
     };
@@ -241,7 +261,7 @@ export default function WithdrawPage() {
       if (res.ok && data.success) {
         setStatusMessage({
           type: 'success',
-          text: `Cashout request for $${finalAmount.toFixed(2)} submitted! Desk agents are verifying your game score screenshot & QR tag.`,
+          text: `Cashout request for $${finalAmount.toFixed(2)} submitted! It has been routed to Coin Allotment for verification.`,
         });
         setRecipientTag('');
         setCustomAmount('');
@@ -249,7 +269,31 @@ export default function WithdrawPage() {
         setGameScreenshotName('');
         setQrCodeImage('');
         setQrCodeImageName('');
-        fetchHistory();
+        fetchHistory(true);
+        fetchUser(true);
+
+        // Alert Coin Operations Desk immediately (0ms cross-tab broadcast)
+        try {
+          const staffChannel = new BroadcastChannel('paradise_staff_alerts');
+          staffChannel.postMessage({
+            type: 'NEW_COIN_CASHOUT',
+            amount: finalAmount,
+            username: user?.username || 'Player',
+            gameTitle: selectedGame,
+          });
+          staffChannel.close();
+        } catch {}
+
+        localStorage.setItem(
+          'paradise_staff_event',
+          JSON.stringify({
+            type: 'NEW_COIN_CASHOUT',
+            amount: finalAmount,
+            username: user?.username || 'Player',
+            gameTitle: selectedGame,
+            time: Date.now(),
+          })
+        );
       } else {
         setStatusMessage({ type: 'error', text: data.error || data.message || 'Withdrawal submission failed.' });
       }
@@ -741,10 +785,18 @@ export default function WithdrawPage() {
                                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                                   : isRejected
                                   ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                  : w.status === 'pending_coin' || w.stage === 'coin_verification'
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                   : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                               }`}
                             >
-                              {w.status || 'PENDING'}
+                              {w.status === 'approved' || w.status === 'completed'
+                                ? 'Dispatched ✓'
+                                : isRejected
+                                ? 'Rejected'
+                                : w.status === 'pending_coin' || w.stage === 'coin_verification'
+                                ? 'Stage 1: Coin Allotment'
+                                : 'Stage 2: Finance Payout'}
                             </span>
                           </td>
                           <td className="py-3 px-3 font-sans">
@@ -753,9 +805,15 @@ export default function WithdrawPage() {
                                 Reason: {w.rejectReason || w.coinRejectReason || w.financeRejectReason}
                               </span>
                             ) : w.status === 'approved' ? (
-                              <span className="text-emerald-400 text-[11px]">Payout Dispatched ✓</span>
+                              <span className="text-emerald-400 text-[11px] font-semibold">Payout Dispatched ✓</span>
+                            ) : w.status === 'pending_coin' || w.stage === 'coin_verification' ? (
+                              <span className="text-amber-300 text-[11px] flex items-center gap-1">
+                                <Clock className="w-3 h-3 inline animate-pulse" /> Verifying Game Proof
+                              </span>
                             ) : (
-                              <span className="text-slate-500 text-[11px]">Desk Verifying</span>
+                              <span className="text-cyan-300 text-[11px] flex items-center gap-1">
+                                <Clock className="w-3 h-3 inline animate-pulse" /> Cashier Sending Payout
+                              </span>
                             )}
                           </td>
                         </tr>
