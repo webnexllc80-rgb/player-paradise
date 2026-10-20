@@ -151,7 +151,7 @@ export default function PushNotificationManager() {
           const permStatus = await PushNotifications.requestPermissions();
 
           if (permStatus.receive === 'granted') {
-            await PushNotifications.register();
+            await PushNotifications.removeAllListeners().catch(() => {});
 
             PushNotifications.addListener('registration', async (token) => {
               try {
@@ -181,6 +181,9 @@ export default function PushNotificationManager() {
                 router.push(url);
               }
             });
+
+            // Register AFTER listeners are attached so the token event is never missed
+            await PushNotifications.register();
           }
         }
       } catch (err) {

@@ -72,17 +72,55 @@ function findServiceAccount() {
   return null;
 }
 
+let lastInitError = null;
+
+export function getFcmDiagnostics() {
+  let rootFiles = [];
+  try {
+    rootFiles = fs
+      .readdirSync(/*turbopackIgnore: true*/ process.cwd())
+      .filter((f) => f.endsWith('.json'));
+  } catch {}
+  return {
+    initialized: Boolean(messagingInstance),
+    source: loadedAccountSource,
+    lastInitError,
+    cwd: process.cwd(),
+    jsonFilesInCwd: rootFiles,
+    hasEnvServiceAccount: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT),
+    envServiceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH || null,
+  };
+}
+
 export async function getFirebaseMessaging() {
   if (messagingInstance) return messagingInstance;
 
   try {
-    const { initializeApp, cert, getApps } = await import('firebase-admin/app');
-    const { getMessaging } = await import('firebase-admin/messaging');
+    let initializeApp, cert, getApps, getMessaging;
+    try {
+      ({ initializeApp, cert, getApps } = await import('firebase-admin/app'));
+      ({ getMessaging } = await import('firebase-admin/messaging'));
+    } catch (impErr) {
+      lastInitError = `firebase-admin package not installed (run npm install): ${impErr.message}`;
+      console.warn('[FCM]', lastInitError);
+      return null;
+    }
 
-    const serviceAccount = findServiceAccount();
+    let serviceAccount = null;
+    const envPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+    if (envPath && fs.existsSync(/*turbopackIgnore: true*/ envPath)) {
+      try {
+        serviceAccount = JSON.parse(fs.readFileSync(/*turbopackIgnore: true*/ envPath, 'utf8'));
+        loadedAccountSource = envPath;
+      } catch (e) {
+        lastInitError = `Invalid JSON at FIREBASE_SERVICE_ACCOUNT_PATH: ${e.message}`;
+      }
+    }
+    if (!serviceAccount) serviceAccount = findServiceAccount();
 
     if (!serviceAccount) {
-      console.warn('[FCM] Firebase Service Account credentials not found in root directory.');
+      lastInitError = lastInitError || `No valid service account JSON (with private_key) found in ${process.cwd()}`;
+      console.warn('[FCM]', lastInitError);
       return null;
     }
 
@@ -92,10 +130,12 @@ export async function getFirebaseMessaging() {
     });
 
     messagingInstance = getMessaging(app);
+    lastInitError = null;
     console.log(`[FCM] Successfully initialized Firebase Messaging using: ${loadedAccountSource}`);
     return messagingInstance;
   } catch (err) {
-    console.warn('[FCM] Firebase Messaging init error:', err.message);
+    lastInitError = `Firebase init error: ${err.message}`;
+    console.warn('[FCM]', lastInitError);
     return null;
   }
 }
@@ -155,7 +195,7 @@ export async function sendPushNotification({ token, topic, title, body, data = {
   const messaging = await getFirebaseMessaging();
   if (!messaging) {
     console.log(`[FCM SIMULATED PUSH] Title: "${title}" | Body: "${body}"`);
-    return { success: true, simulated: true, error: 'Firebase credentials not found on server' };
+    return { success: false, simulated: true, error: lastInitError, diagnostics: getFcmDiagnostics() };
   }
 
   const payload = buildFcmPayload({ title, body, data });
