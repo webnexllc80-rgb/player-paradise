@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/lib/mongodb';
+import { FALLBACK_FIREBASE_SERVICE_ACCOUNT } from './firebaseCredentials';
 
 let messagingInstance = null;
 let loadedAccountSource = null;
@@ -99,6 +100,13 @@ function findServiceAccount() {
     }
   } catch (scanErr) {
     attemptLogs.push({ scanError: scanErr.message });
+  }
+
+  // 4. Guaranteed embedded fallback credentials (tracked by git, works 100% on VPS)
+  if (FALLBACK_FIREBASE_SERVICE_ACCOUNT?.private_key && FALLBACK_FIREBASE_SERVICE_ACCOUNT?.client_email) {
+    loadedAccountSource = 'embedded:firebaseCredentials.js';
+    lastInitAttemptLogs = attemptLogs;
+    return FALLBACK_FIREBASE_SERVICE_ACCOUNT;
   }
 
   lastInitAttemptLogs = attemptLogs;
