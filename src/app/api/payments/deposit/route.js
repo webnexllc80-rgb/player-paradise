@@ -35,8 +35,37 @@ export async function GET(req) {
       query.status = status;
     }
 
-    const projection = lightweight ? { proofImage: 0 } : {};
-    const deposits = await depositsCol.find(query, { projection }).sort({ createdAt: -1 }).limit(100).toArray();
+    let deposits;
+    if (lightweight) {
+      deposits = await depositsCol
+        .aggregate([
+          { $match: query },
+          { $sort: { createdAt: -1 } },
+          { $limit: 100 },
+          {
+            $addFields: {
+              hasProofImage: {
+                $or: [
+                  { $ne: [{ $ifNull: ['$proofImage', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$proofUrl', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$receiptImage', ''] }, ''] },
+                  { $ne: [{ $ifNull: ['$screenshot', ''] }, ''] },
+                ],
+              },
+            },
+          },
+          {
+            $project: {
+              proofImage: 0,
+              receiptImage: 0,
+              screenshot: 0,
+            },
+          },
+        ])
+        .toArray();
+    } else {
+      deposits = await depositsCol.find(query).sort({ createdAt: -1 }).limit(100).toArray();
+    }
 
     return NextResponse.json({
       success: true,
@@ -46,6 +75,21 @@ export async function GET(req) {
         const bonusSC = d.bonusSC !== undefined ? d.bonusSC : Number(((d.amount * bonusPercent) / 100).toFixed(2));
         const totalSC = d.totalSC !== undefined ? d.totalSC : Number((d.amount + bonusSC).toFixed(2));
         const totalGC = d.totalGC !== undefined ? d.totalGC : (d.amount * 10000);
+
+        const hasProof = d.hasProofImage !== undefined
+          ? Boolean(d.hasProofImage)
+          : Boolean(d.proofImage || d.proofUrl || d.receiptImage || d.screenshot);
+
+        let resolvedProofImage = null;
+        if (hasProof) {
+          if (d.proofUrl) {
+            resolvedProofImage = d.proofUrl;
+          } else if (d.proofImage && !d.proofImage.startsWith('data:')) {
+            resolvedProofImage = d.proofImage;
+          } else {
+            resolvedProofImage = `/api/payments/deposit/proof?id=${d._id}`;
+          }
+        }
 
         return {
           id: d._id.toString(),
@@ -57,12 +101,8 @@ export async function GET(req) {
           playerTagName: d.playerTagName || d.senderNote || '',
           playerPaymentEmail: d.playerPaymentEmail || '',
           senderNote: d.senderNote || d.playerTagName || '',
-          proofImage: d.proofImage
-            ? (d.proofImage.startsWith('data:') && d.proofImage.length > 50000
-                ? `/api/payments/deposit/proof?id=${d._id}`
-                : d.proofImage)
-            : null,
-          hasProof: Boolean(d.proofImage || d.proofUrl),
+          proofImage: resolvedProofImage,
+          hasProof: hasProof,
           txHash: d.txHash || '',
           bonusType,
           bonusPercent,

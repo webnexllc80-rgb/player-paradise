@@ -713,72 +713,75 @@ export default function FinanceUnifiedDesk({
 
                           {/* 6. Screenshot / Receipt Proof */}
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                            {d.proofImage ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setPreviewProof({
-                                      image: d.proofImage,
-                                      username: d.username,
-                                      amount: d.amount,
-                                      method: d.methodName,
-                                      note: note,
-                                      date: d.createdAt,
-                                    })
-                                  }
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '5px 10px',
-                                    borderRadius: '8px',
-                                    backgroundColor: 'rgba(0, 240, 255, 0.15)',
-                                    border: '1px solid rgba(0, 240, 255, 0.4)',
-                                    color: '#00F0FF',
-                                    fontSize: '11px',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                  }}
-                                  title="Click to view full screenshot proof"
-                                >
-                                  <Eye size={12} />
-                                  <span>View Proof</span>
-                                </button>
+                            {(() => {
+                              const proofSrc = d.proofImage || d.proofUrl || d.receiptImage || d.screenshot || (d.hasProof ? `/api/payments/deposit/proof?id=${depositId}` : null);
+                              return proofSrc ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPreviewProof({
+                                        image: proofSrc,
+                                        username: d.username,
+                                        amount: d.amount,
+                                        method: d.methodName,
+                                        note: note,
+                                        date: d.createdAt,
+                                      })
+                                    }
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '5px 10px',
+                                      borderRadius: '8px',
+                                      backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                                      border: '1px solid rgba(0, 240, 255, 0.4)',
+                                      color: '#00F0FF',
+                                      fontSize: '11px',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                    }}
+                                    title="Click to view full screenshot proof"
+                                  >
+                                    <Eye size={12} />
+                                    <span>View Proof</span>
+                                  </button>
 
-                                <div
-                                  onClick={() =>
-                                    setPreviewProof({
-                                      image: d.proofImage,
-                                      username: d.username,
-                                      amount: d.amount,
-                                      method: d.methodName,
-                                      note: note,
-                                      date: d.createdAt,
-                                    })
-                                  }
-                                  style={{
-                                    width: '30px',
-                                    height: '30px',
-                                    borderRadius: '6px',
-                                    border: '1px solid rgba(0, 240, 255, 0.4)',
-                                    overflow: 'hidden',
-                                    cursor: 'pointer',
-                                    flexShrink: 0,
-                                    backgroundColor: '#000000',
-                                  }}
-                                  title="Thumbnail preview"
-                                >
-                                  <img
-                                    src={d.proofImage}
-                                    alt="Proof"
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                  />
+                                  <div
+                                    onClick={() =>
+                                      setPreviewProof({
+                                        image: proofSrc,
+                                        username: d.username,
+                                        amount: d.amount,
+                                        method: d.methodName,
+                                        note: note,
+                                        date: d.createdAt,
+                                      })
+                                    }
+                                    style={{
+                                      width: '30px',
+                                      height: '30px',
+                                      borderRadius: '6px',
+                                      border: '1px solid rgba(0, 240, 255, 0.4)',
+                                      overflow: 'hidden',
+                                      cursor: 'pointer',
+                                      flexShrink: 0,
+                                      backgroundColor: '#000000',
+                                    }}
+                                    title="Thumbnail preview"
+                                  >
+                                    <img
+                                      src={proofSrc}
+                                      alt="Proof"
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '11px', color: '#64748B', fontStyle: 'italic' }}>No receipt</span>
-                            )}
+                              ) : (
+                                <span style={{ fontSize: '11px', color: '#64748B', fontStyle: 'italic' }}>No receipt</span>
+                              );
+                            })()}
                           </td>
 
                           {/* 7. Date & Time (Placed right before Actions!) */}
@@ -1267,39 +1270,42 @@ export default function FinanceUnifiedDesk({
                       <td style={{ padding: '12px 16px', color: '#E2E8F0', fontSize: '12px' }}>{d.methodName}</td>
                       <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: '#94A3B8', fontSize: '11.5px' }}>{note || '—'}</td>
                       <td style={{ padding: '12px 16px' }}>
-                        {d.proofImage ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPreviewProof({
-                                image: d.proofImage,
-                                username: d.username,
-                                amount: d.amount,
-                                method: d.methodName,
-                                note: note,
-                                date: d.createdAt,
-                              })
-                            }
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              padding: '4px 8px',
-                              borderRadius: '6px',
-                              backgroundColor: 'rgba(0, 240, 255, 0.12)',
-                              border: '1px solid rgba(0, 240, 255, 0.35)',
-                              color: '#00F0FF',
-                              fontSize: '11px',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Eye size={11} />
-                            <span>View</span>
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: '#64748B' }}>—</span>
-                        )}
+                        {(() => {
+                          const proofSrc = d.proofImage || d.proofUrl || d.receiptImage || d.screenshot || (d.hasProof ? `/api/payments/deposit/proof?id=${d.id || d._id}` : null);
+                          return proofSrc ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPreviewProof({
+                                  image: proofSrc,
+                                  username: d.username,
+                                  amount: d.amount,
+                                  method: d.methodName,
+                                  note: note,
+                                  date: d.createdAt,
+                                })
+                              }
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                backgroundColor: 'rgba(0, 240, 255, 0.12)',
+                                border: '1px solid rgba(0, 240, 255, 0.35)',
+                                color: '#00F0FF',
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Eye size={11} />
+                              <span>View</span>
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: '#64748B' }}>—</span>
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: '12px 16px', color: '#94A3B8', fontSize: '11.5px' }}>{new Date(d.createdAt).toLocaleString()}</td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>

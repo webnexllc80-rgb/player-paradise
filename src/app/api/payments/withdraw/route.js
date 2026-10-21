@@ -45,30 +45,70 @@ export async function GET(req) {
       query.stage = stage;
     }
 
-    const projection = lightweight ? { gameScreenshot: 0, qrCodeImage: 0 } : {};
-    const items = await redemptionsCol.find(query, { projection }).sort({ createdAt: -1 }).limit(100).toArray();
+    let items;
+    if (lightweight) {
+      items = await redemptionsCol
+        .aggregate([
+          { $match: query },
+          { $sort: { createdAt: -1 } },
+          { $limit: 100 },
+          {
+            $addFields: {
+              hasGameScreenshot: { $ne: [{ $ifNull: ['$gameScreenshot', ''] }, ''] },
+              hasQrCodeImage: { $ne: [{ $ifNull: ['$qrCodeImage', ''] }, ''] },
+            },
+          },
+          {
+            $project: {
+              gameScreenshot: 0,
+              qrCodeImage: 0,
+            },
+          },
+        ])
+        .toArray();
+    } else {
+      items = await redemptionsCol.find(query).sort({ createdAt: -1 }).limit(100).toArray();
+    }
 
     return NextResponse.json({
       success: true,
-      redemptions: items.map(r => ({
-        id: r._id.toString(),
-        userId: r.userId,
-        username: r.username,
-        amount: r.amount,
-        gameTitle: r.gameTitle || 'Standard Platform',
-        gameAccountUsername: r.gameAccountUsername || '',
-        gameScreenshot: r.gameScreenshot
-          ? (r.gameScreenshot.startsWith('data:') && r.gameScreenshot.length > 50000
-              ? `/api/payments/withdraw/proof?id=${r._id}&type=gameScreenshot`
-              : r.gameScreenshot)
-          : null,
-        qrCodeImage: r.qrCodeImage
-          ? (r.qrCodeImage.startsWith('data:') && r.qrCodeImage.length > 50000
-              ? `/api/payments/withdraw/proof?id=${r._id}&type=qrCodeImage`
-              : r.qrCodeImage)
-          : null,
-        hasScreenshot: Boolean(r.gameScreenshot),
-        hasQrCode: Boolean(r.qrCodeImage),
+      redemptions: items.map(r => {
+        const hasScreenshot = r.hasGameScreenshot !== undefined
+          ? Boolean(r.hasGameScreenshot)
+          : Boolean(r.gameScreenshot);
+        const hasQr = r.hasQrCodeImage !== undefined
+          ? Boolean(r.hasQrCodeImage)
+          : Boolean(r.qrCodeImage);
+
+        let resolvedScreenshot = null;
+        if (hasScreenshot) {
+          if (r.gameScreenshot && !r.gameScreenshot.startsWith('data:')) {
+            resolvedScreenshot = r.gameScreenshot;
+          } else {
+            resolvedScreenshot = `/api/payments/withdraw/proof?id=${r._id}&type=gameScreenshot`;
+          }
+        }
+
+        let resolvedQrCode = null;
+        if (hasQr) {
+          if (r.qrCodeImage && !r.qrCodeImage.startsWith('data:')) {
+            resolvedQrCode = r.qrCodeImage;
+          } else {
+            resolvedQrCode = `/api/payments/withdraw/proof?id=${r._id}&type=qrCodeImage`;
+          }
+        }
+
+        return {
+          id: r._id.toString(),
+          userId: r.userId,
+          username: r.username,
+          amount: r.amount,
+          gameTitle: r.gameTitle || 'Standard Platform',
+          gameAccountUsername: r.gameAccountUsername || '',
+          gameScreenshot: resolvedScreenshot,
+          qrCodeImage: resolvedQrCode,
+          hasScreenshot: hasScreenshot,
+          hasQrCode: hasQr,
         payoutMethod: r.payoutMethod,
         destinationTag: r.destinationTag || r.destinationAddress || '',
         destinationAddress: r.destinationAddress || r.destinationTag || '',
@@ -81,8 +121,9 @@ export async function GET(req) {
         coinRejectReason: r.coinRejectReason || null,
         financeRejectReason: r.financeRejectReason || null,
         createdAt: r.createdAt,
-      })),
-    });
+      };
+    }),
+  });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

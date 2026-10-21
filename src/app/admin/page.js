@@ -8314,6 +8314,21 @@ export default function AdminPortal({ initialTab }) {
               onUserUpdated={(uid, newBal) => {
                 setUsersList(prev => prev.map(item => item.id === uid ? { ...item, balanceSC: newBal } : item));
               }}
+              onOpenChat={(playerUser) => {
+                setSelectedPlayerId(null);
+                setActiveTab('chat');
+                const convId = playerUser?._id?.toString() || playerUser?.id || playerUser?.userId || selectedPlayerId;
+                const found = chatConversations.find(c => c._id === convId || c.userId === convId);
+                if (found) {
+                  setActiveChatConv(found);
+                } else {
+                  setActiveChatConv({
+                    _id: convId,
+                    username: playerUser?.username || 'Player',
+                    userId: convId,
+                  });
+                }
+              }}
             />
           )}
           {/* Sound & Notification Tune Settings Modal */}

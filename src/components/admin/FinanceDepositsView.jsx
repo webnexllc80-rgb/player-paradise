@@ -386,27 +386,30 @@ export default function FinanceDepositsView({
 
                       {/* Payment Proof Screenshot */}
                       <td className="p-4">
-                        {d.proofImage ? (
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={d.proofImage}
-                              alt="Receipt"
-                              onClick={() => setPreviewImage({ url: d.proofImage, title: `${d.username} Payment Receipt` })}
-                              className="w-11 h-11 object-cover rounded-xl border border-white/20 hover:border-emerald-400 transition cursor-pointer shadow-md"
-                              title="Click to zoom screenshot"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setPreviewImage({ url: d.proofImage, title: `${d.username} Payment Receipt` })}
-                              className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10.5px] text-cyan-400 font-bold border border-white/10 flex items-center gap-1 transition cursor-pointer"
-                            >
-                              <Eye size={12} />
-                              <span>View</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-gray-500 italic text-[11px]">No receipt</span>
-                        )}
+                        {(() => {
+                          const proofSrc = d.proofImage || d.proofUrl || d.receiptImage || d.screenshot || (d.hasProof ? `/api/payments/deposit/proof?id=${d.id || d._id}` : null);
+                          return proofSrc ? (
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={proofSrc}
+                                alt="Receipt"
+                                onClick={() => setPreviewImage({ url: proofSrc, title: `${d.username} Payment Receipt` })}
+                                className="w-11 h-11 object-cover rounded-xl border border-white/20 hover:border-emerald-400 transition cursor-pointer shadow-md"
+                                title="Click to zoom screenshot"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setPreviewImage({ url: proofSrc, title: `${d.username} Payment Receipt` })}
+                                className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10.5px] text-cyan-400 font-bold border border-white/10 flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <Eye size={12} />
+                                <span>View</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-gray-500 italic text-[11px]">No receipt</span>
+                          );
+                        })()}
                       </td>
 
                       {/* Status */}

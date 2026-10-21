@@ -20,12 +20,16 @@ import {
   History,
   Sparkles,
   Eye,
+  MessageSquare,
+  Send,
+  MessageCircle,
 } from 'lucide-react';
 
 export default function Player360ProfileModal({
   userId,
   onClose,
   onUserUpdated,
+  onOpenChat,
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -39,8 +43,65 @@ export default function Player360ProfileModal({
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [adjustFeedback, setAdjustFeedback] = useState(null);
 
+  // Direct Message modal state
+  const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageFeedback, setMessageFeedback] = useState(null);
+
   // Receipt popup preview
   const [previewImage, setPreviewImage] = useState(null);
+
+  const handleSendMessage = async (e) => {
+    e?.preventDefault();
+    const cleanText = messageText.trim();
+    if (!cleanText || sendingMessage) return;
+
+    setSendingMessage(true);
+    setMessageFeedback(null);
+
+    const targetUid = data?.user?._id?.toString() || data?.user?.id || userId;
+    const targetUname = data?.user?.username || 'Player';
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: String(targetUid),
+          targetUserId: String(targetUid),
+          targetUsername: targetUname,
+          text: cleanText,
+          isStaffReply: true,
+        }),
+      });
+
+      const resData = await res.json();
+      if (res.ok && resData.success) {
+        setMessageFeedback({
+          type: 'success',
+          text: `Message delivered! Real-time notification & in-app chat sent to @${targetUname}.`,
+        });
+        setMessageText('');
+        setTimeout(() => {
+          setChatModalOpen(false);
+          setMessageFeedback(null);
+        }, 2000);
+      } else {
+        setMessageFeedback({
+          type: 'error',
+          text: resData.error || resData.message || 'Failed to send message.',
+        });
+      }
+    } catch (err) {
+      setMessageFeedback({
+        type: 'error',
+        text: err.message || 'Network error occurred.',
+      });
+    } finally {
+      setSendingMessage(false);
+    }
+  };
 
   const fetchProfile = async () => {
     if (!userId) return;
@@ -286,6 +347,45 @@ export default function Player360ProfileModal({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Direct Message Player Button (Placed directly to the left of Refresh) */}
+            <button
+              type="button"
+              onClick={() => {
+                setChatModalOpen(true);
+                setMessageFeedback(null);
+              }}
+              title={`Send Direct Message to @${data?.user?.username || 'Player'}`}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)',
+                border: '1px solid rgba(0, 240, 255, 0.4)',
+                color: '#00F0FF',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '11.5px',
+                fontWeight: 800,
+                letterSpacing: '0.2px',
+                boxShadow: '0 0 12px rgba(0, 240, 255, 0.12)',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0, 240, 255, 0.28) 0%, rgba(16, 185, 129, 0.28) 100%)';
+                e.currentTarget.style.boxShadow = '0 0 18px rgba(0, 240, 255, 0.35)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0, 240, 255, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 240, 255, 0.12)';
+                e.currentTarget.style.transform = 'none';
+              }}
+            >
+              <MessageSquare size={14} />
+              <span>Message Player</span>
+            </button>
+
             <button
               type="button"
               onClick={fetchProfile}
@@ -1204,6 +1304,298 @@ export default function Player360ProfileModal({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={previewImage} alt="Document Proof" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '12px' }} />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. DIRECT MESSAGE TO PLAYER MODAL */}
+      {chatModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100001,
+            backgroundColor: 'rgba(5, 3, 15, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => {
+            if (!sendingMessage) setChatModalOpen(false);
+          }}
+        >
+          <div
+            style={{
+              maxWidth: '560px',
+              width: '100%',
+              backgroundColor: '#0c081e',
+              border: '1px solid rgba(0, 240, 255, 0.4)',
+              borderRadius: '24px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 240, 255, 0.2)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '20px 24px',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)',
+                    border: '1px solid rgba(0, 240, 255, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#00F0FF',
+                  }}
+                >
+                  <MessageCircle size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#FFFFFF', letterSpacing: '0.3px' }}>
+                    Send Message to <span style={{ color: '#00F0FF' }}>@{data?.user?.username || 'Player'}</span>
+                  </h3>
+                  <p style={{ margin: '3px 0 0', fontSize: '11.5px', color: '#94A3B8' }}>
+                    Instant VIP Concierge reply with device push & in-app chat delivery
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!sendingMessage) setChatModalOpen(false);
+                }}
+                disabled={sendingMessage}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: '#94A3B8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSendMessage} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Quick Template Chips */}
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                  Quick Response Templates:
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    `🎉 Hi @${data?.user?.username || 'Player'}, your bonus has been credited to your wallet!`,
+                    `✅ Hi @${data?.user?.username || 'Player'}, your payment was verified and approved.`,
+                    `🎮 Hi @${data?.user?.username || 'Player'}, your game platform account credentials are ready!`,
+                    `⚠️ Hi @${data?.user?.username || 'Player'}, please upload a clearer screenshot of your payment receipt.`,
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setMessageText(preset)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        color: '#CBD5E1',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(0, 240, 255, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(0, 240, 255, 0.3)';
+                        e.currentTarget.style.color = '#00F0FF';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.04)';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                        e.currentTarget.style.color = '#CBD5E1';
+                      }}
+                    >
+                      {preset.split(',')[0]}...
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Message Input */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 800, color: '#CBD5E1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Message Content
+                  </label>
+                  <span style={{ fontSize: '10.5px', color: '#64748B', fontFamily: 'monospace' }}>
+                    {messageText.length} / 2000
+                  </span>
+                </div>
+                <textarea
+                  rows={4}
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  placeholder={`Write an official concierge message to @${data?.user?.username || 'player'}...`}
+                  maxLength={2000}
+                  disabled={sendingMessage}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    backgroundColor: '#070514',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: '#FFFFFF',
+                    fontSize: '13px',
+                    lineHeight: '1.5',
+                    outline: 'none',
+                    resize: 'none',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = 'rgba(0, 240, 255, 0.6)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'rgba(255, 255, 255, 0.12)')}
+                />
+              </div>
+
+              {/* Feedback Alert */}
+              {messageFeedback && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor:
+                      messageFeedback.type === 'success'
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : 'rgba(239, 68, 68, 0.15)',
+                    border: `1px solid ${
+                      messageFeedback.type === 'success'
+                        ? 'rgba(16, 185, 129, 0.4)'
+                        : 'rgba(239, 68, 68, 0.4)'
+                    }`,
+                    color: messageFeedback.type === 'success' ? '#10B981' : '#EF4444',
+                  }}
+                >
+                  {messageFeedback.type === 'success' ? <Check size={16} /> : <X size={16} />}
+                  <span>{messageFeedback.text}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginTop: '6px' }}>
+                <div>
+                  {onOpenChat && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChatModalOpen(false);
+                        onOpenChat(data?.user || { _id: userId, username: data?.user?.username });
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        color: '#94A3B8',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <ArrowUpRight size={13} />
+                      <span>Open Full Chat Desk</span>
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setChatModalOpen(false)}
+                    disabled={sendingMessage}
+                    style={{
+                      padding: '9px 16px',
+                      borderRadius: '10px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#94A3B8',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={!messageText.trim() || sendingMessage}
+                    style={{
+                      padding: '9px 20px',
+                      borderRadius: '10px',
+                      background: (!messageText.trim() || sendingMessage)
+                        ? 'rgba(255, 255, 255, 0.1)'
+                        : 'linear-gradient(135deg, #00F0FF 0%, #10B981 100%)',
+                      border: 'none',
+                      color: (!messageText.trim() || sendingMessage) ? '#64748B' : '#070514',
+                      fontSize: '12px',
+                      fontWeight: 900,
+                      letterSpacing: '0.5px',
+                      cursor: (!messageText.trim() || sendingMessage) ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: (!messageText.trim() || sendingMessage) ? 'none' : '0 0 15px rgba(0, 240, 255, 0.4)',
+                    }}
+                  >
+                    {sendingMessage ? (
+                      <>
+                        <RefreshCw size={13} className="animate-spin" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send size={13} />
+                        <span>Send Message</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

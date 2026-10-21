@@ -19,16 +19,18 @@ export async function GET(req) {
       ? { $or: [{ _id: new ObjectId(id) }, { _id: id }, { id: id }] }
       : { $or: [{ _id: id }, { id: id }] };
 
-    const deposit = await depositsCol.findOne(filter, { projection: { proofImage: 1 } });
+    const deposit = await depositsCol.findOne(filter, {
+      projection: { proofImage: 1, proofUrl: 1, receiptImage: 1, screenshot: 1 },
+    });
 
-    if (!deposit || !deposit.proofImage) {
+    const rawData = deposit?.proofImage || deposit?.proofUrl || deposit?.receiptImage || deposit?.screenshot;
+
+    if (!deposit || !rawData) {
       return new NextResponse('Proof not found', { status: 404 });
     }
 
-    const rawData = deposit.proofImage;
-
     // If it's a data URL (e.g. data:image/png;base64,....)
-    if (rawData.startsWith('data:')) {
+    if (typeof rawData === 'string' && rawData.startsWith('data:')) {
       const parts = rawData.split(',');
       const mime = parts[0].split(':')[1].split(';')[0];
       const buffer = Buffer.from(parts[1], 'base64');
