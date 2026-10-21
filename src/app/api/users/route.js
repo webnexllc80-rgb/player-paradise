@@ -371,7 +371,7 @@ export async function PUT(req) {
       await usersCol.updateOne(
         targetFilter,
         {
-          $set: { deviceId: null, boundDevices: [] },
+          $set: { deviceId: null, boundDevices: [], lastLoginDevice: null },
         }
       );
 

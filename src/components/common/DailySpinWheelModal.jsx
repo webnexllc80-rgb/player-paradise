@@ -6,14 +6,13 @@ import { X, Sparkles, Gift, Clock, Award, CheckCircle2, AlertCircle } from 'luci
 import { WHEEL_SLICES } from '@/lib/wheelConstants';
 
 export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUpdated }) {
-  const [canSpin, setCanSpin] = useState(true);
+  const [canSpin, setCanSpin] = useState(false);
+  const [availableSpins, setAvailableSpins] = useState(0);
   const [loading, setLoading] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [rotationDegree, setRotationDegree] = useState(0);
   const [winResult, setWinResult] = useState(null);
-  const [countdownText, setCountdownText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [nextSpinDate, setNextSpinDate] = useState(null);
 
   // Check eligibility on mount or when opened
   useEffect(() => {
@@ -26,10 +25,8 @@ export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUp
         const res = await fetch('/api/daily-spin');
         const d = await res.json();
         if (d.success) {
-          setCanSpin(d.canSpin);
-          if (d.nextSpinAvailableAt) {
-            setNextSpinDate(new Date(d.nextSpinAvailableAt));
-          }
+          setCanSpin(Boolean(d.canSpin));
+          setAvailableSpins(d.availableSpins || 0);
         }
       } catch (e) {
         console.error('Failed to check daily spin:', e);
@@ -38,33 +35,6 @@ export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUp
 
     checkStatus();
   }, [isOpen]);
-
-  // Live countdown timer if on cooldown
-  useEffect(() => {
-    if (!nextSpinDate) return;
-
-    function updateTimer() {
-      const now = new Date().getTime();
-      const target = nextSpinDate.getTime();
-      const diff = target - now;
-
-      if (diff <= 0) {
-        setCanSpin(true);
-        setNextSpinDate(null);
-        setCountdownText('');
-        return;
-      }
-
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const secs = Math.floor((diff % (1000 * 60)) / 1000);
-      setCountdownText(`${hours}h ${mins}m ${secs}s`);
-    }
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [nextSpinDate]);
 
   if (!isOpen) return null;
 
@@ -97,21 +67,15 @@ export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUp
       if (!res.ok || !data.success) {
         setErrorMessage(data.message || 'Spin failed.');
         setLoading(false);
-        if (data.alreadySpun && data.nextSpinAvailableAt) {
-          setCanSpin(false);
-          setNextSpinDate(new Date(data.nextSpinAvailableAt));
-        }
+        setCanSpin(Boolean(data.canSpin));
+        setAvailableSpins(data.availableSpins || 0);
         return;
       }
 
       setSpinning(true);
       setLoading(false);
 
-      // Target slice index (0 to 7)
       const targetIndex = data.sliceIndex;
-      // Calculate target angle so pointer at 0 deg (top) aligns with target slice
-      // Slices start from top, rotated clockwise.
-      // Top pointer hits slice at (360 - (targetIndex * sliceAngle + sliceAngle / 2))
       const targetSliceCenter = targetIndex * sliceAngle + sliceAngle / 2;
       const baseRevolutions = 5 * 360; // 5 full rotations for drama
       const finalDegree = rotationDegree + baseRevolutions + (360 - (targetSliceCenter % 360));
@@ -121,20 +85,20 @@ export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUp
       // Wait for spin animation (4.5s)
       setTimeout(() => {
         setSpinning(false);
-        setCanSpin(false);
-        setWinResult(data.winAmount);
+        setCanSpin(Boolean(data.canSpin));
+        setAvailableSpins(data.availableSpins || 0);
+        setWinResult({ amount: data.winAmount, isBadLuck: data.isBadLuck });
         if (onBalanceUpdated) onBalanceUpdated();
 
-        // Fire celebration confetti
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#00F0FF', '#10B981', '#F59E0B', '#EC4899'],
-        });
-
-        // Set cooldown to 24h
-        setNextSpinDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+        // Fire celebration confetti if prize won
+        if (!data.isBadLuck && data.winAmount > 0) {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#00F0FF', '#10B981', '#F59E0B', '#EC4899'],
+          });
+        }
       }, 4500);
     } catch (err) {
       setLoading(false);
@@ -158,13 +122,15 @@ export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUp
         <div className="text-center space-y-1 mb-4">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 font-sub text-xs font-bold">
             <Sparkles size={13} className="text-amber-400" />
-            <span>DAILY FREE REWARD • WIN UP TO $50</span>
+            <span>DEPOSITOR FREE SPINS • WIN UP TO $3.00</span>
           </div>
           <h2 className="font-heading font-black text-2xl sm:text-3xl text-white">
             LUCKY <span className="text-[var(--neon-cyan)]">SPIN WHEEL</span>
           </h2>
           <p className="text-xs text-slate-400">
-            Every verified player gets 1 Free Spin every 24 hours. Instant wallet credit!
+            {availableSpins > 0
+              ? `You have ${availableSpins} free ${availableSpins === 1 ? 'spin' : 'spins'} ready to use!`
+              : 'Every approved deposit unlocks 2 free spins! Instant wallet credit.'}
           </p>
         </div>
 
@@ -241,13 +207,29 @@ export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUp
 
         {/* Win Announcement */}
         {winResult !== null && (
-          <div className="my-3 p-3.5 rounded-2xl bg-emerald-950/80 border border-emerald-500/70 text-center animate-bounce">
-            <div className="flex items-center justify-center gap-2 text-emerald-300 font-heading font-black text-lg sm:text-xl">
-              <Award size={22} className="text-amber-400" />
-              <span>YOU WON ${Number(winResult).toFixed(2)} FREE CASH!</span>
+          <div
+            className={`my-3 p-3.5 rounded-2xl border text-center animate-bounce ${
+              winResult.isBadLuck
+                ? 'bg-slate-900/90 border-slate-700 text-slate-300'
+                : 'bg-emerald-950/80 border-emerald-500/70 text-emerald-200'
+            }`}
+          >
+            <div
+              className={`flex items-center justify-center gap-2 font-heading font-black text-lg sm:text-xl ${
+                winResult.isBadLuck ? 'text-amber-400' : 'text-emerald-300'
+              }`}
+            >
+              <Award size={22} className={winResult.isBadLuck ? 'text-slate-400' : 'text-amber-400'} />
+              <span>
+                {winResult.isBadLuck
+                  ? 'BAD LUCK! TRY AGAIN'
+                  : `YOU WON $${Number(winResult.amount).toFixed(2)} FREE CASH!`}
+              </span>
             </div>
-            <p className="text-xs text-emerald-200 mt-1">
-              Credited directly to your wallet balance. Ready to play!
+            <p className="text-xs text-slate-300 mt-1">
+              {winResult.isBadLuck
+                ? 'Better luck on your next spin! Keep playing.'
+                : 'Credited directly to your wallet balance. Ready to play!'}
             </p>
           </div>
         )}
@@ -260,28 +242,38 @@ export default function DailySpinWheelModal({ isOpen, onClose, user, onBalanceUp
           </div>
         )}
 
-        {/* Action Button & Cooldown */}
+        {/* Action Button & Deposit CTA */}
         <div className="mt-4 space-y-3">
           {canSpin ? (
             <button
               onClick={handleSpin}
               disabled={spinning || loading}
-              className="w-full py-4 rounded-2xl font-heading font-black text-lg tracking-wider bg-gradient-to-r from-amber-400 via-orange-500 to-[var(--neon-cyan)] text-black shadow-[0_0_30px_rgba(245,158,11,0.5)] hover:scale-101 active:scale-99 transition-all disabled:opacity-50"
+              className="w-full py-4 rounded-2xl font-heading font-black text-lg tracking-wider bg-gradient-to-r from-amber-400 via-orange-500 to-[var(--neon-cyan)] text-black shadow-[0_0_30px_rgba(245,158,11,0.5)] hover:scale-101 active:scale-99 transition-all disabled:opacity-50 cursor-pointer"
             >
-              {spinning ? 'SPINNING THE WHEEL...' : loading ? 'CHECKING...' : 'SPIN FOR FREE NOW!'}
+              {spinning
+                ? 'SPINNING THE WHEEL...'
+                : loading
+                ? 'CHECKING...'
+                : `SPIN NOW (${availableSpins} SPINS AVAILABLE)`}
             </button>
           ) : (
-            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center space-y-1.5">
-              <div className="flex items-center justify-center gap-2 text-amber-400 text-xs font-bold">
-                <Clock size={16} />
-                <span>NEXT FREE SPIN OPENS IN</span>
+            <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-center space-y-2">
+              <div className="flex items-center justify-center gap-1.5 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                <Sparkles size={14} />
+                <span>Depositor Free Spins</span>
               </div>
-              <div className="font-mono font-black text-2xl text-white tracking-widest">
-                {countdownText || 'Tomorrow'}
-              </div>
-              <p className="text-[11px] text-slate-400">
-                You already spun today! Check back when timer resets for another chance.
+              <p className="text-xs text-slate-300">
+                You receive <strong className="text-emerald-400">2 Free Spins</strong> on every approved deposit!
               </p>
+              <button
+                onClick={() => {
+                  onClose();
+                  window.location.href = '/deposit';
+                }}
+                className="w-full cyber-btn-cyan py-3 rounded-xl text-xs font-black uppercase tracking-wider mt-1 cursor-pointer"
+              >
+                Deposit Now to Unlock 2 Spins
+              </button>
             </div>
           )}
         </div>

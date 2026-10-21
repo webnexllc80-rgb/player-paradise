@@ -1,11 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   Sparkles,
   Zap,
+  Gift,
   KeyRound,
   Wallet,
   Download,
@@ -13,6 +14,7 @@ import {
   Flame,
   CheckCircle2,
   Clock,
+  AlertCircle,
   ArrowRight
 } from 'lucide-react';
 
@@ -23,6 +25,49 @@ export default function CyberHeroBanner({
   onOpenGameRequest,
 }) {
   const router = useRouter();
+  const [claimingFreeplay, setClaimingFreeplay] = useState(false);
+  const [freeplayFeedback, setFreeplayFeedback] = useState(null);
+
+  const handleGetFreeplay = async () => {
+    if (!user) {
+      if (onOpenAuth) onOpenAuth('register');
+      else router.push('/register');
+      return;
+    }
+
+    setClaimingFreeplay(true);
+    setFreeplayFeedback(null);
+
+    try {
+      const res = await fetch('/api/freeplay', { method: 'POST' });
+      const data = await res.json();
+      setClaimingFreeplay(false);
+
+      if (data.success) {
+        setFreeplayFeedback({
+          type: 'success',
+          message: `🎁 ${data.message || `Successfully claimed $${data.amount || 5} Freeplay bonus!`}`,
+        });
+        try {
+          const confetti = (await import('canvas-confetti')).default;
+          confetti({ particleCount: 90, spread: 60, origin: { y: 0.6 } });
+        } catch {}
+        setTimeout(() => {
+          window.location.reload();
+        }, 1800);
+      } else {
+        setFreeplayFeedback({
+          type: data.alreadyClaimed ? 'info' : 'error',
+          message: data.message || 'Unable to claim Freeplay.',
+        });
+        setTimeout(() => setFreeplayFeedback(null), 5000);
+      }
+    } catch (err) {
+      setClaimingFreeplay(false);
+      setFreeplayFeedback({ type: 'error', message: err.message || 'Error claiming Freeplay.' });
+      setTimeout(() => setFreeplayFeedback(null), 4000);
+    }
+  };
 
   return (
     <div className="relative w-full rounded-3xl overflow-hidden border border-[var(--chrome-border)] bg-gradient-to-br from-[#0c122c] via-[#090d20] to-[#050711] p-6 md:p-10 shadow-[0_15px_50px_rgba(0,0,0,0.6)]">
@@ -82,14 +127,44 @@ export default function CyberHeroBanner({
             </div>
           </div>
 
+          {/* Freeplay Feedback Banner */}
+          {freeplayFeedback && (
+            <div
+              className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-xs font-bold transition-all ${
+                freeplayFeedback.type === 'success'
+                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                  : freeplayFeedback.type === 'info'
+                  ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200'
+                  : 'bg-red-950/80 border-red-500 text-red-200'
+              }`}
+            >
+              {freeplayFeedback.type === 'success' ? (
+                <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle size={16} className="text-cyan-400 shrink-0" />
+              )}
+              <span>{freeplayFeedback.message}</span>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
-              onClick={onOpenGameRequest}
-              className="cyber-btn-cyan py-3 px-6 text-sm"
+              onClick={handleGetFreeplay}
+              disabled={claimingFreeplay}
+              className="cyber-btn-cyan py-3 px-6 text-sm font-black flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.3)]"
             >
-              <KeyRound size={17} />
-              <span>REQUEST GAME ID</span>
+              {claimingFreeplay ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <span>CLAIMING...</span>
+                </>
+              ) : (
+                <>
+                  <Gift size={17} className="text-black" />
+                  <span>GET FREEPLAY</span>
+                </>
+              )}
             </button>
 
             <button

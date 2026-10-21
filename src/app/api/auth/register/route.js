@@ -128,13 +128,35 @@ export async function POST(req) {
 
     const deviceId = getDeviceIdFromRequest(req, rawDeviceId);
 
+    // Hardware / Device Restriction: Only 1 account per device
+    if (deviceId) {
+      const boundUser = await usersCol.findOne({
+        role: ROLES.PLAYER,
+        $or: [
+          { deviceId: deviceId },
+          { boundDevices: deviceId },
+          { lastLoginDevice: deviceId },
+        ],
+      });
+
+      if (boundUser) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Device Restriction: Yeh device pehle se account (${boundUser.email}) ke sath bind hai. Aik device par sirf aik account allowed hai. (This device is already bound to ${boundUser.email})`,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Generate unique referral code for this new player
     const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
     const myReferralCode = `PP-${randomSuffix}`;
 
     const passwordHash = await bcrypt.hash(cleanPassword, 10);
-    const initialBonusSC = 5.0; // 5 Free Sweeps Coins ($5.00)
-    const initialBonusGC = 50000; // 50,000 Gold Coins
+    const initialBonusSC = 0; // Freeplay is claimed manually via lobby button, signup starts at 0 SC
+    const initialBonusGC = 10000; // 10,000 Gold Coins
 
     const sessionVersion = Date.now().toString();
 
@@ -146,6 +168,7 @@ export async function POST(req) {
       role: ROLES.PLAYER,
       balanceSC: initialBonusSC,
       balanceGC: initialBonusGC,
+      availableSpins: 0,
       kycStatus: 'none',
       state: (state || 'CA').toUpperCase(),
       country: 'US',
@@ -169,27 +192,29 @@ export async function POST(req) {
     const insertRes = await usersCol.insertOne(newUser);
     const userId = insertRes.insertedId ? insertRes.insertedId.toString() : newUser._id;
 
-    // Record welcome bonus into Ledger
-    try {
-      const ledgerCol = db.collection('ledger');
-      await ledgerCol.insertOne({
-        userId,
-        username: cleanUsername,
-        type: 'welcome_bonus',
-        currency: 'USD',
-        amount: initialBonusSC,
-        balanceBefore: 0,
-        balanceAfter: initialBonusSC,
-        performedBy: 'system',
-        notes: 'Sign-up welcome bonus ($5.00 wallet credit + 50,000 GC)',
-        createdAt: new Date(),
-      });
-    } catch {}
+    // Record welcome bonus into Ledger if any
+    if (initialBonusSC > 0) {
+      try {
+        const ledgerCol = db.collection('ledger');
+        await ledgerCol.insertOne({
+          userId,
+          username: cleanUsername,
+          type: 'welcome_bonus',
+          currency: 'USD',
+          amount: initialBonusSC,
+          balanceBefore: 0,
+          balanceAfter: initialBonusSC,
+          performedBy: 'system',
+          notes: 'Sign-up welcome bonus',
+          createdAt: new Date(),
+        });
+      } catch {}
+    }
 
     // Send welcome email in background
     sendEmail({
       to: cleanEmail,
-      subject: 'Welcome to Players Paradise - $5.00 Free Bonus Added!',
+      subject: 'Welcome to Players Paradise!',
       html: getWelcomeEmailTemplate(cleanUsername),
     }).catch(() => {});
 
@@ -204,7 +229,7 @@ export async function POST(req) {
 
     const response = NextResponse.json({
       success: true,
-      message: 'Account registered & verified! $5.00 Welcome bonus credited.',
+      message: 'Account registered & verified! Welcome to Players Paradise.',
       user: {
         userId,
         username: cleanUsername,

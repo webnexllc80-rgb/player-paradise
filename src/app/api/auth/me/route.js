@@ -46,7 +46,7 @@ export async function GET(req) {
     }
 
     // User profile either from DB document or gracefully from verified session token
-    const balanceSC = user ? Number((user.balanceSC || 0).toFixed(2)) : 5.0;
+    const balanceSC = user ? Number((user.balanceSC || 0).toFixed(2)) : 0;
     const frozenBalance = user ? Math.max(0, Number((user.frozenBalance || 0).toFixed(2))) : 0;
     const availableSC = Math.max(0, Number((balanceSC - frozenBalance).toFixed(2)));
 

@@ -48,13 +48,16 @@ export default function LedgerPage() {
       const meData = await meRes.json();
       if (meData.authenticated && meData.user) {
         setUser(meData.user);
-        const ledRes = await fetch('/api/ledger', { cache: 'no-store' });
-        const ledData = await ledRes.json();
-        if (ledData.success && ledData.records) {
-          setRecords(ledData.records);
+        const isStaff = meData.user.role && meData.user.role !== 'player';
+        if (!isStaff) {
+          router.replace('/wallet');
+          return;
+        } else {
+          router.replace('/admin?tab=ledger');
+          return;
         }
       } else if (!isSilent) {
-        router.push('/login?redirect=/ledger');
+        router.replace('/login');
       }
     } catch (err) {
       console.error('Failed to load ledger:', err);

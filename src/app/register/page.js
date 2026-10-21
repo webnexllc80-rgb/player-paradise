@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Mail, Lock, User, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { getOrCreateDeviceId } from '@/lib/deviceClient';
 
 function RegisterForm() {
   const router = useRouter();
@@ -149,6 +150,7 @@ function RegisterForm() {
     setLoading(true);
 
     try {
+      const deviceId = getOrCreateDeviceId();
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -159,6 +161,7 @@ function RegisterForm() {
           otp: otp.trim(),
           referralCode: referralCode.trim(),
           ageVerified: true,
+          deviceId,
         }),
       });
       const data = await res.json();
@@ -172,7 +175,7 @@ function RegisterForm() {
         sessionStorage.removeItem('paradise_ref_code');
       } catch {}
 
-      setSuccessMsg('Account verified! $5.00 Bonus Added. Redirecting...');
+      setSuccessMsg('Account verified! Welcome to Players Paradise. Redirecting...');
 
       try {
         const confetti = (await import('canvas-confetti')).default;
@@ -216,7 +219,7 @@ function RegisterForm() {
         </h1>
         <p className="text-xs text-slate-400">
           {step === 'details'
-            ? 'Claim $5.00 Instant Free Play Bonus + 50,000 GC'
+            ? 'Create your verified player account to get started'
             : `Enter the 6-digit code sent to ${email}`}
         </p>
       </div>
@@ -394,7 +397,7 @@ function RegisterForm() {
             disabled={loading || otp.length !== 6 || Boolean(successMsg)}
             className="w-full cyber-btn-cyan py-3.5 rounded-xl font-heading font-black text-sm tracking-wider cursor-pointer flex items-center justify-center gap-2"
           >
-            <span>{loading ? 'VERIFYING CODE...' : 'VERIFY & CLAIM $5.00 BONUS'}</span>
+            <span>{loading ? 'VERIFYING CODE...' : 'VERIFY & COMPLETE REGISTRATION'}</span>
             {!loading && <CheckCircle2 size={16} />}
           </button>
         </form>

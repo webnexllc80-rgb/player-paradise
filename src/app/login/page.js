@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Mail, Lock, Sparkles, AlertCircle, CheckCircle2, ArrowRight, ShieldCheck, User, Loader2 } from 'lucide-react';
+import { getOrCreateDeviceId } from '@/lib/deviceClient';
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -23,10 +24,11 @@ function LoginForm() {
     setLoading(true);
 
     try {
+      const deviceId = getOrCreateDeviceId();
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier, password, deviceId }),
       });
       const data = await res.json();
 

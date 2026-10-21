@@ -336,6 +336,7 @@ export async function PUT(req) {
           balanceSC: creditedSC,
           balanceGC: creditedGC,
           totalDeposited: deposit.amount,
+          availableSpins: 2, // 2 Free Spins unlocked per approved deposit
         },
       };
 
@@ -542,7 +543,7 @@ export async function PUT(req) {
         userEmail: user.email,
         username: user.username,
         title: 'Deposit Approved! 🎉',
-        message: `Your deposit of $${deposit.amount} was approved! ${creditedSC} SC credited to your wallet.`,
+        message: `Your deposit of $${deposit.amount} was approved! ${creditedSC} SC credited to your wallet + 2 Free Spins unlocked!`,
         type: 'deposit_approved',
         data: { amount: String(creditedSC) },
       });

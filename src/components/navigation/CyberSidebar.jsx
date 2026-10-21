@@ -61,7 +61,6 @@ export default function CyberSidebar({
         if (onOpenChat) onOpenChat();
       },
     },
-    { label: 'Ledger History', path: '/ledger', icon: Receipt },
     { label: 'Promotions & VIP', path: '/promotions', icon: Crown },
     { label: 'Download App', path: '/download-app', icon: Download, badge: 'APK / iOS' },
     { label: 'How To Play', path: '/how-to-play', icon: HelpCircle },

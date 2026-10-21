@@ -18,8 +18,9 @@ export async function GET() {
       regularBonusTitle: 'REGULAR BONUS',
       regularBonusSubtitle: 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.',
       referralBonusPercent: 20,
-      signupBonusSC: 5.0,
-      signupBonusGC: 50000,
+      signupBonusSC: 0,
+      signupBonusGC: 10000,
+      freeplayAmountSC: 5.0,
       minRedemptionSC: 50.0,
       geoRestrictionEnabled: false,
       restrictedStates: [],
@@ -82,6 +83,7 @@ export async function PUT(req) {
     if (body.maintenanceMode !== undefined) updateFields.maintenanceMode = Boolean(body.maintenanceMode);
     if (body.signupBonusSC !== undefined) updateFields.signupBonusSC = Number(body.signupBonusSC);
     if (body.signupBonusGC !== undefined) updateFields.signupBonusGC = Number(body.signupBonusGC);
+    if (body.freeplayAmountSC !== undefined) updateFields.freeplayAmountSC = Number(body.freeplayAmountSC);
     if (body.minRedemptionSC !== undefined) updateFields.minRedemptionSC = Number(body.minRedemptionSC);
 
     // Dynamic Welcome & Regular Bonus Settings

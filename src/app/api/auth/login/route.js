@@ -83,6 +83,29 @@ export async function POST(req) {
       );
     }
 
+    // Hardware / Device binding restriction: 1 device = 1 account
+    if (!isStaff && !isExplicitAdminPortal && deviceId) {
+      const boundUser = await usersCol.findOne({
+        _id: { $ne: user._id },
+        role: ROLES.PLAYER,
+        $or: [
+          { deviceId: deviceId },
+          { boundDevices: deviceId },
+          { lastLoginDevice: deviceId },
+        ],
+      });
+
+      if (boundUser) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Device Binding Restriction: Yeh device doosre account (${boundUser.email}) ke sath bind hai. Iss device par sirf ${boundUser.email} login ho sakti hai. (This device is bound to ${boundUser.email})`,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Track active device and session version
     const sessionVersion = Date.now().toString();
     const userId = user._id ? user._id.toString() : user.id;

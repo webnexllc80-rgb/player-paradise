@@ -413,6 +413,7 @@ export default function AdminPortal({ initialTab }) {
           regularBonusTitle: sysSettings?.regularBonusTitle || 'REGULAR BONUS',
           regularBonusSubtitle: sysSettings?.regularBonusSubtitle || 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.',
           referralBonusPercent: Number(sysSettings?.referralBonusPercent ?? 20),
+          freeplayAmountSC: Number(sysSettings?.freeplayAmountSC ?? 5.0),
         }),
       });
       const data = await res.json();
@@ -5374,8 +5375,8 @@ export default function AdminPortal({ initialTab }) {
                 </div>
 
                 <form onSubmit={handleSaveBonusSettings} className="space-y-6">
-                  {/* 3 Full-Width Equal-Height Cards */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full">
+                  {/* 4 Full-Width Equal-Height Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 w-full">
                     {/* 1. Welcome Bonus Card */}
                     <div className="bg-[#070514] border border-cyan-500/35 p-5 sm:p-6 rounded-2xl space-y-4 flex flex-col justify-between shadow-lg">
                       <div className="space-y-4">
@@ -5570,6 +5571,64 @@ export default function AdminPortal({ initialTab }) {
                           <span className="font-bold text-white block">💡 Live Simulation:</span>
                           <p className="text-[10.5px] text-slate-300 leading-relaxed m-0 font-mono">
                             Friend deposits $100 ➔ Inviter gets <strong className="text-amber-400">{Number(sysSettings?.referralBonusPercent ?? 20)} SC ($ {Number(sysSettings?.referralBonusPercent ?? 20)})</strong> instant wallet bonus
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. Lobby Freeplay Bonus Card */}
+                    <div className="bg-[#070514] border border-emerald-500/35 p-5 sm:p-6 rounded-2xl space-y-4 flex flex-col justify-between shadow-lg">
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">
+                            4. Lobby Freeplay ($ SC)
+                          </span>
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-extrabold uppercase whitespace-nowrap">
+                            Hero Button
+                          </span>
+                        </div>
+
+                        {/* Freeplay Amount */}
+                        <div>
+                          <label className="text-[11px] font-bold text-gray-300 block mb-1.5 uppercase tracking-wider">
+                            Freeplay Amount ($ SC)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              max="100"
+                              value={sysSettings?.freeplayAmountSC ?? 5.0}
+                              onChange={(e) => setSysSettings(prev => ({ ...prev, freeplayAmountSC: e.target.value }))}
+                              className="w-full bg-[#0E0A24] border border-emerald-500/20 focus:border-emerald-400 rounded-xl px-3.5 py-2.5 text-white font-black text-sm pr-9 outline-none transition"
+                              required
+                            />
+                            <span className="absolute right-3 top-2.5 text-xs font-black text-emerald-400">SC</span>
+                          </div>
+                          <p className="text-[10.5px] text-gray-400 mt-1.5 leading-relaxed">
+                            Amount awarded when player clicks &quot;GET FREEPLAY&quot; in hero lobby. Each player can claim once.
+                          </p>
+                        </div>
+
+                        {/* Audit Details */}
+                        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-[11px] text-emerald-200/90 space-y-1.5">
+                          <div className="font-bold text-emerald-300 flex items-center gap-1.5 text-xs">
+                            <Gift size={13} className="text-emerald-400" />
+                            <span>Manual Lobby Claim</span>
+                          </div>
+                          <p className="text-[10.5px] text-emerald-200/80 leading-relaxed m-0">
+                            Automatic signup bonus is 0 SC. Players claim this configured Freeplay manually.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Simulation Tag */}
+                      <div className="pt-3 border-t border-emerald-500/15">
+                        <div className="rounded-xl p-3 bg-[#0E0A24] border border-emerald-500/20 text-[11px] text-emerald-300 space-y-1">
+                          <span className="font-bold text-white block">💡 Live Simulation:</span>
+                          <p className="text-[10.5px] text-slate-300 leading-relaxed m-0 font-mono">
+                            Player clicks &apos;GET FREEPLAY&apos; ➔ Receives <strong className="text-emerald-400">${Number(sysSettings?.freeplayAmountSC ?? 5.0).toFixed(2)} SC</strong>
                           </p>
                         </div>
                       </div>

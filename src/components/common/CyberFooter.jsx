@@ -69,7 +69,6 @@ export default function CyberFooter() {
             </h4>
             <ul className="space-y-2 text-xs">
               <li><Link href="/wallet" className="hover:text-[var(--neon-cyan)] transition-colors">Cashier & Deposit</Link></li>
-              <li><Link href="/ledger" className="hover:text-[var(--neon-cyan)] transition-colors">Transaction Ledger</Link></li>
               <li><Link href="/promotions" className="hover:text-[var(--neon-cyan)] transition-colors">VIP Crown Club</Link></li>
               <li><Link href="/download-app" className="hover:text-[var(--neon-cyan)] transition-colors">Download Android APK</Link></li>
               <li><Link href="/download-app" className="hover:text-[var(--neon-cyan)] transition-colors">iOS App Guide</Link></li>

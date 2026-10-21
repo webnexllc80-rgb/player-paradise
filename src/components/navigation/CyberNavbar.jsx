@@ -433,17 +433,6 @@ export default function CyberNavbar({
 
                   <div
                     onClick={() => {
-                      router.push('/ledger');
-                      setProfileOpen(false);
-                    }}
-                    className="flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800/80 rounded-xl cursor-pointer"
-                  >
-                    <KeyRound size={15} className="text-cyan-400" />
-                    <span>Ledger & Activity</span>
-                  </div>
-
-                  <div
-                    onClick={() => {
                       router.push('/promotions');
                       setProfileOpen(false);
                     }}
