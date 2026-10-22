@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
-import { notifyPlayer } from '@/lib/notify';
+import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
 
 // GET: List Deposits (Admin / Financial Manager) or Player's own
@@ -250,6 +250,17 @@ export async function POST(req) {
 
     const res = await depositsCol.insertOne(newDeposit);
 
+    // Notify staff desk immediately (Never sent to players)
+    notifyStaff({
+      title: '💵 New Deposit Submitted',
+      message: `@${user?.username || session.username} submitted a deposit of $${depositAmount.toFixed(2)} via ${resolvedMethodName}.`,
+      type: 'deposit_submitted',
+      data: {
+        depositId: res.insertedId.toString(),
+        url: '/admin?tab=finance',
+      },
+    });
+
     return NextResponse.json({
       success: true,
       depositId: res.insertedId.toString(),
@@ -473,21 +484,18 @@ export async function PUT(req) {
               createdAt: new Date(),
             });
 
-            // C. In-App Notification to Referrer
+            // C. In-App & Push Notification to Referrer (Strictly to referrer only!)
             const notifTitle = `🎁 Referral Bonus: +$${bonusSC.toFixed(2)} SC!`;
             const notifMessage = `Congratulations! Your referred friend @${user.username} made their first deposit ($${deposit.amount}). You received a ${referralPercent}% referral bonus of $${bonusSC.toFixed(2)} SC directly into your wallet!`;
 
-            await db.collection('notifications').insertOne({
+            notifyPlayer({
               userId: referrer._id.toString(),
+              userEmail: referrer.email,
               username: referrer.username,
-              email: referrer.email,
-              target: 'user',
               title: notifTitle,
               message: notifMessage,
               type: 'bonus',
-              amount: bonusSC,
-              read: false,
-              createdAt: new Date(),
+              data: { amount: String(bonusSC), url: '/wallet' },
             });
 
             // D. Email Notification to Referrer

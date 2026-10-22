@@ -237,8 +237,22 @@ function buildFcmPayload({ title, body, data = {} }) {
   };
 }
 
-// Send to specific token, topic, OR broadcast to all devices in database
-export async function sendPushNotification({ token, topic, title, body, data = {} }) {
+/**
+ * Send push notification targeting:
+ * 1. Single device: { token: '...' }
+ * 2. Specific device list: { tokens: ['...'] }
+ * 3. Specific topic ONLY: { topic: 'paradise_staff_alerts' } (DOES NOT broadcast to players!)
+ * 4. Explicit broadcast: { broadcast: true, topic: 'paradise_all_players' }
+ */
+export async function sendPushNotification({
+  token,
+  tokens,
+  topic,
+  broadcast = false,
+  title,
+  body,
+  data = {},
+}) {
   const messaging = await getFirebaseMessaging();
   if (!messaging) {
     console.log(`[FCM SIMULATED PUSH] Title: "${title}" | Body: "${body}"`);
@@ -247,10 +261,10 @@ export async function sendPushNotification({ token, topic, title, body, data = {
 
   const payload = buildFcmPayload({ title, body, data });
 
-  // 1. Send to single device token if specified
-  if (token) {
+  // 1. Send to single device token if specified (STRICTLY single device!)
+  if (token && typeof token === 'string' && token.trim().length > 15) {
     try {
-      const res = await messaging.send({ ...payload, token });
+      const res = await messaging.send({ ...payload, token: token.trim() });
       return { success: true, messageId: res };
     } catch (err) {
       console.warn('[FCM] Send to token error:', err.message);
@@ -258,86 +272,111 @@ export async function sendPushNotification({ token, topic, title, body, data = {
     }
   }
 
-  // 2. Multicast to ALL active device tokens registered in subscriptions
-  let multicastCount = 0;
-  let allTokens = [];
-  try {
-    const db = await getDb();
-    const subs = await db
-      .collection('subscriptions')
-      .find({
-        $or: [
-          { fcmToken: { $exists: true, $ne: null } },
-          { token: { $exists: true, $ne: null } },
-        ],
-      })
-      .toArray();
-
-    allTokens = [
-      ...new Set(
-        subs
-          .map((s) => s.fcmToken || s.token)
-          .filter((t) => typeof t === 'string' && t.trim().length > 15)
-      ),
-    ];
-
-    if (allTokens.length > 0) {
-      // Chunk tokens in batches of 500 for FCM sendEachForMulticast
+  // 2. Send to multiple specific tokens if provided (STRICTLY specified devices!)
+  if (Array.isArray(tokens) && tokens.length > 0) {
+    const validTokens = [...new Set(tokens.filter((t) => typeof t === 'string' && t.trim().length > 15))];
+    if (validTokens.length > 0) {
+      let sentCount = 0;
       const batchSize = 500;
-      for (let i = 0; i < allTokens.length; i += batchSize) {
-        const tokenBatch = allTokens.slice(i, i + batchSize);
+      for (let i = 0; i < validTokens.length; i += batchSize) {
+        const batch = validTokens.slice(i, i + batchSize);
         try {
-          const multiRes = await messaging.sendEachForMulticast({
-            tokens: tokenBatch,
-            ...payload,
-          });
-          multicastCount += multiRes.successCount;
+          const multiRes = await messaging.sendEachForMulticast({ tokens: batch, ...payload });
+          sentCount += multiRes.successCount;
         } catch (mErr) {
-          console.warn('[FCM] Multicast batch error:', mErr.message);
+          console.warn('[FCM] Multicast specific tokens batch error:', mErr.message);
         }
       }
-
-      // Also ensure all tokens are subscribed to topics for future pushes
-      try {
-        await messaging.subscribeToTopic(allTokens, 'paradise_all_players');
-        await messaging.subscribeToTopic(allTokens, 'all_players');
-        await messaging.subscribeToTopic(allTokens, 'vegas_all_players');
-      } catch {}
+      return { success: sentCount > 0, deliveredCount: sentCount, totalTokens: validTokens.length };
     }
-  } catch (dbErr) {
-    console.warn('[FCM] Subscription token lookup notice:', dbErr.message);
+    return { success: false, error: 'No valid tokens in list' };
   }
 
-  // 3. Also send to topics as guaranteed broadcast
-  const topicsToSend = [
-    topic || 'paradise_all_players',
-    'paradise_all_players',
-    'all_players',
-    'vegas_all_players',
-  ];
-  const uniqueTopics = [...new Set(topicsToSend.filter(Boolean))];
-  const topicResults = [];
-
-  for (const t of uniqueTopics) {
+  // 3. Send to a SPECIFIC topic ONLY (Never add all_players topics and NEVER multicast!)
+  if (topic && !broadcast) {
     try {
-      const topicRes = await messaging.send({
-        ...payload,
-        topic: t,
-      });
-      topicResults.push({ topic: t, success: true, messageId: topicRes });
+      const topicRes = await messaging.send({ ...payload, topic });
+      console.log(`[FCM TOPIC] Sent to topic [${topic}]:`, topicRes);
+      return { success: true, messageId: topicRes, topic };
     } catch (tErr) {
-      topicResults.push({ topic: t, success: false, error: tErr.message });
+      console.warn(`[FCM] Topic [${topic}] send error:`, tErr.message);
+      return { success: false, error: tErr.message, topic };
     }
   }
 
-  const anyTopicSuccess = topicResults.some((r) => r.success);
-  console.log(`[FCM BROADCAST] Multicast delivered: ${multicastCount} devices | Topics: ${JSON.stringify(topicResults)}`);
+  // 4. EXPLICIT BROADCAST ONLY (Admin promotional announcement to all players)
+  if (broadcast) {
+    let multicastCount = 0;
+    let allTokens = [];
+    try {
+      const db = await getDb();
+      const subs = await db
+        .collection('subscriptions')
+        .find({
+          $or: [
+            { fcmToken: { $exists: true, $ne: null } },
+            { token: { $exists: true, $ne: null } },
+          ],
+        })
+        .toArray();
 
-  return {
-    success: multicastCount > 0 || anyTopicSuccess,
-    multicastCount,
-    totalTokens: allTokens.length,
-    topicResults,
-    source: loadedAccountSource,
-  };
+      allTokens = [
+        ...new Set(
+          subs
+            .map((s) => s.fcmToken || s.token)
+            .filter((t) => typeof t === 'string' && t.trim().length > 15)
+        ),
+      ];
+
+      if (allTokens.length > 0) {
+        const batchSize = 500;
+        for (let i = 0; i < allTokens.length; i += batchSize) {
+          const tokenBatch = allTokens.slice(i, i + batchSize);
+          try {
+            const multiRes = await messaging.sendEachForMulticast({
+              tokens: tokenBatch,
+              ...payload,
+            });
+            multicastCount += multiRes.successCount;
+          } catch (mErr) {
+            console.warn('[FCM] Broadcast multicast batch error:', mErr.message);
+          }
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[FCM] Broadcast token lookup notice:', dbErr.message);
+    }
+
+    const topicsToSend = [
+      topic || 'paradise_all_players',
+      'paradise_all_players',
+      'all_players',
+      'vegas_all_players',
+    ];
+    const uniqueTopics = [...new Set(topicsToSend.filter(Boolean))];
+    const topicResults = [];
+
+    for (const t of uniqueTopics) {
+      try {
+        const topicRes = await messaging.send({ ...payload, topic: t });
+        topicResults.push({ topic: t, success: true, messageId: topicRes });
+      } catch (tErr) {
+        topicResults.push({ topic: t, success: false, error: tErr.message });
+      }
+    }
+
+    const anyTopicSuccess = topicResults.some((r) => r.success);
+    console.log(`[FCM BROADCAST] Multicast delivered: ${multicastCount} devices | Topics: ${JSON.stringify(topicResults)}`);
+
+    return {
+      success: multicastCount > 0 || anyTopicSuccess,
+      multicastCount,
+      totalTokens: allTokens.length,
+      topicResults,
+      source: loadedAccountSource,
+    };
+  }
+
+  // If none of the conditions matched, return error (DO NOT SILENTLY BROADCAST!)
+  return { success: false, error: 'Recipient token, tokens list, topic, or broadcast flag required.' };
 }

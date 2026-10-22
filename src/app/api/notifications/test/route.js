@@ -317,6 +317,7 @@ async function handleTestNotification(req) {
 
     // Multicast FCM push to all registered devices & topics
     const fcmResult = await sendPushNotification({
+      broadcast: true,
       title,
       body: message,
       data: { url: targetUrl },

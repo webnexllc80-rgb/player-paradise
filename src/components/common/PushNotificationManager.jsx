@@ -155,6 +155,10 @@ export default function PushNotificationManager() {
 
             PushNotifications.addListener('registration', async (token) => {
               try {
+                const storedDevId = typeof window !== 'undefined' ? localStorage.getItem('pp_device_fingerprint') : null;
+                if (typeof window !== 'undefined' && token.value) {
+                  localStorage.setItem('pp_fcm_device_token', token.value);
+                }
                 await fetch('/api/notifications', {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
@@ -162,12 +166,17 @@ export default function PushNotificationManager() {
                     token: token.value,
                     fcmToken: token.value,
                     device: 'android_apk',
+                    deviceId: storedDevId,
                   }),
                 });
               } catch {}
             });
 
             PushNotifications.addListener('pushNotificationReceived', (notification) => {
+              const notifTarget = notification.data?.target;
+              // Filter out staff alerts on player client
+              if (notifTarget === 'staff') return;
+
               dispatchAlert({
                 title: notification.title,
                 message: notification.body,
@@ -239,7 +248,12 @@ export default function PushNotificationManager() {
 
       try {
         const activeGuestId = typeof window !== 'undefined' ? (localStorage.getItem('pp_guest_chat_id') || '') : '';
-        const notifUrl = activeGuestId ? `/api/notifications?guestId=${encodeURIComponent(activeGuestId)}` : '/api/notifications';
+        const storedEmail = typeof window !== 'undefined' ? (localStorage.getItem('pp_user_email') || '') : '';
+        const params = new URLSearchParams();
+        if (storedEmail) params.set('email', storedEmail);
+        else if (activeGuestId) params.set('guestId', activeGuestId);
+
+        const notifUrl = params.toString() ? `/api/notifications?${params.toString()}` : '/api/notifications';
         const res = await fetch(notifUrl, { cache: 'no-store' });
         const data = await res.json();
         if (isCancelled || !data.success || !Array.isArray(data.notifications)) return;
@@ -296,6 +310,35 @@ export default function PushNotificationManager() {
       window.removeEventListener('paradise-show-notification', handleCustomTrigger);
     };
   }, [pathname]);
+
+  // 4. Auto-bind FCM push token to user account whenever user logs in or switches
+  useEffect(() => {
+    const handleUserSync = (e) => {
+      const liveUser = e.detail;
+      if (liveUser && (liveUser.userId || liveUser.email)) {
+        try {
+          const storedToken = typeof window !== 'undefined' ? localStorage.getItem('pp_fcm_device_token') : null;
+          const storedDevId = typeof window !== 'undefined' ? localStorage.getItem('pp_device_fingerprint') : null;
+          fetch('/api/notifications', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: liveUser.userId || liveUser._id || liveUser.id,
+              email: liveUser.email,
+              username: liveUser.username,
+              token: storedToken,
+              fcmToken: storedToken,
+              deviceId: storedDevId,
+              role: liveUser.role || 'player',
+            }),
+          }).catch(() => {});
+        } catch {}
+      }
+    };
+
+    window.addEventListener('paradise-user-sync', handleUserSync);
+    return () => window.removeEventListener('paradise-user-sync', handleUserSync);
+  }, []);
 
   if (!activeToast || (pathname && pathname.startsWith('/admin'))) return null;
 

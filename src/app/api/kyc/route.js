@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES, getUserFilter, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
+import { notifyPlayer, notifyStaff } from '@/lib/notify';
 
 // GET: List KYC submissions (Staff) or current status (Player)
 export async function GET(req) {
@@ -93,6 +94,14 @@ export async function POST(req) {
 
     const res = await kycCol.insertOne(newKyc);
 
+    // Notify staff desk immediately (Never sent to players)
+    notifyStaff({
+      title: '🛡️ New KYC Verification Submitted',
+      message: `@${session.username} submitted identity verification documents for compliance review.`,
+      type: 'kyc_submitted',
+      data: { kycId: res.insertedId.toString(), url: '/admin?tab=kyc' },
+    });
+
     await usersCol.updateOne(
       getUserFilter(session),
       { $set: { kycStatus: 'pending' } }
@@ -162,6 +171,17 @@ export async function PUT(req) {
         }).catch(() => {});
       }
 
+      // Notify player directly
+      notifyPlayer({
+        userId: kyc.userId,
+        userEmail: user?.email,
+        username: user?.username || 'Player',
+        title: 'Identity Verified! 🛡️🎉',
+        message: 'Your US identity verification has been approved! You can now request instant cash prize redemptions.',
+        type: 'kyc_approved',
+        data: { url: '/wallet' },
+      });
+
       return NextResponse.json({ success: true, message: 'KYC Approved successfully.' });
     } else if (action === 'reject') {
       await kycCol.updateOne(
@@ -180,6 +200,17 @@ export async function PUT(req) {
         safeIdFilter(kyc.userId),
         { $set: { kycStatus: 'rejected' } }
       );
+
+      // Notify player directly
+      notifyPlayer({
+        userId: kyc.userId,
+        userEmail: user?.email,
+        username: user?.username || 'Player',
+        title: 'KYC Verification Update ⚠️',
+        message: `Your identity verification could not be approved: ${rejectReason || 'Document blurred or information mismatch'}. Please resubmit clear photos.`,
+        type: 'kyc_rejected',
+        data: { url: '/wallet' },
+      });
 
       return NextResponse.json({ success: true, message: 'KYC Rejected.' });
     }

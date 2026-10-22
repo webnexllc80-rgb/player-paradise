@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
-import { notifyPlayer } from '@/lib/notify';
+import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
 
 // GET Account Requests
@@ -295,6 +295,17 @@ export async function POST(req) {
     };
 
     const res = await requestsCol.insertOne(newRequest);
+
+    // Notify staff desk immediately (Never sent to players)
+    notifyStaff({
+      title: requestType === 'COIN_LOAD' ? '⚡ New Coin Load Request' : '🎮 New Game ID Request',
+      message: `@${userName} requested ${requestType === 'COIN_LOAD' ? `$${transferAmount.toFixed(2)} SC loaded into ${gameTitle}` : `credentials for ${gameTitle}`}.`,
+      type: 'account_request',
+      data: {
+        requestId: res.insertedId.toString(),
+        url: '/admin?tab=account_requests',
+      },
+    });
 
     return NextResponse.json({
       success: true,

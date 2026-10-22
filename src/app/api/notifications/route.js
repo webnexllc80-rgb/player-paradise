@@ -48,14 +48,15 @@ export async function GET(req) {
     const userKeys = [];
 
     if (session?.userId) {
-      targetConditions.push({ userId: session.userId });
-      targetConditions.push({ userId: session.userId.toString() });
-      userKeys.push(session.userId.toString());
+      const uidStr = session.userId.toString().trim();
+      targetConditions.push({ userId: uidStr });
+      userKeys.push(uidStr);
     }
     if (session?.username) {
-      targetConditions.push({ username: session.username.toLowerCase() });
-      targetConditions.push({ username: session.username });
-      userKeys.push(session.username.toLowerCase());
+      const uLower = session.username.toLowerCase().trim();
+      targetConditions.push({ username: uLower });
+      targetConditions.push({ username: session.username.trim() });
+      userKeys.push(uLower);
     }
     if (session?.email) {
       const cleanEmail = session.email.toLowerCase().trim();
@@ -63,11 +64,12 @@ export async function GET(req) {
       targetConditions.push({ userEmail: cleanEmail });
       userKeys.push(cleanEmail);
     }
-    if (guestIdParam) {
-      targetConditions.push({ userId: guestIdParam.trim() });
-      userKeys.push(guestIdParam.trim());
+    if (guestIdParam && guestIdParam.trim()) {
+      const cleanGid = guestIdParam.trim();
+      targetConditions.push({ userId: cleanGid });
+      userKeys.push(cleanGid);
     }
-    if (emailParam) {
+    if (emailParam && emailParam.trim()) {
       const cleanEmail = emailParam.toLowerCase().trim();
       targetConditions.push({ email: cleanEmail });
       targetConditions.push({ userEmail: cleanEmail });
@@ -75,14 +77,19 @@ export async function GET(req) {
       try {
         const uDoc = await db.collection('users').findOne({ email: cleanEmail });
         if (uDoc) {
-          targetConditions.push({ userId: uDoc._id.toString() });
+          const uDocId = uDoc._id.toString();
+          targetConditions.push({ userId: uDocId });
           targetConditions.push({ username: uDoc.username });
-          userKeys.push(uDoc._id.toString());
+          userKeys.push(uDocId);
         }
       } catch {}
     }
 
-    const query = { $or: targetConditions };
+    // Exclude any staff-targeted notifications from player in-app notification bells
+    const query = {
+      target: { $ne: 'staff' },
+      $or: targetConditions,
+    };
 
     const items = await notifsCol
       .find(query)
@@ -148,6 +155,7 @@ export async function POST(req) {
 
     // Send push notification via FCM / WebPush (fail-safe non-blocking)
     sendPushNotification({
+      broadcast: true,
       topic: 'paradise_all_players',
       title: title.trim(),
       body: message.trim(),
@@ -225,7 +233,11 @@ export async function PUT(req) {
     const subsCol = db.collection('subscriptions');
     const usersCol = db.collection('users');
 
-    const effectiveEmail = email || (fcmToken ? `device_${fcmToken.slice(-10)}@push.playersparadisehub.com` : 'anonymous@push.playersparadisehub.com');
+    const effectiveEmail = email || (session?.email ? session.email.toLowerCase().trim() : (fcmToken ? `device_${fcmToken.slice(-10)}@push.playersparadisehub.com` : 'anonymous@push.playersparadisehub.com'));
+    const effectiveUserId = session?.userId ? session.userId.toString() : (body.userId ? body.userId.toString() : null);
+    const effectiveUsername = session?.username || body.username || (effectiveEmail.includes('@') ? effectiveEmail.split('@')[0] : 'Player');
+    const effectiveRole = session?.role || body.role || 'player';
+
     const filter = fcmToken ? { $or: [{ fcmToken }, { token: fcmToken }] } : { email: effectiveEmail };
 
     await subsCol.updateOne(
@@ -237,8 +249,9 @@ export async function PUT(req) {
           token: fcmToken,
           device,
           deviceId,
-          userId: session?.userId || null,
-          username: session?.username || effectiveEmail.split('@')[0],
+          userId: effectiveUserId,
+          username: effectiveUsername,
+          role: effectiveRole,
           isSubscribed: true,
           updatedAt: new Date(),
         },
@@ -247,11 +260,15 @@ export async function PUT(req) {
       { upsert: true }
     );
 
-    if (session?.userId) {
-      await usersCol.updateOne(
-        getUserFilter(session),
-        { $set: { isSubscribed: true } }
-      );
+    if (effectiveUserId) {
+      try {
+        const { ObjectId } = await import('mongodb');
+        const uFilter = ObjectId.isValid(effectiveUserId) ? { _id: new ObjectId(effectiveUserId) } : { _id: effectiveUserId };
+        await usersCol.updateOne(
+          uFilter,
+          { $set: { isSubscribed: true } }
+        );
+      } catch {}
     }
 
     // Auto-subscribe FCM token to broadcast topics
@@ -260,9 +277,19 @@ export async function PUT(req) {
         try {
           const messaging = await getFirebaseMessaging();
           if (messaging) {
+            // All players subscribe to player broadcast topics
             await messaging.subscribeToTopic([fcmToken], 'paradise_all_players');
             await messaging.subscribeToTopic([fcmToken], 'all_players');
             await messaging.subscribeToTopic([fcmToken], 'vegas_all_players');
+
+            // Strictly separate staff alerts topic
+            if (effectiveRole && effectiveRole !== 'player') {
+              await messaging.subscribeToTopic([fcmToken], 'paradise_staff_alerts');
+            } else {
+              try {
+                await messaging.unsubscribeFromTopic([fcmToken], 'paradise_staff_alerts');
+              } catch {}
+            }
           }
         } catch (subErr) {
           console.warn('[FCM] Auto-subscribe device token note:', subErr.message);

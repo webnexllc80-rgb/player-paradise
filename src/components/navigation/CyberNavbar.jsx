@@ -146,6 +146,9 @@ export default function CyberNavbar({
 
           // Dispatch event to sync parent page states automatically
           if (typeof window !== 'undefined') {
+            if (data.user.email) {
+              localStorage.setItem('pp_user_email', data.user.email);
+            }
             window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
           }
 
@@ -166,6 +169,9 @@ export default function CyberNavbar({
         } else {
           setLiveUser(null);
           setLiveUnreadCount(0);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('pp_user_email');
+          }
         }
       } catch {
         // silent fail

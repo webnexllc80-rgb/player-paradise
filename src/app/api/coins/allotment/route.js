@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
+import { notifyPlayer } from '@/lib/notify';
 
 // Search player for allotment or fetch recent allotment history
 export async function GET(req) {
@@ -163,6 +164,19 @@ export async function POST(req) {
       staffRole: session.role,
       notes: `Reason: ${reason.trim()} (Processed by ${session.username} - ${session.role})`,
       createdAt: new Date(),
+    });
+
+    // Notify targeted player ONLY (Never leaks to other players)
+    notifyPlayer({
+      userId: player._id.toString(),
+      userEmail: player.email,
+      username: player.username,
+      title: action === 'credit' ? `Coins Credited: +${numAmount} ${currency}! 💰` : `Coins Adjusted: -${numAmount} ${currency}`,
+      message: action === 'credit'
+        ? `Your balance has been credited with +${numAmount} ${currency}. Reason: ${reason.trim()}`
+        : `Your balance has been adjusted by -${numAmount} ${currency}. Reason: ${reason.trim()}`,
+      type: action === 'credit' ? 'coins_allotment' : 'coins_deduction',
+      data: { currency, amount: String(numAmount), newBalance: String(newBalance), url: '/wallet' },
     });
 
     return NextResponse.json({

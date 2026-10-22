@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser, ROLES, safeIdFilter, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
-import { notifyPlayer } from '@/lib/notify';
-import { sendPushNotification } from '@/lib/fcm';
+import { notifyPlayer, notifyStaff } from '@/lib/notify';
 
 /**
  * Helper to identify authorized staff roles
@@ -326,14 +325,21 @@ export async function POST(req) {
     // Notifications Dispatch (Background, non-blocking)
     // ========================================================================
     if (senderRole === 'staff' && (conversationId || targetUserId)) {
-      // Staff replied to player: Send in-app notification & push notification
+      // Staff replied to player: Send in-app notification & push notification ONLY to this targeted player
       (async () => {
         try {
-          const targetPlayer = await db
-            .collection('users')
-            .findOne(safeIdFilter(resolvedConvId, ['username', 'email']));
+          const userQueries = [];
+          if (resolvedConvId) userQueries.push(...safeIdFilter(resolvedConvId, ['username', 'email']).$or);
+          if (customerUserId && customerUserId !== resolvedConvId) {
+            userQueries.push(...safeIdFilter(customerUserId, ['username', 'email']).$or);
+          }
+          if (customerUsername && customerUsername !== 'Player') {
+            userQueries.push({ username: customerUsername });
+          }
 
-          const targetUid = targetPlayer?._id ? targetPlayer._id.toString() : resolvedConvId;
+          const targetPlayer = userQueries.length > 0 ? await db.collection('users').findOne({ $or: userQueries }) : null;
+
+          const targetUid = targetPlayer?._id ? targetPlayer._id.toString() : (customerUserId || resolvedConvId);
           const targetEmail = targetPlayer?.email || null;
           const targetUsername = targetPlayer?.username || customerUsername || 'Player';
           const senderStaffTitle = staffName === 'superadmin' ? 'Support Desk' : (staffName || 'VIP Concierge');
@@ -352,28 +358,17 @@ export async function POST(req) {
         }
       })();
     } else {
-      // Player or guest sent message to staff: Notify admin dashboard
+      // Player or guest sent message to staff: Notify admin & staff ONLY (Never broadcast to players!)
       (async () => {
         try {
-          await db.collection('notifications').insertOne({
-            target: 'staff',
-            channel: 'all',
-            title: `💬 Support Message: ${senderUsername}`,
-            message: (cleanText || 'Sent an image attachment').slice(0, 100),
-            type: 'chat_message',
-            conversationId: resolvedConvId,
-            url: `/admin?tab=chat&cid=${resolvedConvId}`,
-            read: false,
-            createdAt: new Date(),
-          });
-
-          await sendPushNotification({
-            topic: 'paradise_staff_alerts',
+          notifyStaff({
             title: `💬 Support Chat: ${senderUsername}`,
-            body: (cleanText || 'Sent an attachment').slice(0, 100),
+            message: (cleanText || 'Sent an attachment').slice(0, 100),
+            type: 'chat_message',
             data: {
               url: `/admin?tab=chat&cid=${resolvedConvId}`,
               conversationId: resolvedConvId,
+              senderUsername,
             },
           });
         } catch (sErr) {

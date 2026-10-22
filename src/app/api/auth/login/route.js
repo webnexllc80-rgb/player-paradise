@@ -119,9 +119,21 @@ export async function POST(req) {
       updateFields.lastLoginDevice = deviceId;
     }
 
-    const updateOps = { $set: updateFields };
     if (deviceId) {
       updateOps.$addToSet = { boundDevices: deviceId };
+      // Also bind any existing device FCM subscription to this user
+      db.collection('subscriptions').updateMany(
+        { deviceId },
+        {
+          $set: {
+            userId: user._id.toString(),
+            email: (user.email || '').toLowerCase().trim(),
+            username: user.username,
+            role: user.role || 'player',
+            updatedAt: new Date(),
+          },
+        }
+      ).catch(() => {});
     }
     await usersCol.updateOne({ _id: user._id }, updateOps);
 

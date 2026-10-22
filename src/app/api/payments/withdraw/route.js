@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
-import { notifyPlayer } from '@/lib/notify';
+import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
 
 // GET: List Redemptions
@@ -290,6 +290,17 @@ export async function POST(req) {
       title: 'Cashout Request Submitted ⏳',
       message: `Your cashout request for $${redeemAmount.toFixed(2)} SC has been sent to Coin Allotment Desk for game verification.`,
       type: 'withdraw_pending_coin',
+    });
+
+    // Notify staff desk immediately (Never sent to players)
+    notifyStaff({
+      title: '💸 New Cashout Request',
+      message: `@${user.username} requested a cashout of $${redeemAmount.toFixed(2)} SC via ${payoutMethod}.`,
+      type: 'withdraw_request',
+      data: {
+        redemptionId: insertRes.insertedId.toString(),
+        url: '/admin?tab=finance',
+      },
     });
 
     return NextResponse.json({
