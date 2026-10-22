@@ -65,6 +65,23 @@ export async function POST(req) {
         }
       }
 
+      // Check if user exists when requesting Password Reset
+      if (purpose === 'Password Reset' || purpose === 'Forgot Password') {
+        const safeEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existingUser = await usersCol.findOne({
+          $or: [
+            { email: cleanEmail },
+            { email: { $regex: new RegExp(`^${safeEmail}$`, 'i') } },
+          ],
+        });
+        if (!existingUser) {
+          return NextResponse.json(
+            { success: false, error: 'No account registered with this email address. Please verify your email or sign up.' },
+            { status: 404 }
+          );
+        }
+      }
+
       // Check anti-spam cooldown: 40 seconds
       const existingOtp = await otpsCol.findOne({ email: cleanEmail });
       if (existingOtp && existingOtp.createdAt) {
@@ -99,10 +116,15 @@ export async function POST(req) {
       );
 
       // Send email via Hostinger SMTP
+      const isReset = purpose === 'Password Reset' || purpose === 'Forgot Password';
+      const emailSubject = isReset
+        ? `Your Players Paradise Password Reset Code: ${otpCode}`
+        : `Your Players Paradise Security Code: ${otpCode}`;
+
       const sendResult = await sendEmail({
         to: cleanEmail,
-        subject: `Your Players Paradise Security Code: ${otpCode}`,
-        html: getOtpEmailTemplate(otpCode, 'Registration Security'),
+        subject: emailSubject,
+        html: getOtpEmailTemplate(otpCode, isReset ? 'Password Reset' : 'Registration Security'),
       });
 
       console.log(`[OTP GENERATED] To: ${cleanEmail} | Code: ${otpCode} | Sent: ${sendResult.success}`);

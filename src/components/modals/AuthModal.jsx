@@ -870,6 +870,26 @@ export default function AuthModal({
                     >
                       PASSWORD
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        window.location.href = '/forgot-password';
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#00F0FF',
+                        fontSize: '10.5px',
+                        fontFamily: 'Lexend, sans-serif',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: 0,
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Forgot password?
+                    </button>
                   </div>
                   <div style={{ position: 'relative' }}>
                     <Lock
