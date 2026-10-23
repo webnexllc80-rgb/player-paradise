@@ -1,0 +1,65 @@
+[
+  {
+    "_id": "6ad6a361dd5fafc94a6a2299",
+    "email": "rank9007@gmail.com",
+    "attempts": 0,
+    "code": "247295",
+    "createdAt": "2026-10-19T23:10:25.715Z",
+    "expiresAt": "2026-10-19T23:20:25.715Z",
+    "purpose": "Registration"
+  },
+  {
+    "_id": "vz4evgyh03",
+    "email": "na619277@gmail.com",
+    "createdAt": "2026-10-19T16:03:39.678Z",
+    "code": "516442",
+    "purpose": "Registration",
+    "expiresAt": "2026-10-19T16:13:39.678Z",
+    "attempts": 0
+  },
+  {
+    "_id": "6ad77bf8dd5fafc94a6aa6b5",
+    "email": "newplayer777@playersparadisehub.com",
+    "attempts": 0,
+    "code": "112594",
+    "createdAt": "2026-10-20T14:34:29.865Z",
+    "expiresAt": "2026-10-20T14:44:29.865Z",
+    "purpose": "Registration"
+  },
+  {
+    "_id": "6ad9f77cdd5fafc94a6d5f5d",
+    "email": "webnex8899@gmail.com",
+    "attempts": 0,
+    "code": "848699",
+    "createdAt": "2026-10-22T11:46:04.774Z",
+    "expiresAt": "2026-10-22T11:56:04.774Z",
+    "purpose": "Password Reset"
+  },
+  {
+    "_id": "6ada8a64dd5fafc94a6da058",
+    "email": "tezzgray6@gmail.comcom",
+    "attempts": 0,
+    "code": "236877",
+    "createdAt": "2026-10-22T22:12:52.021Z",
+    "expiresAt": "2026-10-22T22:22:52.021Z",
+    "purpose": "Registration"
+  },
+  {
+    "_id": "6adb33b5dd5fafc94a6dfc89",
+    "email": "persus@gmail.com",
+    "attempts": 0,
+    "code": "290048",
+    "createdAt": "2026-10-23T10:15:17.775Z",
+    "expiresAt": "2026-10-23T10:25:17.775Z",
+    "purpose": "Registration"
+  },
+  {
+    "_id": "6adb61fedd5fafc94a6e0aaf",
+    "email": "adamda85828@gmail.com",
+    "attempts": 0,
+    "code": "292228",
+    "createdAt": "2026-10-23T13:32:46.763Z",
+    "expiresAt": "2026-10-23T13:42:46.763Z",
+    "purpose": "Registration"
+  }
+]

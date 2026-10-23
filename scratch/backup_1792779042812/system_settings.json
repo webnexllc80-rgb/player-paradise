@@ -1,0 +1,26 @@
+[
+  {
+    "_id": "6ad6a6d1dd5fafc94a6a240d",
+    "key": "general",
+    "regularBonusSubtitle": "Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.",
+    "regularBonusTitle": "REGULAR BONUS",
+    "welcomeBonusSubtitle": "Get a 300% bonus on your first deposit! Instant approval & fast cashouts.",
+    "welcomeBonusTitle": "WELCOME BONUS",
+    "referralBonusPercent": 0,
+    "regularBonusPercent": 0,
+    "updatedAt": "2026-10-23T14:29:08.872Z",
+    "updatedBy": "admin",
+    "welcomeBonusPercent": 0,
+    "geoRestrictionEnabled": true,
+    "freeplayAmountSC": 1
+  },
+  {
+    "_id": "ntdlnriuee",
+    "key": "general",
+    "createdAt": "2026-10-19T12:46:38.347Z",
+    "welcomeBonusTitle": "WELCOME BONUS",
+    "welcomeBonusSubtitle": "Get a 300% bonus on your first deposit! Instant approval & fast cashouts.",
+    "regularBonusTitle": "REGULAR BONUS",
+    "regularBonusSubtitle": "Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime."
+  }
+]
