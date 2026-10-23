@@ -119,6 +119,7 @@ export async function POST(req) {
       updateFields.lastLoginDevice = deviceId;
     }
 
+    const updateOps = { $set: updateFields };
     if (deviceId) {
       updateOps.$addToSet = { boundDevices: deviceId };
       // Also bind any existing device FCM subscription to this user
