@@ -21,6 +21,10 @@ export async function GET() {
       signupBonusSC: 0,
       signupBonusGC: 10000,
       freeplayAmountSC: 5.0,
+      freeplayActive: true,
+      welcomeBonusActive: true,
+      regularBonusActive: true,
+      referralBonusActive: true,
       minRedemptionSC: 50.0,
       geoRestrictionEnabled: false,
       restrictedStates: [],
@@ -84,27 +88,65 @@ export async function PUT(req) {
     if (body.signupBonusSC !== undefined) updateFields.signupBonusSC = Number(body.signupBonusSC);
     if (body.signupBonusGC !== undefined) updateFields.signupBonusGC = Number(body.signupBonusGC);
     if (body.freeplayAmountSC !== undefined) updateFields.freeplayAmountSC = Number(body.freeplayAmountSC);
+    if (body.freeplayActive !== undefined) updateFields.freeplayActive = Boolean(body.freeplayActive);
     if (body.minRedemptionSC !== undefined) updateFields.minRedemptionSC = Number(body.minRedemptionSC);
 
     // Dynamic Welcome & Regular Bonus Settings
     if (body.welcomeBonusPercent !== undefined) updateFields.welcomeBonusPercent = Number(body.welcomeBonusPercent);
+    if (body.welcomeBonusActive !== undefined) updateFields.welcomeBonusActive = Boolean(body.welcomeBonusActive);
     if (body.welcomeBonusMax !== undefined) updateFields.welcomeBonusMax = Number(body.welcomeBonusMax);
     if (body.welcomeBonusSpins !== undefined) updateFields.welcomeBonusSpins = Number(body.welcomeBonusSpins);
     if (body.welcomeBonusTitle !== undefined) updateFields.welcomeBonusTitle = String(body.welcomeBonusTitle);
     if (body.welcomeBonusSubtitle !== undefined) updateFields.welcomeBonusSubtitle = String(body.welcomeBonusSubtitle);
 
     if (body.regularBonusPercent !== undefined) updateFields.regularBonusPercent = Number(body.regularBonusPercent);
+    if (body.regularBonusActive !== undefined) updateFields.regularBonusActive = Boolean(body.regularBonusActive);
     if (body.regularBonusMax !== undefined) updateFields.regularBonusMax = Number(body.regularBonusMax);
     if (body.regularBonusTitle !== undefined) updateFields.regularBonusTitle = String(body.regularBonusTitle);
     if (body.regularBonusSubtitle !== undefined) updateFields.regularBonusSubtitle = String(body.regularBonusSubtitle);
 
     if (body.referralBonusPercent !== undefined) updateFields.referralBonusPercent = Number(body.referralBonusPercent);
+    if (body.referralBonusActive !== undefined) updateFields.referralBonusActive = Boolean(body.referralBonusActive);
 
     await settingsCol.updateOne(
       { key: 'general' },
       { $set: updateFields },
       { upsert: true }
     );
+
+    // Sync corresponding cards in promotions collection
+    const promosCol = db.collection('promotions');
+    if (body.welcomeBonusPercent !== undefined || body.welcomeBonusTitle !== undefined || body.welcomeBonusActive !== undefined) {
+      await promosCol.updateOne(
+        { id: 'welcome-double' },
+        {
+          $set: {
+            title: body.welcomeBonusTitle || 'FIRST DEPOSIT WELCOME BOOST',
+            badge: `${body.welcomeBonusPercent || 300}% MATCH`,
+            matchPercent: Number(body.welcomeBonusPercent || 300),
+            description: body.welcomeBonusSubtitle || `Get a ${body.welcomeBonusPercent || 300}% bonus on your first deposit!`,
+            active: body.welcomeBonusActive !== undefined ? Boolean(body.welcomeBonusActive) : true,
+            updatedAt: new Date(),
+          },
+        }
+      ).catch(() => {});
+    }
+
+    if (body.regularBonusPercent !== undefined || body.regularBonusTitle !== undefined || body.regularBonusActive !== undefined) {
+      await promosCol.updateOne(
+        { id: 'reload-vip' },
+        {
+          $set: {
+            title: body.regularBonusTitle || 'REGULAR RELOAD BOOST',
+            badge: `${body.regularBonusPercent || 50}% RELOAD`,
+            matchPercent: Number(body.regularBonusPercent || 50),
+            description: body.regularBonusSubtitle || `Get a ${body.regularBonusPercent || 50}% reload bonus on every deposit you make!`,
+            active: body.regularBonusActive !== undefined ? Boolean(body.regularBonusActive) : true,
+            updatedAt: new Date(),
+          },
+        }
+      ).catch(() => {});
+    }
 
     return NextResponse.json({ success: true, message: 'Settings saved successfully.' });
   } catch (error) {

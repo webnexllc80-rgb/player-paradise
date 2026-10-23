@@ -27,6 +27,18 @@ export default function CyberHeroBanner({
   const router = useRouter();
   const [claimingFreeplay, setClaimingFreeplay] = useState(false);
   const [freeplayFeedback, setFreeplayFeedback] = useState(null);
+  const [bonusSettings, setBonusSettings] = useState(null);
+
+  React.useEffect(() => {
+    fetch('/api/admin/settings', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && d?.settings) {
+          setBonusSettings(d.settings);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleGetFreeplay = async () => {
     if (!user) {
@@ -112,20 +124,22 @@ export default function CyberHeroBanner({
             <strong className="text-white">Game Vault</strong>. 24/7 automated cashouts via Cash App & Crypto.
           </p>
 
-          {/* Bonus Highlight Card */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/50 via-slate-900/70 to-cyan-950/40 border border-purple-500/30 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--neon-purple)] to-[var(--neon-cyan)] flex items-center justify-center text-black font-black text-xl shrink-0 shadow-[0_0_15px_rgba(192,38,211,0.5)]">
-              %
-            </div>
-            <div>
-              <div className="text-xs font-sub font-bold text-amber-300 uppercase tracking-wider">
-                SIGNUP WELCOME PACKAGE
+          {/* Dynamic Bonus Highlight Card */}
+          {bonusSettings?.welcomeBonusActive !== false && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/50 via-slate-900/70 to-cyan-950/40 border border-purple-500/30 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--neon-purple)] to-[var(--neon-cyan)] flex items-center justify-center text-black font-black text-xl shrink-0 shadow-[0_0_15px_rgba(192,38,211,0.5)]">
+                %
               </div>
-              <div className="font-heading font-extrabold text-base sm:text-lg text-white">
-                100% Match Bonus + Free 10,000 GC Credits
+              <div>
+                <div className="text-xs font-sub font-bold text-amber-300 uppercase tracking-wider">
+                  {bonusSettings?.welcomeBonusTitle || 'SIGNUP WELCOME PACKAGE'}
+                </div>
+                <div className="font-heading font-extrabold text-base sm:text-lg text-white">
+                  {bonusSettings?.welcomeBonusPercent ?? 300}% Match Bonus + Free 10,000 GC Credits
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Freeplay Feedback Banner */}
           {freeplayFeedback && (
@@ -149,23 +163,25 @@ export default function CyberHeroBanner({
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              onClick={handleGetFreeplay}
-              disabled={claimingFreeplay}
-              className="cyber-btn-cyan py-3 px-6 text-sm font-black flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.3)]"
-            >
-              {claimingFreeplay ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                  <span>CLAIMING...</span>
-                </>
-              ) : (
-                <>
-                  <Gift size={17} className="text-black" />
-                  <span>GET FREEPLAY</span>
-                </>
-              )}
-            </button>
+            {bonusSettings?.freeplayActive !== false && (
+              <button
+                onClick={handleGetFreeplay}
+                disabled={claimingFreeplay}
+                className="cyber-btn-cyan py-3 px-6 text-sm font-black flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.3)]"
+              >
+                {claimingFreeplay ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                    <span>CLAIMING...</span>
+                  </>
+                ) : (
+                  <>
+                    <Gift size={17} className="text-black" />
+                    <span>GET ${Number(bonusSettings?.freeplayAmountSC ?? 5).toFixed(0)} FREEPLAY</span>
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               onClick={() => router.push('/deposit')}

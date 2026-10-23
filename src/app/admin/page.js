@@ -324,14 +324,31 @@ export default function AdminPortal({ initialTab }) {
     welcomeBonusSpins: 150,
     welcomeBonusTitle: 'WELCOME BONUS',
     welcomeBonusSubtitle: 'Get a 300% bonus on your first deposit! Instant approval & fast cashouts.',
+    welcomeBonusActive: true,
     regularBonusPercent: 50,
     regularBonusMax: 2500,
     regularBonusTitle: 'REGULAR BONUS',
     regularBonusSubtitle: 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.',
+    regularBonusActive: true,
     referralBonusPercent: 20,
+    referralBonusActive: true,
+    freeplayAmountSC: 5.0,
+    freeplayActive: true,
   });
   const [savingBonusSettings, setSavingBonusSettings] = useState(false);
   const [bonusSaveMessage, setBonusSaveMessage] = useState(null);
+
+  // Live Promotions & Campaign Management state
+  const [adminPromos, setAdminPromos] = useState([]);
+  const [loadingAdminPromos, setLoadingAdminPromos] = useState(false);
+  const [promoModalOpen, setPromoModalOpen] = useState(false);
+  const [newPromoForm, setNewPromoForm] = useState({
+    title: '',
+    badge: 'HOT OFFER',
+    description: '',
+    matchPercent: 100,
+    category: 'deposit',
+  });
 
   // Custom editable deposit coin allotment state
   const [customDepositSC, setCustomDepositSC] = useState({});
@@ -407,19 +424,24 @@ export default function AdminPortal({ initialTab }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           welcomeBonusPercent: Number(sysSettings?.welcomeBonusPercent ?? 300),
+          welcomeBonusActive: sysSettings?.welcomeBonusActive !== false,
           welcomeBonusTitle: sysSettings?.welcomeBonusTitle || 'WELCOME BONUS',
           welcomeBonusSubtitle: sysSettings?.welcomeBonusSubtitle || 'Get a 300% bonus on your first deposit! Instant approval & fast cashouts.',
           regularBonusPercent: Number(sysSettings?.regularBonusPercent ?? 50),
+          regularBonusActive: sysSettings?.regularBonusActive !== false,
           regularBonusTitle: sysSettings?.regularBonusTitle || 'REGULAR BONUS',
           regularBonusSubtitle: sysSettings?.regularBonusSubtitle || 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.',
           referralBonusPercent: Number(sysSettings?.referralBonusPercent ?? 20),
+          referralBonusActive: sysSettings?.referralBonusActive !== false,
           freeplayAmountSC: Number(sysSettings?.freeplayAmountSC ?? 5.0),
+          freeplayActive: sysSettings?.freeplayActive !== false,
         }),
       });
       const data = await res.json();
       setSavingBonusSettings(false);
       if (data.success) {
         setBonusSaveMessage('Bonus configuration saved successfully!');
+        fetchAdminPromotions();
         setTimeout(() => setBonusSaveMessage(null), 3500);
       } else {
         alert(data.error || 'Failed to save settings.');
@@ -427,6 +449,96 @@ export default function AdminPortal({ initialTab }) {
     } catch (err) {
       setSavingBonusSettings(false);
       alert('Error saving settings: ' + err.message);
+    }
+  };
+
+  const fetchAdminPromotions = async () => {
+    setLoadingAdminPromos(true);
+    try {
+      const res = await fetch('/api/promotions?admin=true', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) {
+        setAdminPromos(data.promotions || []);
+      }
+    } catch {}
+    setLoadingAdminPromos(false);
+  };
+
+  const handleDeletePromotion = async (promoId, promoTitle) => {
+    if (!window.confirm(`Are you sure you want to delete "${promoTitle || 'this promotion'}" permanently from the website?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/promotions?id=${encodeURIComponent(promoId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAdminPromos((prev) => prev.filter((p) => (p._id || p.id) !== promoId));
+        alert('Promotion deleted successfully from the website!');
+      } else {
+        alert(data.error || 'Failed to delete promotion.');
+      }
+    } catch (err) {
+      alert('Error deleting promotion: ' + err.message);
+    }
+  };
+
+  const handleTogglePromoActive = async (promo) => {
+    const promoId = promo._id || promo.id;
+    const nextState = !promo.active;
+    try {
+      const res = await fetch('/api/promotions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _id: promoId, active: nextState }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAdminPromos((prev) =>
+          prev.map((p) => ((p._id || p.id) === promoId ? { ...p, active: nextState } : p))
+        );
+      } else {
+        alert(data.error || 'Failed to update promotion status.');
+      }
+    } catch (err) {
+      alert('Error updating promotion: ' + err.message);
+    }
+  };
+
+  const handleCreatePromo = async (e) => {
+    if (e) e.preventDefault();
+    if (!newPromoForm.title.trim() || !newPromoForm.description.trim()) {
+      alert('Please provide title and description.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/promotions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newPromoForm,
+          matchPercent: Number(newPromoForm.matchPercent || 0),
+          active: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPromoModalOpen(false);
+        setNewPromoForm({
+          title: '',
+          badge: 'HOT OFFER',
+          description: '',
+          matchPercent: 100,
+          category: 'deposit',
+        });
+        fetchAdminPromotions();
+        alert('New promotion launched on website successfully!');
+      } else {
+        alert(data.error || 'Failed to create promotion.');
+      }
+    } catch (err) {
+      alert('Error creating promotion: ' + err.message);
     }
   };
 
@@ -1094,6 +1206,7 @@ export default function AdminPortal({ initialTab }) {
           });
       } else if (activeTab === 'promos') {
         fetch('/api/notifications?admin=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setBroadcastLogs(d.broadcasts || []); });
+        fetchAdminPromotions();
       } else if (activeTab === 'affiliates' || activeTab === 'affiliate_commissions') {
         fetch('/api/affiliates?mode=admin', { cache: 'no-store' }).then(r => r.json()).then(d => {
           if (d.success) {
@@ -1115,6 +1228,7 @@ export default function AdminPortal({ initialTab }) {
         fetch(`/api/ledger?username=${encodeURIComponent(ledgerFilterUser)}&type=${ledgerFilterType}`, { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setLedgerRecords(d.records || []); });
       } else if (activeTab === 'settings') {
         fetch('/api/admin/settings', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setSysSettings(d.settings); });
+        fetchAdminPromotions();
       }
     };
 
@@ -5384,9 +5498,18 @@ export default function AdminPortal({ initialTab }) {
                           <span className="text-xs font-black text-cyan-400 uppercase tracking-wider">
                             1. Welcome Pack (First Deposit)
                           </span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-extrabold uppercase whitespace-nowrap">
-                            New Players Only
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSysSettings(prev => ({ ...prev, welcomeBonusActive: prev.welcomeBonusActive === false ? true : false }))}
+                            className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap border cursor-pointer transition ${
+                              sysSettings?.welcomeBonusActive !== false
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : 'bg-red-500/20 border-red-500/40 text-red-300 line-through'
+                            }`}
+                            title="Toggle active or disable this bonus"
+                          >
+                            {sysSettings?.welcomeBonusActive !== false ? '● ACTIVE' : '✕ OFF / HIDDEN'}
+                          </button>
                         </div>
 
                         {/* Match % */}
@@ -5455,9 +5578,18 @@ export default function AdminPortal({ initialTab }) {
                           <span className="text-xs font-black text-purple-400 uppercase tracking-wider">
                             2. Regular Reload (Subsequent)
                           </span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 font-extrabold uppercase whitespace-nowrap">
-                            After Welcome
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSysSettings(prev => ({ ...prev, regularBonusActive: prev.regularBonusActive === false ? true : false }))}
+                            className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap border cursor-pointer transition ${
+                              sysSettings?.regularBonusActive !== false
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : 'bg-red-500/20 border-red-500/40 text-red-300 line-through'
+                            }`}
+                            title="Toggle active or disable this reload bonus"
+                          >
+                            {sysSettings?.regularBonusActive !== false ? '● ACTIVE' : '✕ OFF / HIDDEN'}
+                          </button>
                         </div>
 
                         {/* Match % */}
@@ -5526,9 +5658,18 @@ export default function AdminPortal({ initialTab }) {
                           <span className="text-xs font-black text-amber-400 uppercase tracking-wider">
                             3. Referral Bonus (Friend 1st Deposit)
                           </span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-extrabold uppercase whitespace-nowrap">
-                            Auto Wallet Credit
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSysSettings(prev => ({ ...prev, referralBonusActive: prev.referralBonusActive === false ? true : false }))}
+                            className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap border cursor-pointer transition ${
+                              sysSettings?.referralBonusActive !== false
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : 'bg-red-500/20 border-red-500/40 text-red-300 line-through'
+                            }`}
+                            title="Toggle active or disable referral commission"
+                          >
+                            {sysSettings?.referralBonusActive !== false ? '● ACTIVE' : '✕ OFF / HIDDEN'}
+                          </button>
                         </div>
 
                         {/* Match % */}
@@ -5583,9 +5724,18 @@ export default function AdminPortal({ initialTab }) {
                           <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">
                             4. Lobby Freeplay ($ SC)
                           </span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-extrabold uppercase whitespace-nowrap">
-                            Hero Button
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSysSettings(prev => ({ ...prev, freeplayActive: prev.freeplayActive === false ? true : false }))}
+                            className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap border cursor-pointer transition ${
+                              sysSettings?.freeplayActive !== false
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : 'bg-red-500/20 border-red-500/40 text-red-300 line-through'
+                            }`}
+                            title="Toggle active or disable freeplay button"
+                          >
+                            {sysSettings?.freeplayActive !== false ? '● ACTIVE' : '✕ OFF / HIDDEN'}
+                          </button>
                         </div>
 
                         {/* Freeplay Amount */}
@@ -5660,6 +5810,212 @@ export default function AdminPortal({ initialTab }) {
                   </div>
                 </form>
               </div>
+
+              {/* Live Site Promotions & Campaigns Manager */}
+              <div className="bg-[#0E0A24] border border-cyan-500/25 p-6 sm:p-7 rounded-2xl shadow-2xl space-y-6 w-full">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+                      <Sparkles size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white m-0 tracking-wide flex items-center gap-2">
+                        <span>Live Site Promotions &amp; Campaigns</span>
+                        <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 font-bold border border-cyan-500/30">
+                          {adminPromos.length} RUNNING
+                        </span>
+                      </h3>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                        Control all promotions running on /promotions and website banners. Delete or pause any promo in 1-click.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPromoModalOpen(true)}
+                      className="cyber-btn-cyan py-2.5 px-4 text-xs font-black flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,240,255,0.3)] cursor-pointer"
+                    >
+                      <Plus size={15} />
+                      <span>CREATE NEW PROMOTION</span>
+                    </button>
+                  </div>
+                </div>
+
+                {loadingAdminPromos ? (
+                  <div className="text-center py-8 text-gray-400 text-xs flex items-center justify-center gap-2">
+                    <RefreshCw size={14} className="animate-spin text-cyan-400" />
+                    <span>Loading active site promotions...</span>
+                  </div>
+                ) : adminPromos.length === 0 ? (
+                  <div className="text-center py-10 bg-[#070514] rounded-xl border border-white/5 space-y-2">
+                    <Tag size={28} className="mx-auto text-gray-600" />
+                    <p className="text-sm font-bold text-gray-300">No active promotions in database.</p>
+                    <p className="text-xs text-gray-500">Click &quot;CREATE NEW PROMOTION&quot; above to launch a promotion on the site.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {adminPromos.map((p) => {
+                      const promoId = p._id || p.id;
+                      return (
+                        <div
+                          key={promoId}
+                          className="bg-[#070514] border border-cyan-500/25 hover:border-cyan-500/50 rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-lg transition"
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-mono uppercase tracking-wider">
+                                {p.badge || 'PROMO'}
+                              </span>
+                              <span
+                                className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                                  p.active !== false
+                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                                    : 'bg-red-500/15 border-red-500/40 text-red-400 line-through'
+                                }`}
+                              >
+                                {p.active !== false ? '● LIVE' : 'PAUSED'}
+                              </span>
+                            </div>
+
+                            <div>
+                              <h4 className="text-sm font-black text-white m-0 tracking-wide">
+                                {p.title}
+                              </h4>
+                              {p.matchPercent > 0 && (
+                                <span className="text-xs font-mono font-bold text-amber-400 block mt-0.5">
+                                  +{p.matchPercent}% Extra Bonus
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-gray-400 leading-relaxed line-clamp-3 m-0">
+                              {p.description}
+                            </p>
+                          </div>
+
+                          <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePromoActive(p)}
+                              className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                                p.active !== false
+                                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+                                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                              }`}
+                            >
+                              {p.active !== false ? 'Pause' : 'Activate'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePromotion(promoId, p.title)}
+                              className="py-1.5 px-3 rounded-lg text-xs font-black bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-400 flex items-center gap-1.5 cursor-pointer transition shadow-[0_0_10px_rgba(239,68,68,0.2)]"
+                              title="Delete promotion permanently from website"
+                            >
+                              <Trash2 size={13} />
+                              <span>DELETE</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Create Promotion Modal */}
+              {promoModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                  <div className="bg-[#0E0A24] border border-cyan-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-5 shadow-2xl relative">
+                    <button
+                      type="button"
+                      onClick={() => setPromoModalOpen(false)}
+                      className="absolute top-5 right-5 text-gray-400 hover:text-white p-1 cursor-pointer"
+                    >
+                      <X size={18} />
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                        <Sparkles size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-white m-0">Launch New Promotion</h3>
+                        <p className="text-xs text-gray-400 mt-0.5">This promo will appear immediately on the website.</p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleCreatePromo} className="space-y-4">
+                      <div>
+                        <label className="text-xs font-bold text-gray-300 block mb-1">PROMOTION TITLE</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Weekend 200% Cyber Surge"
+                          value={newPromoForm.title}
+                          onChange={(e) => setNewPromoForm(prev => ({ ...prev, title: e.target.value }))}
+                          className="w-full bg-[#070514] border border-cyan-500/30 rounded-xl px-3.5 py-2.5 text-white text-xs outline-none focus:border-cyan-400"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-bold text-gray-300 block mb-1">BADGE / TAG</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 200% MATCH"
+                            value={newPromoForm.badge}
+                            onChange={(e) => setNewPromoForm(prev => ({ ...prev, badge: e.target.value }))}
+                            className="w-full bg-[#070514] border border-cyan-500/30 rounded-xl px-3.5 py-2.5 text-white text-xs outline-none focus:border-cyan-400"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-gray-300 block mb-1">MATCH PERCENT (%)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000"
+                            value={newPromoForm.matchPercent}
+                            onChange={(e) => setNewPromoForm(prev => ({ ...prev, matchPercent: e.target.value }))}
+                            className="w-full bg-[#070514] border border-cyan-500/30 rounded-xl px-3.5 py-2.5 text-white text-xs outline-none focus:border-cyan-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-gray-300 block mb-1">DESCRIPTION</label>
+                        <textarea
+                          rows={3}
+                          placeholder="Deposit $25 or more this weekend to get an instant 200% bonus..."
+                          value={newPromoForm.description}
+                          onChange={(e) => setNewPromoForm(prev => ({ ...prev, description: e.target.value }))}
+                          className="w-full bg-[#070514] border border-cyan-500/30 rounded-xl px-3.5 py-2.5 text-white text-xs outline-none focus:border-cyan-400 resize-none"
+                          required
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => setPromoModalOpen(false)}
+                          className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-white cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="cyber-btn-cyan px-5 py-2.5 text-xs font-black shadow-[0_0_15px_rgba(0,240,255,0.4)] cursor-pointer"
+                        >
+                          Launch Promotion
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

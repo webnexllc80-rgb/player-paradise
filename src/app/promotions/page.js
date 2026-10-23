@@ -21,6 +21,20 @@ export default function PromotionsPage() {
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [promotions, setPromotions] = useState([]);
+  const [loadingPromos, setLoadingPromos] = useState(true);
+
+  React.useEffect(() => {
+    fetch('/api/promotions', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.success && Array.isArray(d?.promotions)) {
+          setPromotions(d.promotions);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPromos(false));
+  }, []);
 
   const tiers = [
     {
@@ -100,30 +114,70 @@ export default function PromotionsPage() {
           </div>
 
           {/* Active Promotions Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="p-6 rounded-3xl bg-gradient-to-br from-purple-950/60 to-slate-900 border border-purple-500/40 space-y-3">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500 text-white font-mono">
-                100% MATCH
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl md:text-2xl font-black font-heading text-white flex items-center gap-2">
+                <Sparkles size={20} className="text-cyan-400" />
+                <span>ACTIVE PROMOTIONS &amp; BOOSTS</span>
+              </h2>
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                {promotions.length} ACTIVE
               </span>
-              <h3 className="font-heading font-black text-xl text-white">
-                FIRST DEPOSIT DOUBLE PACKAGE
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Deposit $20 or more via Cash App, Zelle, or Crypto and get 100% bonus match credits + 10,000 free Game Coins!
-              </p>
             </div>
 
-            <div className="p-6 rounded-3xl bg-gradient-to-br from-cyan-950/60 to-slate-900 border border-[var(--neon-cyan)]/40 space-y-3">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[var(--neon-cyan)] text-black font-mono font-bold">
-                EVERY 24 HOURS
-              </span>
-              <h3 className="font-heading font-black text-xl text-white">
-                DAILY CYBER MYSTERY CRATE
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Log in each day and unlock the gift box in your header bar for up to $10.00 in free SC credits and 50,000 GC.
-              </p>
-            </div>
+            {loadingPromos ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {[1, 2].map((i) => (
+                  <div key={i} className="p-6 rounded-3xl bg-slate-900/50 border border-slate-800 animate-pulse h-40" />
+                ))}
+              </div>
+            ) : promotions.length === 0 ? (
+              <div className="p-8 rounded-3xl bg-slate-900/50 border border-slate-800 text-center space-y-2">
+                <Gift size={32} className="mx-auto text-slate-500" />
+                <p className="text-sm font-bold text-slate-300">No active promotions at this time.</p>
+                <p className="text-xs text-slate-500">Check back soon for new bonus packages and event drops!</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {promotions.map((p, idx) => (
+                  <div
+                    key={p._id || idx}
+                    className="p-6 rounded-3xl bg-gradient-to-br from-[#0c122c] via-[#090d20] to-[#050711] border border-cyan-500/30 hover:border-cyan-400/60 transition shadow-xl space-y-4 flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        {p.badge && (
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-mono uppercase tracking-wider">
+                            {p.badge}
+                          </span>
+                        )}
+                        {p.matchPercent > 0 && (
+                          <span className="text-xs font-mono font-black text-amber-400">
+                            +{p.matchPercent}% Extra
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-heading font-black text-xl text-white tracking-wide">
+                        {p.title}
+                      </h3>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        {p.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                      <button
+                        onClick={() => router.push(p.category === 'deposit' ? '/deposit' : '/')}
+                        className="cyber-btn-cyan py-2 px-4 text-xs font-black flex items-center gap-2"
+                      >
+                        <span>{p.category === 'deposit' ? 'DEPOSIT NOW' : 'CLAIM BONUS'}</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* VIP Tiers */}

@@ -190,7 +190,13 @@ export async function POST(req) {
     );
 
     const bonusType = hasClaimedWelcome ? 'regular' : 'welcome';
-    const bonusPercent = hasClaimedWelcome
+    const isBonusActive = hasClaimedWelcome
+      ? settings?.regularBonusActive !== false
+      : settings?.welcomeBonusActive !== false;
+
+    const bonusPercent = !isBonusActive
+      ? 0
+      : hasClaimedWelcome
       ? Number(settings?.regularBonusPercent ?? 50)
       : Number(settings?.welcomeBonusPercent ?? 300);
     const bonusMax = hasClaimedWelcome
@@ -449,7 +455,8 @@ export async function PUT(req) {
         if (referrer) {
           const settingsCol = db.collection('system_settings');
           const sysSettings = await settingsCol.findOne({ key: 'general' });
-          const referralPercent = Number(sysSettings?.referralBonusPercent ?? 20);
+          const isReferralActive = sysSettings?.referralBonusActive !== false;
+          const referralPercent = isReferralActive ? Number(sysSettings?.referralBonusPercent ?? 20) : 0;
           const bonusSC = Number(((deposit.amount * referralPercent) / 100).toFixed(2));
 
           if (bonusSC > 0) {

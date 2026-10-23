@@ -394,6 +394,88 @@ export async function ensureDbInitialized() {
       await methodsCol.insertMany(defaultMethods);
     }
 
+    // 4. Ensure System Settings
+    const settingsCol = db.collection('system_settings');
+    const existingSettings = await settingsCol.findOne({ key: 'general' });
+    if (!existingSettings) {
+      console.log('Seeding initial system settings for Players Paradise Hub...');
+      await settingsCol.insertOne({
+        key: 'general',
+        siteName: 'Players Paradise',
+        welcomeBonusPercent: 300,
+        welcomeBonusTitle: 'WELCOME BONUS',
+        welcomeBonusSubtitle: 'Get a 300% bonus on your first deposit! Instant approval & fast cashouts.',
+        welcomeBonusActive: true,
+        regularBonusPercent: 50,
+        regularBonusTitle: 'REGULAR BONUS',
+        regularBonusSubtitle: 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.',
+        regularBonusActive: true,
+        referralBonusPercent: 20,
+        referralBonusActive: true,
+        freeplayAmountSC: 5.0,
+        freeplayActive: true,
+        minRedemptionSC: 50.0,
+        geoRestrictionEnabled: false,
+        restrictedStates: [],
+        maintenanceMode: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    // 5. Ensure Default Promotions Catalog
+    const promosCol = db.collection('promotions');
+    const existingPromosCount = await promosCol.countDocuments({});
+    if (existingPromosCount === 0) {
+      console.log('Seeding initial active promotions catalog for Players Paradise Hub...');
+      await promosCol.insertMany([
+        {
+          id: 'welcome-double',
+          title: 'FIRST DEPOSIT WELCOME BOOST',
+          badge: '300% MATCH',
+          matchPercent: 300,
+          description: 'Deposit $20 or more via Cash App, Zelle, or Crypto and get 300% bonus match credits + free 10,000 Game Coins!',
+          category: 'deposit',
+          active: true,
+          priority: 1,
+          createdAt: new Date(),
+        },
+        {
+          id: 'daily-mystery-crate',
+          title: 'DAILY CYBER MYSTERY CRATE',
+          badge: 'EVERY 24 HOURS',
+          matchPercent: 0,
+          description: 'Log in each day and unlock the gift box in your header bar for up to $10.00 in free SC credits and 50,000 GC.',
+          category: 'daily',
+          active: true,
+          priority: 2,
+          createdAt: new Date(),
+        },
+        {
+          id: 'reload-vip',
+          title: 'REGULAR RELOAD BOOST',
+          badge: '50% RELOAD',
+          matchPercent: 50,
+          description: 'Get a 50% extra reload bonus on every subsequent deposit! Boost your wallet balance anytime.',
+          category: 'deposit',
+          active: true,
+          priority: 3,
+          createdAt: new Date(),
+        },
+        {
+          id: 'friend-referral',
+          title: 'REFER-A-FRIEND BONUS',
+          badge: '20% INSTANT',
+          matchPercent: 20,
+          description: 'Invite friends using your unique referral link. Get 20% instant cash directly into your wallet on their first deposit.',
+          category: 'referral',
+          active: true,
+          priority: 4,
+          createdAt: new Date(),
+        },
+      ]);
+    }
+
     console.log('Database initialization check completed successfully.');
     isDbInitialized = true;
     return true;

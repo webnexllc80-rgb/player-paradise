@@ -47,6 +47,9 @@ export async function POST(req) {
 
     const db = await getDb();
     const settingsDoc = await db.collection('system_settings').findOne({ key: 'general' });
+    if (settingsDoc?.freeplayActive === false) {
+      return NextResponse.json({ success: false, message: 'Freeplay bonus is currently disabled or inactive.' }, { status: 400 });
+    }
     const configuredAmount = settingsDoc?.freeplayAmountSC !== undefined ? Number(settingsDoc.freeplayAmountSC) : (settingsDoc?.signupBonusSC || 5.0);
 
     const usersCol = db.collection('users');
