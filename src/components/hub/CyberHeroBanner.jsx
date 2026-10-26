@@ -17,6 +17,7 @@ import {
   AlertCircle,
   ArrowRight
 } from 'lucide-react';
+import FreeplayTaskModal from '@/components/modals/FreeplayTaskModal';
 
 export default function CyberHeroBanner({
   user,
@@ -25,9 +26,9 @@ export default function CyberHeroBanner({
   onOpenGameRequest,
 }) {
   const router = useRouter();
-  const [claimingFreeplay, setClaimingFreeplay] = useState(false);
   const [freeplayFeedback, setFreeplayFeedback] = useState(null);
   const [bonusSettings, setBonusSettings] = useState(null);
+  const [freeplayModalOpen, setFreeplayModalOpen] = useState(false);
 
   React.useEffect(() => {
     fetch('/api/admin/settings', { cache: 'no-store' })
@@ -40,45 +41,14 @@ export default function CyberHeroBanner({
       .catch(() => {});
   }, []);
 
-  const handleGetFreeplay = async () => {
+  const handleGetFreeplay = () => {
     if (!user) {
       if (onOpenAuth) onOpenAuth('register');
       else router.push('/register');
       return;
     }
-
-    setClaimingFreeplay(true);
     setFreeplayFeedback(null);
-
-    try {
-      const res = await fetch('/api/freeplay', { method: 'POST' });
-      const data = await res.json();
-      setClaimingFreeplay(false);
-
-      if (data.success) {
-        setFreeplayFeedback({
-          type: 'success',
-          message: `🎁 ${data.message || `Successfully claimed $${data.amount || 5} Freeplay bonus!`}`,
-        });
-        try {
-          const confetti = (await import('canvas-confetti')).default;
-          confetti({ particleCount: 90, spread: 60, origin: { y: 0.6 } });
-        } catch {}
-        setTimeout(() => {
-          window.location.reload();
-        }, 1800);
-      } else {
-        setFreeplayFeedback({
-          type: data.alreadyClaimed ? 'info' : 'error',
-          message: data.message || 'Unable to claim Freeplay.',
-        });
-        setTimeout(() => setFreeplayFeedback(null), 5000);
-      }
-    } catch (err) {
-      setClaimingFreeplay(false);
-      setFreeplayFeedback({ type: 'error', message: err.message || 'Error claiming Freeplay.' });
-      setTimeout(() => setFreeplayFeedback(null), 4000);
-    }
+    setFreeplayModalOpen(true);
   };
 
   return (
@@ -125,18 +95,23 @@ export default function CyberHeroBanner({
           </p>
 
           {/* Dynamic Bonus Highlight Card */}
-          {bonusSettings?.welcomeBonusActive !== false && (
+          {bonusSettings?.welcomeBonusActive !== false && Number(bonusSettings?.welcomeBonusPercent ?? 300) > 0 && (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/50 via-slate-900/70 to-cyan-950/40 border border-purple-500/30 flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--neon-purple)] to-[var(--neon-cyan)] flex items-center justify-center text-black font-black text-xl shrink-0 shadow-[0_0_15px_rgba(192,38,211,0.5)]">
                 %
               </div>
               <div>
                 <div className="text-xs font-sub font-bold text-amber-300 uppercase tracking-wider">
-                  {bonusSettings?.welcomeBonusTitle || 'SIGNUP WELCOME PACKAGE'}
+                  {bonusSettings?.welcomeBonusTitle || 'WELCOME BONUS'}
                 </div>
                 <div className="font-heading font-extrabold text-base sm:text-lg text-white">
                   {bonusSettings?.welcomeBonusPercent ?? 300}% Match Bonus + Free 10,000 GC Credits
                 </div>
+                {bonusSettings?.welcomeBonusSubtitle && (
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-snug m-0">
+                    {bonusSettings.welcomeBonusSubtitle}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -166,20 +141,10 @@ export default function CyberHeroBanner({
             {bonusSettings?.freeplayActive !== false && (
               <button
                 onClick={handleGetFreeplay}
-                disabled={claimingFreeplay}
                 className="cyber-btn-cyan py-3 px-6 text-sm font-black flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.3)]"
               >
-                {claimingFreeplay ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                    <span>CLAIMING...</span>
-                  </>
-                ) : (
-                  <>
-                    <Gift size={17} className="text-black" />
-                    <span>GET ${Number(bonusSettings?.freeplayAmountSC ?? 5).toFixed(0)} FREEPLAY</span>
-                  </>
-                )}
+                <Gift size={17} className="text-black" />
+                <span>GET ${Number(bonusSettings?.freeplayAmountSC ?? 3).toFixed(0)} FREEPLAY</span>
               </button>
             )}
 
@@ -284,6 +249,20 @@ export default function CyberHeroBanner({
           </div>
         </div>
       </div>
+
+      <FreeplayTaskModal
+        isOpen={freeplayModalOpen}
+        onClose={() => setFreeplayModalOpen(false)}
+        user={user}
+        freeplayAmount={bonusSettings?.freeplayAmountSC ?? 3}
+        onSuccess={(data) => {
+          setFreeplayFeedback({
+            type: 'success',
+            message: data.message || 'Freeplay task submitted successfully! Staff is reviewing your proof.',
+          });
+          setTimeout(() => setFreeplayFeedback(null), 8000);
+        }}
+      />
     </div>
   );
 }

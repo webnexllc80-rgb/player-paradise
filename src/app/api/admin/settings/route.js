@@ -31,35 +31,6 @@ export async function GET() {
       maintenanceMode: false,
     };
     const merged = { ...defaultSettings, ...(settings || {}), restrictedStates: [] };
-
-    // Clean up legacy template text from database if present
-    if (merged.welcomeBonusTitle === 'TRIPLE TIER WELCOME PACK') {
-      merged.welcomeBonusTitle = 'WELCOME BONUS';
-    }
-    if (merged.welcomeBonusSubtitle?.includes('Sovereign Status')) {
-      merged.welcomeBonusSubtitle = 'Get a 300% bonus on your first deposit! Instant approval & fast cashouts.';
-    }
-    if (merged.regularBonusTitle === 'REGULAR RELOAD BOOST') {
-      merged.regularBonusTitle = 'REGULAR BONUS';
-    }
-    if (merged.regularBonusSubtitle?.includes('Unlimited reload boost')) {
-      merged.regularBonusSubtitle = 'Get a 50% reload bonus on every deposit you make! Boost your wallet balance anytime.';
-    }
-
-    // Persist clean copy to DB
-    await db.collection('system_settings').updateOne(
-      { key: 'general' },
-      {
-        $set: {
-          welcomeBonusTitle: merged.welcomeBonusTitle,
-          welcomeBonusSubtitle: merged.welcomeBonusSubtitle,
-          regularBonusTitle: merged.regularBonusTitle,
-          regularBonusSubtitle: merged.regularBonusSubtitle,
-        },
-      },
-      { upsert: true }
-    );
-
     return NextResponse.json({ success: true, settings: merged });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -117,14 +88,15 @@ export async function PUT(req) {
     // Sync corresponding cards in promotions collection
     const promosCol = db.collection('promotions');
     if (body.welcomeBonusPercent !== undefined || body.welcomeBonusTitle !== undefined || body.welcomeBonusActive !== undefined) {
+      const matchPct = Number(body.welcomeBonusPercent ?? 300);
       await promosCol.updateOne(
         { id: 'welcome-double' },
         {
           $set: {
             title: body.welcomeBonusTitle || 'FIRST DEPOSIT WELCOME BOOST',
-            badge: `${body.welcomeBonusPercent || 300}% MATCH`,
-            matchPercent: Number(body.welcomeBonusPercent || 300),
-            description: body.welcomeBonusSubtitle || `Get a ${body.welcomeBonusPercent || 300}% bonus on your first deposit!`,
+            badge: `${matchPct}% MATCH`,
+            matchPercent: matchPct,
+            description: body.welcomeBonusSubtitle || `Get a ${matchPct}% bonus on your first deposit!`,
             active: body.welcomeBonusActive !== undefined ? Boolean(body.welcomeBonusActive) : true,
             updatedAt: new Date(),
           },
@@ -133,14 +105,15 @@ export async function PUT(req) {
     }
 
     if (body.regularBonusPercent !== undefined || body.regularBonusTitle !== undefined || body.regularBonusActive !== undefined) {
+      const reloadPct = Number(body.regularBonusPercent ?? 50);
       await promosCol.updateOne(
         { id: 'reload-vip' },
         {
           $set: {
             title: body.regularBonusTitle || 'REGULAR RELOAD BOOST',
-            badge: `${body.regularBonusPercent || 50}% RELOAD`,
-            matchPercent: Number(body.regularBonusPercent || 50),
-            description: body.regularBonusSubtitle || `Get a ${body.regularBonusPercent || 50}% reload bonus on every deposit you make!`,
+            badge: `${reloadPct}% RELOAD`,
+            matchPercent: reloadPct,
+            description: body.regularBonusSubtitle || `Get a ${reloadPct}% reload bonus on every deposit you make!`,
             active: body.regularBonusActive !== undefined ? Boolean(body.regularBonusActive) : true,
             updatedAt: new Date(),
           },
@@ -148,7 +121,8 @@ export async function PUT(req) {
       ).catch(() => {});
     }
 
-    return NextResponse.json({ success: true, message: 'Settings saved successfully.' });
+    const updatedSettings = await settingsCol.findOne({ key: 'general' });
+    return NextResponse.json({ success: true, message: 'Settings saved successfully.', settings: updatedSettings });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

@@ -229,8 +229,8 @@ export default function WithdrawPage() {
 
   const handleSubmitWithdraw = async (e) => {
     e.preventDefault();
-    if (!finalAmount || finalAmount < 20) {
-      setStatusMessage({ type: 'error', text: 'Minimum withdrawal amount is $20.00' });
+    if (!finalAmount || finalAmount <= 0) {
+      setStatusMessage({ type: 'error', text: 'Please enter a valid withdrawal amount.' });
       return;
     }
 
@@ -632,7 +632,7 @@ export default function WithdrawPage() {
                     />
                     <input
                       type="number"
-                      min="20"
+                      min="1"
                       step="1"
                       placeholder="e.g. 150"
                       value={customAmount}
@@ -640,6 +640,9 @@ export default function WithdrawPage() {
                       className="w-full pl-9 pr-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-[var(--neon-cyan)] text-sm"
                     />
                   </div>
+                  <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                    💡 You can request to cash out any amount won from your game platform. Upload your score proof below for instant desk verification.
+                  </p>
                 </div>
               </div>
 

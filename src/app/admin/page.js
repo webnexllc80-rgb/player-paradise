@@ -337,6 +337,7 @@ export default function AdminPortal({ initialTab }) {
   });
   const [savingBonusSettings, setSavingBonusSettings] = useState(false);
   const [bonusSaveMessage, setBonusSaveMessage] = useState(null);
+  const settingsLoadedRef = useRef(false);
 
   // Live Promotions & Campaign Management state
   const [adminPromos, setAdminPromos] = useState([]);
@@ -441,6 +442,9 @@ export default function AdminPortal({ initialTab }) {
       setSavingBonusSettings(false);
       if (data.success) {
         setBonusSaveMessage('Bonus configuration saved successfully!');
+        if (data.settings) {
+          setSysSettings(prev => ({ ...prev, ...data.settings }));
+        }
         fetchAdminPromotions();
         setTimeout(() => setBonusSaveMessage(null), 3500);
       } else {
@@ -1227,8 +1231,15 @@ export default function AdminPortal({ initialTab }) {
       } else if (activeTab === 'tx_search') {
         fetch(`/api/ledger?username=${encodeURIComponent(ledgerFilterUser)}&type=${ledgerFilterType}`, { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setLedgerRecords(d.records || []); });
       } else if (activeTab === 'settings') {
-        fetch('/api/admin/settings', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) setSysSettings(d.settings); });
-        fetchAdminPromotions();
+        if (!settingsLoadedRef.current) {
+          settingsLoadedRef.current = true;
+          fetch('/api/admin/settings', { cache: 'no-store' })
+            .then(r => r.json())
+            .then(d => { if (d.success && d.settings) setSysSettings(d.settings); });
+          fetchAdminPromotions();
+        }
+      } else {
+        settingsLoadedRef.current = false;
       }
     };
 
@@ -5522,7 +5533,7 @@ export default function AdminPortal({ initialTab }) {
                               type="number"
                               min="0"
                               max="1000"
-                              value={sysSettings?.welcomeBonusPercent ?? 300}
+                              value={sysSettings?.welcomeBonusPercent ?? ''}
                               onChange={(e) => setSysSettings(prev => ({ ...prev, welcomeBonusPercent: e.target.value }))}
                               className="w-full bg-[#0E0A24] border border-cyan-500/20 focus:border-cyan-400 rounded-xl px-3.5 py-2.5 text-white font-black text-sm pr-9 outline-none transition"
                               required
@@ -5602,7 +5613,7 @@ export default function AdminPortal({ initialTab }) {
                               type="number"
                               min="0"
                               max="500"
-                              value={sysSettings?.regularBonusPercent ?? 50}
+                              value={sysSettings?.regularBonusPercent ?? ''}
                               onChange={(e) => setSysSettings(prev => ({ ...prev, regularBonusPercent: e.target.value }))}
                               className="w-full bg-[#0E0A24] border border-purple-500/20 focus:border-purple-400 rounded-xl px-3.5 py-2.5 text-white font-black text-sm pr-9 outline-none transition"
                               required
@@ -5682,7 +5693,7 @@ export default function AdminPortal({ initialTab }) {
                               type="number"
                               min="0"
                               max="100"
-                              value={sysSettings?.referralBonusPercent ?? 20}
+                              value={sysSettings?.referralBonusPercent ?? ''}
                               onChange={(e) => setSysSettings(prev => ({ ...prev, referralBonusPercent: e.target.value }))}
                               className="w-full bg-[#0E0A24] border border-amber-500/20 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-white font-black text-sm pr-9 outline-none transition"
                               required
@@ -5749,7 +5760,7 @@ export default function AdminPortal({ initialTab }) {
                               step="0.5"
                               min="0"
                               max="100"
-                              value={sysSettings?.freeplayAmountSC ?? 5.0}
+                              value={sysSettings?.freeplayAmountSC ?? ''}
                               onChange={(e) => setSysSettings(prev => ({ ...prev, freeplayAmountSC: e.target.value }))}
                               className="w-full bg-[#0E0A24] border border-emerald-500/20 focus:border-emerald-400 rounded-xl px-3.5 py-2.5 text-white font-black text-sm pr-9 outline-none transition"
                               required

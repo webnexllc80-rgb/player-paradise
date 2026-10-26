@@ -26,6 +26,7 @@ export default function AccountRequestsView({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState(null);
+  const [previewScreenshot, setPreviewScreenshot] = useState(null);
 
   const handleCopy = (text, id) => {
     if (!text) return;
@@ -291,6 +292,22 @@ export default function AccountRequestsView({
 
                       <td className="p-4 whitespace-nowrap">
                         <span className="font-heading font-black text-amber-400 text-sm">{req.gameTitle}</span>
+                        {Boolean(req.freeplayPending) && (
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-lg shadow-sm">
+                              🎁 Freeplay: ${Number(req.freeplayAmount || 3).toFixed(2)} SC
+                            </span>
+                            {(req.freeplayScreenshot || req.screenshot) && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewScreenshot(req.freeplayScreenshot || req.screenshot)}
+                                className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                              >
+                                View Proof
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {Boolean(req.transferAmount && req.transferAmount > 0) && (
                           <div className="mt-1">
                             <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
@@ -426,6 +443,26 @@ export default function AccountRequestsView({
                       <span className="font-heading font-black text-amber-400 text-sm">{req.gameTitle}</span>
                     </div>
 
+                    {Boolean(req.freeplayPending) && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-amber-300 font-bold">Freeplay Task:</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded">
+                            ${Number(req.freeplayAmount || 3).toFixed(2)} SC
+                          </span>
+                          {(req.freeplayScreenshot || req.screenshot) && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewScreenshot(req.freeplayScreenshot || req.screenshot)}
+                              className="text-[10.5px] font-bold text-cyan-400 underline"
+                            >
+                              Proof
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {Boolean(req.transferAmount && req.transferAmount > 0) && (
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-400 font-bold">Initial Load SC:</span>
@@ -486,6 +523,48 @@ export default function AccountRequestsView({
             })}
           </div>
         </>
+      )}
+
+      {/* Screenshot Proof Preview Modal */}
+      {previewScreenshot && (
+        <div
+          onClick={() => setPreviewScreenshot(null)}
+          className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-2xl w-full bg-[#0E0A24] border border-cyan-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <h3 className="text-sm font-heading font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <span>🎁 Player Freeplay Task Inbox Proof</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewScreenshot(null)}
+                className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white flex items-center justify-center"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="max-h-[75vh] overflow-auto rounded-2xl bg-black border border-white/10 flex items-center justify-center p-2">
+              <img
+                src={previewScreenshot}
+                alt="Freeplay Task Inbox Proof"
+                className="max-h-[70vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPreviewScreenshot(null)}
+                className="px-5 py-2 rounded-xl bg-cyan-500 text-black font-black text-xs uppercase"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

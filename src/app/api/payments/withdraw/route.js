@@ -161,8 +161,8 @@ export async function POST(req) {
     } = body;
 
     const redeemAmount = Number(amount);
-    if (!redeemAmount || redeemAmount < 20.0) {
-      return NextResponse.json({ success: false, error: 'Minimum redemption is 20.00 SC ($20.00).' }, { status: 400 });
+    if (!redeemAmount || redeemAmount <= 0) {
+      return NextResponse.json({ success: false, error: 'Please enter a valid withdrawal amount.' }, { status: 400 });
     }
 
     const finalTag = (destinationTag || destinationAddress || '').trim();
@@ -192,7 +192,7 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'User not found.' }, { status: 404 });
     }
 
-    // Verify user has sufficient available SC balance (Total SC - currently frozen)
+    // Check user's current wallet balance
     const currentSC = Number(user.balanceSC ?? user.balance ?? 0);
     const frozen = Number(user.frozenBalance || 0);
     const availableSC = Math.max(0, Number((currentSC - frozen).toFixed(2)));
@@ -229,21 +229,14 @@ export async function POST(req) {
 
     const gameAccountUsername = accountCheck.username;
 
-    if (redeemAmount > availableSC) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Insufficient redeemable SC balance. Available: $${availableSC.toFixed(2)} SC. (Requested: $${redeemAmount.toFixed(2)} SC)`,
-        },
-        { status: 400 }
+    // Escrow: Freeze up to available balance (if available); users can redeem any amount from game winnings
+    const escrowFrozen = Math.max(0, Math.min(redeemAmount, availableSC));
+    if (escrowFrozen > 0) {
+      await usersCol.updateOne(
+        safeFilter(user._id),
+        { $inc: { frozenBalance: escrowFrozen } }
       );
     }
-
-    // Freeze cashout amount in user's wallet escrow
-    await usersCol.updateOne(
-      safeFilter(user._id),
-      { $inc: { frozenBalance: redeemAmount } }
-    );
 
     // Initial cashout must go to Coin Allotment (Coin Operations Desk) first
     const initialStatus = 'pending_coin';
@@ -254,6 +247,7 @@ export async function POST(req) {
       userId: user._id.toString(),
       username: user.username,
       amount: redeemAmount,
+      escrowFrozen: escrowFrozen,
       gameTitle: requestedGame,
       gameAccountUsername: gameAccountUsername,
       gameScreenshot: gameScreenshot || null,
@@ -398,9 +392,12 @@ export async function PUT(req) {
     if (action === 'coin_reject') {
       const reason = rejectReason || 'Game winning screenshot could not be verified or score mismatch.';
 
-      // Unfreeze player's balance
+      // Unfreeze player's balance (only what was frozen in escrow)
       const currentFrozen = Number(user?.frozenBalance || 0);
-      const newFrozen = Math.max(0, Number((currentFrozen - redemption.amount).toFixed(2)));
+      const toUnfreeze = redemption.escrowFrozen !== undefined
+        ? Number(redemption.escrowFrozen)
+        : Math.min(currentFrozen, Number(redemption.amount));
+      const newFrozen = Math.max(0, Number((currentFrozen - toUnfreeze).toFixed(2)));
       await usersCol.updateOne(
         safeFilter(redemption.userId),
         { $set: { frozenBalance: newFrozen } }
@@ -461,8 +458,11 @@ export async function PUT(req) {
       const currentSC = user ? Number(user.balanceSC ?? user.balance ?? 0) : 0;
       const currentFrozen = user ? Number(user.frozenBalance || 0) : 0;
 
-      const newBalanceSC = Math.max(0, Number((currentSC - withdrawAmount).toFixed(2)));
-      const newFrozen = Math.max(0, Number((currentFrozen - withdrawAmount).toFixed(2)));
+      const toUnfreeze = redemption.escrowFrozen !== undefined
+        ? Number(redemption.escrowFrozen)
+        : Math.min(currentFrozen, withdrawAmount);
+      const newBalanceSC = Math.max(0, Number((currentSC - toUnfreeze).toFixed(2)));
+      const newFrozen = Math.max(0, Number((currentFrozen - toUnfreeze).toFixed(2)));
 
       // Deduct player balance and clear escrow frozen balance
       await usersCol.updateOne(
@@ -536,9 +536,12 @@ export async function PUT(req) {
     if (action === 'reject' || action === 'finance_reject') {
       const reason = rejectReason || 'Game winning screenshot or payout tag could not be verified.';
 
-      // Unfreeze player's balance
+      // Unfreeze player's balance (only what was frozen in escrow)
       const currentFrozen = Number(user?.frozenBalance || 0);
-      const newFrozen = Math.max(0, Number((currentFrozen - redemption.amount).toFixed(2)));
+      const toUnfreeze = redemption.escrowFrozen !== undefined
+        ? Number(redemption.escrowFrozen)
+        : Math.min(currentFrozen, Number(redemption.amount));
+      const newFrozen = Math.max(0, Number((currentFrozen - toUnfreeze).toFixed(2)));
       await usersCol.updateOne(
         safeFilter(redemption.userId),
         { $set: { frozenBalance: newFrozen } }
