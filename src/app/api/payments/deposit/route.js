@@ -326,13 +326,67 @@ export async function PUT(req) {
       return NextResponse.json({ success: false, error: `Deposit is already marked as ${deposit.status}.` }, { status: 400 });
     }
 
-    const user = await usersCol.findOne(getUserFilter({
+    let user = await usersCol.findOne(getUserFilter({
       userId: deposit.userId,
       username: deposit.username,
       email: deposit.playerPaymentEmail,
     }));
+
+    if (!user && deposit.username) {
+      user = await usersCol.findOne({
+        username: { $regex: new RegExp(`^${deposit.username.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      });
+    }
+
+    if (!user && deposit.playerPaymentEmail) {
+      user = await usersCol.findOne({
+        email: { $regex: new RegExp(`^${deposit.playerPaymentEmail.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      });
+    }
+
     if (!user) {
-      return NextResponse.json({ success: false, error: 'Associated player not found.' }, { status: 404 });
+      if (action === 'reject') {
+        const finalRejectReason = rejectReason || 'Associated player not found / unverified';
+        await depositsCol.updateOne(
+          { _id: deposit._id },
+          {
+            $set: {
+              status: 'rejected',
+              rejectReason: finalRejectReason,
+              processedBy: `${session.username} (${session.role})`,
+              updatedAt: new Date(),
+            },
+          }
+        );
+        return NextResponse.json({ success: true, message: 'Deposit rejected.' });
+      }
+
+      if (action === 'approve') {
+        // Auto-provision / restore player account so player deposit and balance are not lost
+        const is24Hex = typeof deposit.userId === 'string' && deposit.userId.length === 24 && /^[0-9a-fA-F]{24}$/.test(deposit.userId);
+        const resolvedId = (is24Hex && ObjectId.isValid(deposit.userId)) ? new ObjectId(deposit.userId) : new ObjectId();
+        const resolvedUsername = String(deposit.username || deposit.playerPaymentEmail?.split('@')[0] || 'player').trim();
+        const resolvedEmail = String(deposit.playerPaymentEmail || `${resolvedUsername}@playersparadisehub.com`).toLowerCase().trim();
+
+        user = {
+          _id: resolvedId,
+          username: resolvedUsername,
+          email: resolvedEmail,
+          role: 'player',
+          balanceSC: 0,
+          balanceGC: 0,
+          totalDeposited: 0,
+          availableSpins: 2,
+          welcomeBonusClaimed: false,
+          createdAt: new Date(),
+          autoRestored: true,
+        };
+
+        await usersCol.insertOne(user);
+        await depositsCol.updateOne({ _id: deposit._id }, { $set: { userId: user._id.toString() } });
+      } else {
+        return NextResponse.json({ success: false, error: 'Associated player not found.' }, { status: 404 });
+      }
     }
 
     if (action === 'approve') {
@@ -634,14 +688,16 @@ export async function PUT(req) {
       );
 
       // Instant In-App and Push Notification for player
-      notifyPlayer({
-        userId: user._id,
-        userEmail: user.email,
-        username: user.username,
-        title: 'Deposit Update ⚠️',
-        message: `Your deposit request ($${deposit.amount}) could not be approved: ${finalRejectReason}`,
-        type: 'deposit_rejected',
-      });
+      if (user) {
+        notifyPlayer({
+          userId: user._id,
+          userEmail: user.email,
+          username: user.username,
+          title: 'Deposit Update ⚠️',
+          message: `Your deposit request ($${deposit.amount}) could not be approved: ${finalRejectReason}`,
+          type: 'deposit_rejected',
+        });
+      }
 
       return NextResponse.json({ success: true, message: 'Deposit rejected.' });
     }
