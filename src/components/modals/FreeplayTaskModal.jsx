@@ -19,17 +19,6 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
-const POPULAR_GAMES = [
-  'Ultra Panda',
-  'Orion Stars',
-  'Fire Kirin',
-  'Game Vault',
-  'Juwa',
-  'Panda Master',
-  'Milky Way',
-  'Vblink',
-];
-
 export default function FreeplayTaskModal({
   isOpen,
   onClose,
@@ -37,6 +26,7 @@ export default function FreeplayTaskModal({
   freeplayAmount = 3,
   onSuccess,
 }) {
+  const [availableGames, setAvailableGames] = useState([]);
   const [selectedGame, setSelectedGame] = useState('Ultra Panda');
   const [screenshot, setScreenshot] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -50,6 +40,25 @@ export default function FreeplayTaskModal({
   const initialEmailSentRef = useRef(false);
 
   const targetEmail = user?.email || '';
+
+  // Fetch real games from admin
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/games', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && Array.isArray(d.games) && d.games.length > 0) {
+          const gameTitles = d.games.map((g) => (g.title || '').trim()).filter(Boolean);
+          setAvailableGames(gameTitles);
+          setSelectedGame((prev) => {
+            const cleanPrev = (prev || '').trim().toLowerCase();
+            const exists = gameTitles.some((t) => t.toLowerCase() === cleanPrev);
+            return exists ? prev : gameTitles[0];
+          });
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -285,7 +294,7 @@ export default function FreeplayTaskModal({
               <span>Select Casino Game Platform:</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {POPULAR_GAMES.map((game) => {
+              {(availableGames.length > 0 ? availableGames : (selectedGame ? [selectedGame] : [])).map((game) => {
                 const isSelected = selectedGame === game;
                 return (
                   <button

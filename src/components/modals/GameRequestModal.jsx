@@ -22,54 +22,75 @@ export default function GameRequestModal({
   onOpenAuth,
 }) {
   const router = useRouter();
-  const platforms = [
-    { title: 'Ultra Panda', category: 'Fish & Slots', badge: 'TOP CHOICE' },
-    { title: 'Fire Kirin', category: 'Fish Arcade King', badge: 'POPULAR' },
-    { title: 'Orion Stars', category: 'Sweeps & Reels', badge: 'CLASSIC' },
-    { title: 'Game Vault 999', category: 'High Payouts', badge: 'TRENDING' },
-    { title: 'Milky Way', category: 'Cosmic Reels', badge: 'HOT' },
-    { title: 'Juwa 777', category: 'Speed Slots', badge: 'FAST' },
-    { title: 'Golden Treasure', category: 'Fish Hunter', badge: 'CLASSIC' },
-  ];
-
+  const [platforms, setPlatforms] = useState([]);
   const [existingAccounts, setExistingAccounts] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
-  const [selectedGame, setSelectedGame] = useState(initialGame?.title || platforms[0].title);
+  const [selectedGame, setSelectedGame] = useState(initialGame?.title || '');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ error: '', success: '' });
 
   useEffect(() => {
-    if (isOpen && user?.email) {
-      fetch(`/api/game-accounts?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            setExistingAccounts(data.gameAccounts || []);
-            setPendingRequests(data.pendingRequests || []);
+    if (!isOpen) return;
 
-            // Auto-select first platform that does not have credentials or pending request
-            const accTitles = (data.gameAccounts || []).map((a) => (a.gameTitle || '').toLowerCase().trim());
-            const pendTitles = (data.pendingRequests || []).map((p) => (p.gameTitle || '').toLowerCase().trim());
+    const loadModalData = async () => {
+      try {
+        const promises = [fetch('/api/games', { cache: 'no-store' }).then((r) => r.json())];
+        if (user?.email) {
+          promises.push(
+            fetch(`/api/game-accounts?email=${encodeURIComponent(user.email)}`, { cache: 'no-store' }).then((r) => r.json())
+          );
+        }
 
-            if (initialGame?.title) {
-              const initLower = initialGame.title.toLowerCase().trim();
-              if (!accTitles.includes(initLower) && !pendTitles.includes(initLower)) {
-                setSelectedGame(initialGame.title);
-                return;
-              }
-            }
+        const [gamesData, accountsData] = await Promise.all(promises);
 
-            const firstAvailable = platforms.find((p) => {
-              const t = p.title.toLowerCase().trim();
-              return !accTitles.includes(t) && !pendTitles.includes(t);
-            });
-            if (firstAvailable) {
-              setSelectedGame(firstAvailable.title);
-            }
+        let activePlatforms = [];
+        if (gamesData?.success && Array.isArray(gamesData.games)) {
+          activePlatforms = gamesData.games
+            .map((g) => ({
+              title: (g.title || '').trim(),
+              category: g.category || 'Sweepstakes',
+              badge: g.badge || '',
+            }))
+            .filter((g) => Boolean(g.title));
+          setPlatforms(activePlatforms);
+        }
+
+        let accs = [];
+        let pends = [];
+        if (accountsData?.success) {
+          accs = accountsData.gameAccounts || [];
+          pends = accountsData.pendingRequests || [];
+          setExistingAccounts(accs);
+          setPendingRequests(pends);
+        }
+
+        const accTitles = accs.map((a) => (a.gameTitle || '').toLowerCase().trim());
+        const pendTitles = pends.map((p) => (p.gameTitle || '').toLowerCase().trim());
+
+        if (initialGame?.title) {
+          const initLower = initialGame.title.toLowerCase().trim();
+          if (!accTitles.includes(initLower) && !pendTitles.includes(initLower)) {
+            setSelectedGame(initialGame.title);
+            return;
           }
-        })
-        .catch(() => {});
-    }
+        }
+
+        const firstAvailable = activePlatforms.find((p) => {
+          const t = p.title.toLowerCase().trim();
+          return !accTitles.includes(t) && !pendTitles.includes(t);
+        });
+
+        if (firstAvailable) {
+          setSelectedGame(firstAvailable.title);
+        } else if (activePlatforms.length > 0) {
+          setSelectedGame(activePlatforms[0].title);
+        }
+      } catch (err) {
+        console.error('Failed to load game request modal data:', err);
+      }
+    };
+
+    loadModalData();
   }, [isOpen, user?.email, initialGame]);
 
   if (!isOpen) return null;

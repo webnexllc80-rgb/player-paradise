@@ -824,8 +824,27 @@ export function ManualAddAccountModal({ isOpen, onClose, usersList = [], gamesLi
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [availableGames, setAvailableGames] = useState([]);
 
-  const defaultGames = ['Ultra Panda', 'Fire Kirin', 'Orion Stars', 'Game Vault', 'Milky Way', 'Juwa'];
+  useEffect(() => {
+    if (!isOpen) return;
+    if (gamesList && gamesList.length > 0) {
+      const titles = gamesList.map((g) => (typeof g === 'string' ? g : g.title || '')).filter(Boolean);
+      setAvailableGames(titles);
+      if (titles.length > 0) setSelectedGame(titles[0]);
+    } else {
+      fetch('/api/games?all=true', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && Array.isArray(d.games) && d.games.length > 0) {
+            const titles = d.games.map((g) => (g.title || '').trim()).filter(Boolean);
+            setAvailableGames(titles);
+            if (titles.length > 0) setSelectedGame(titles[0]);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, gamesList]);
 
   if (!isOpen) return null;
 
@@ -936,7 +955,7 @@ export function ManualAddAccountModal({ isOpen, onClose, usersList = [], gamesLi
               onChange={(e) => setSelectedGame(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 focus:border-cyan-400 rounded-xl px-3 py-2 text-xs text-white outline-none"
             >
-              {defaultGames.map((g) => (
+              {(availableGames.length > 0 ? availableGames : (selectedGame ? [selectedGame] : [])).map((g) => (
                 <option key={g} value={g}>{g}</option>
               ))}
             </select>

@@ -46,21 +46,27 @@ export async function GET(req) {
       .limit(limit)
       .toArray();
 
-    // If database is new/empty, provide realistic default ticker items
-    const fallbackTicker = [
-      { username: 'raze', game: 'Vegas 777 Deluxe', amount: 7016.45, currency: 'SC' },
-      { username: 'nyx', game: 'Golden Treasure', amount: 2118.14, currency: 'SC' },
-      { username: 'satoshi.j', game: 'Neon Rocket Crash', amount: 6990.66, currency: 'SC' },
-      { username: 'halcyon', game: 'Fire Kirin', amount: 3410.00, currency: 'SC' },
-      { username: 'crypto_ace', game: 'Blackjack High Roller', amount: 4800.00, currency: 'SC' },
-      { username: 'lucky_bella', game: 'Orion Stars', amount: 1520.25, currency: 'SC' },
-      { username: 'drake99', game: 'Royal European Roulette', amount: 5600.00, currency: 'SC' },
-    ];
+    // If database is new/empty, provide ticker items strictly using real admin games
+    let fallbackTicker = [];
+    if (recentWins.length === 0) {
+      const dbGames = await db.collection('games').find({ isActive: { $ne: false } }).limit(10).toArray();
+      const realNames = dbGames.map(g => (g.title || '').trim()).filter(Boolean);
+      const players = ['raze', 'nyx', 'halcyon', 'crypto_ace', 'lucky_bella', 'drake99', 'matrix_win'];
+      const amounts = [340.5, 820.0, 1250.0, 490.75, 620.0, 750.2, 1100.0];
+      fallbackTicker = players.map((u, i) => ({
+        username: u,
+        game: realNames[i % (realNames.length || 1)] || 'Ultra Panda',
+        gameTitle: realNames[i % (realNames.length || 1)] || 'Ultra Panda',
+        amount: amounts[i % amounts.length],
+        currency: 'SC',
+      }));
+    }
 
     const displayWins = recentWins.length > 0
       ? recentWins.map(w => ({
           username: w.username,
-          game: w.gameId.replace(/-/g, ' ').toUpperCase(),
+          game: w.gameTitle || (w.gameId ? w.gameId.replace(/-/g, ' ').toUpperCase() : 'Ultra Panda'),
+          gameTitle: w.gameTitle || (w.gameId ? w.gameId.replace(/-/g, ' ').toUpperCase() : 'Ultra Panda'),
           amount: w.winAmount,
           currency: w.currency || 'SC',
         }))
@@ -69,6 +75,7 @@ export async function GET(req) {
     return NextResponse.json({
       success: true,
       ticker: displayWins,
+      activity: displayWins,
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

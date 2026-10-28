@@ -56,6 +56,7 @@ export default function DepositPage() {
   const [proofImage, setProofImage] = useState('');
   const [proofFileName, setProofFileName] = useState('');
   const [selectedGame, setSelectedGame] = useState('Ultra Panda');
+  const [adminGames, setAdminGames] = useState([]);
   const [userGameAccounts, setUserGameAccounts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -170,11 +171,30 @@ export default function DepositPage() {
     }
   };
 
+  // 5. Fetch active games catalog from Admin
+  const fetchGames = async () => {
+    try {
+      const res = await fetch('/api/games', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.games) && data.games.length > 0) {
+        setAdminGames(data.games);
+        setSelectedGame((prev) => {
+          const cleanPrev = (prev || '').trim().toLowerCase();
+          const exists = data.games.some((g) => (g.title || '').trim().toLowerCase() === cleanPrev);
+          return exists ? prev : (data.games[0].title || '').trim();
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchUserAndSettings();
     fetchGateways();
     fetchHistory();
     fetchGameAccounts();
+    fetchGames();
 
     // Zero-refresh live polling: updates pending deposits as soon as admin approves/rejects
     const pollInterval = setInterval(() => {
@@ -182,6 +202,7 @@ export default function DepositPage() {
         fetchHistory(true);
         fetchUserAndSettings(true);
         fetchGameAccounts();
+        fetchGames();
       }
     }, 4000);
 
@@ -606,16 +627,10 @@ export default function DepositPage() {
                       const linkedAcc = userGameAccounts.find(
                         (a) => (a.gameTitle || '').toLowerCase().trim() === selectedGame.toLowerCase().trim()
                       );
-                      const popularGames = [
-                        'Ultra Panda',
-                        'Fire Kirin',
-                        'Orion Stars',
-                        'Game Vault 999',
-                        'Milky Way',
-                        'Juwa 777',
-                        'Panda 777 Slots',
-                        'Golden Treasure',
-                      ];
+                      const gamesList = adminGames
+                        .map((g) => (g.title || '').trim())
+                        .filter(Boolean);
+                      const displayGames = gamesList.length > 0 ? gamesList : (selectedGame ? [selectedGame] : []);
 
                       return (
                         <>
@@ -642,7 +657,7 @@ export default function DepositPage() {
                             onChange={(e) => setSelectedGame(e.target.value)}
                             className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-heading font-bold text-sm focus:outline-none focus:border-cyan-400"
                           >
-                            {popularGames.map((g) => {
+                            {displayGames.map((g) => {
                               const match = userGameAccounts.find(
                                 (a) => (a.gameTitle || '').toLowerCase().trim() === g.toLowerCase().trim()
                               );

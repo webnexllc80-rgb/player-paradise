@@ -48,6 +48,7 @@ export default function WithdrawPage() {
   const [gameScreenshotName, setGameScreenshotName] = useState('');
   const [qrCodeImage, setQrCodeImage] = useState('');
   const [qrCodeImageName, setQrCodeImageName] = useState('');
+  const [adminGames, setAdminGames] = useState([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -106,10 +107,29 @@ export default function WithdrawPage() {
     }
   };
 
+  // 4. Fetch active games catalog from Admin
+  const fetchGames = async () => {
+    try {
+      const res = await fetch('/api/games', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.games) && data.games.length > 0) {
+        setAdminGames(data.games);
+        setSelectedGame((prev) => {
+          const cleanPrev = (prev || '').trim().toLowerCase();
+          const exists = data.games.some((g) => (g.title || '').trim().toLowerCase() === cleanPrev);
+          return exists ? prev : (data.games[0].title || '').trim();
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchUser();
     fetchHistory();
     fetchGameAccounts();
+    fetchGames();
 
     // Zero-refresh live polling: fast updates as soon as admin approves/rejects
     const pollInterval = setInterval(() => {
@@ -117,6 +137,7 @@ export default function WithdrawPage() {
         fetchHistory(true);
         fetchUser(true);
         fetchGameAccounts();
+        fetchGames();
       }
     }, 1500);
 
@@ -345,15 +366,13 @@ export default function WithdrawPage() {
     { id: 'zelle', name: 'Zelle Pay', placeholder: 'e.g. phone number or email' },
   ];
 
-  const popularGames = [
-    'Ultra Panda',
-    'Fire Kirin',
-    'Orion Stars',
-    'Game Vault 999',
-    'Milky Way',
-    'Juwa 777',
-    'Golden Treasure',
-  ];
+  const popularGames = (() => {
+    const list = adminGames.map((g) => (g.title || '').trim()).filter(Boolean);
+    if (list.length > 0) return list;
+    return userGameAccounts.length > 0
+      ? userGameAccounts.map((a) => (a.gameTitle || '').trim()).filter(Boolean)
+      : (selectedGame ? [selectedGame] : []);
+  })();
 
   const presetAmounts = [20, 50, 100, 250, 500];
 
