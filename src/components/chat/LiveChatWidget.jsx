@@ -14,6 +14,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { playTune } from '@/lib/soundAlerts';
+import { areEqual } from '@/lib/fastDiff';
 
 export default function LiveChatWidget({ user: initialUser, soundEnabled = true }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -33,6 +34,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const lastStaffMsgCountRef = useRef(0);
+  const lastScrollMsgCountRef = useRef(0);
   const fetchMessagesRef = useRef(null);
 
   // Synchronous and persistent guestId generation
@@ -185,7 +187,8 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
                   Math.abs(new Date(nm.createdAt).getTime() - new Date(m.createdAt).getTime()) < 15000
               )
           );
-          return [...newMsgs, ...pendingOpts];
+          const combined = [...newMsgs, ...pendingOpts];
+          return areEqual(prev, combined) ? prev : combined;
         });
 
         // Calculate unread staff messages
@@ -254,10 +257,13 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
     };
   }, [currentUser, guestId]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom only when new message arrives or image is attached
   useEffect(() => {
     if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      if (messages.length !== lastScrollMsgCountRef.current || attachedImage) {
+        lastScrollMsgCountRef.current = messages.length;
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   }, [messages, keyboardOffset, attachedImage, isOpen]);
 

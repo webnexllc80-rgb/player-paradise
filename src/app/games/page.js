@@ -13,6 +13,7 @@ import GameRequestModal from '@/components/modals/GameRequestModal';
 import ExternalGameModal from '@/components/modals/ExternalGameModal';
 import Panda777SlotsModal from '@/components/games/Panda777SlotsModal';
 import CyberCrashModal from '@/components/games/CyberCrashModal';
+import { diffSet } from '@/lib/fastDiff';
 
 import {
   Gamepad2,
@@ -59,8 +60,8 @@ export default function GamesPage() {
       const res = await fetch(`/api/game-accounts?email=${encodeURIComponent(userEmail)}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
-        setUserGameAccounts(data.gameAccounts || []);
-        setPendingAccountRequests(data.pendingRequests || []);
+        diffSet(setUserGameAccounts, data.gameAccounts || []);
+        diffSet(setPendingAccountRequests, data.pendingRequests || []);
       }
     } catch {}
   };
@@ -70,22 +71,21 @@ export default function GamesPage() {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
       if (data.authenticated && data.user) {
-        setUser(data.user);
+        diffSet(setUser, data.user);
         loadUserGameAccounts(data.user.email);
       } else {
         setUser(null);
-        setUserGameAccounts([]);
-        setPendingAccountRequests([]);
+        diffSet(setUserGameAccounts, []);
+        diffSet(setPendingAccountRequests, []);
       }
     } catch {
       setUser(null);
-      setUserGameAccounts([]);
-      setPendingAccountRequests([]);
+      diffSet(setUserGameAccounts, []);
+      diffSet(setPendingAccountRequests, []);
     }
   };
 
   const loadGames = async () => {
-    setLoading(true);
     try {
       let url = '/api/games';
       const params = new URLSearchParams();
@@ -95,7 +95,7 @@ export default function GamesPage() {
 
       const res = await fetch(url);
       const data = await res.json();
-      if (data.success && data.games) setGames(data.games);
+      if (data.success && data.games) diffSet(setGames, data.games);
     } catch {}
     setLoading(false);
   };

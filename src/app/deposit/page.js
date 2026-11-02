@@ -28,6 +28,7 @@ import {
 import CyberNavbar from '@/components/navigation/CyberNavbar';
 import CyberSidebar from '@/components/navigation/CyberSidebar';
 import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
+import { diffSet } from '@/lib/fastDiff';
 import CyberFooter from '@/components/common/CyberFooter';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
 
@@ -80,7 +81,7 @@ export default function DepositPage() {
       const [uData, sData] = await Promise.all([uRes.json(), sRes.json()]);
 
       if (uData.authenticated && uData.user) {
-        setUser(uData.user);
+        diffSet(setUser, uData.user);
         if (uData.user.email) {
           setPlayerPaymentEmail((prev) => prev || uData.user.email);
         }
@@ -89,7 +90,7 @@ export default function DepositPage() {
       }
 
       if (sData.success && sData.settings) {
-        setSettings({
+        diffSet(setSettings, {
           welcomeBonusPercent: Number(sData.settings.welcomeBonusPercent ?? 300),
           regularBonusPercent: Number(sData.settings.regularBonusPercent ?? 50),
         });
@@ -149,7 +150,7 @@ export default function DepositPage() {
       const res = await fetch('/api/payments/deposit', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.deposits) {
-        setDepositHistory(data.deposits);
+        diffSet(setDepositHistory, data.deposits);
       }
     } catch (err) {
       console.error(err);
@@ -164,7 +165,7 @@ export default function DepositPage() {
       const res = await fetch('/api/game-accounts', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.gameAccounts)) {
-        setUserGameAccounts(data.gameAccounts);
+        diffSet(setUserGameAccounts, data.gameAccounts);
       }
     } catch (err) {
       console.error(err);
@@ -177,7 +178,7 @@ export default function DepositPage() {
       const res = await fetch('/api/games', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.games) && data.games.length > 0) {
-        setAdminGames(data.games);
+        diffSet(setAdminGames, data.games);
         setSelectedGame((prev) => {
           const cleanPrev = (prev || '').trim().toLowerCase();
           const exists = data.games.some((g) => (g.title || '').trim().toLowerCase() === cleanPrev);
@@ -207,7 +208,7 @@ export default function DepositPage() {
     }, 4000);
 
     const handleUserSync = (e) => {
-      if (e.detail) setUser(e.detail);
+      if (e.detail) diffSet(setUser, e.detail);
     };
 
     const handleFocus = () => {

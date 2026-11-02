@@ -22,6 +22,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { playTune } from '@/lib/soundAlerts';
+import { areEqual, diffSet } from '@/lib/fastDiff';
 
 export default function ChatPage() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const lastStaffMsgCountRef = useRef(0);
+  const lastChatScrollMsgCountRef = useRef(0);
   const fetchMsgsRef = useRef(null);
 
   // Load user & listen to global user sync
@@ -116,7 +118,8 @@ export default function ChatPage() {
                     Math.abs(new Date(nm.createdAt).getTime() - new Date(m.createdAt).getTime()) < 15000
                 )
             );
-            return [...newMsgs, ...pendingOpts];
+            const combined = [...newMsgs, ...pendingOpts];
+            return areEqual(prev, combined) ? prev : combined;
           });
 
           const staffMsgs = newMsgs.filter((m) => m.senderRole === 'staff');
@@ -174,9 +177,12 @@ export default function ChatPage() {
     };
   }, [user, guestId]);
 
-  // Scroll to bottom
+  // Scroll to bottom only when new message arrives or user attaches image
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length !== lastChatScrollMsgCountRef.current || attachedImage) {
+      lastChatScrollMsgCountRef.current = messages.length;
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, attachedImage]);
 
   // Handle image upload

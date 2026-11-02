@@ -26,6 +26,7 @@ import CyberSidebar from '@/components/navigation/CyberSidebar';
 import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
 import CyberFooter from '@/components/common/CyberFooter';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
+import { diffSet } from '@/lib/fastDiff';
 
 export default function WithdrawPage() {
   const router = useRouter();
@@ -64,7 +65,7 @@ export default function WithdrawPage() {
       const res = await fetch('/api/auth/me', { cache: 'no-store' });
       const data = await res.json();
       if (data.authenticated && data.user) {
-        setUser(data.user);
+        diffSet(setUser, data.user);
       } else if (!isSilent) {
         router.push('/login?redirect=/withdraw');
       }
@@ -82,7 +83,7 @@ export default function WithdrawPage() {
       const res = await fetch('/api/payments/withdraw', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.redemptions) {
-        setWithdrawHistory(data.redemptions);
+        diffSet(setWithdrawHistory, data.redemptions);
       }
     } catch (err) {
       console.error(err);
@@ -97,7 +98,7 @@ export default function WithdrawPage() {
       const res = await fetch('/api/game-accounts', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.gameAccounts)) {
-        setUserGameAccounts(data.gameAccounts);
+        diffSet(setUserGameAccounts, data.gameAccounts);
         if (data.gameAccounts.length > 0 && !data.gameAccounts.some(a => a.gameTitle?.toLowerCase().trim() === selectedGame.toLowerCase().trim())) {
           setSelectedGame(data.gameAccounts[0].gameTitle || selectedGame);
         }
@@ -113,7 +114,7 @@ export default function WithdrawPage() {
       const res = await fetch('/api/games', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.games) && data.games.length > 0) {
-        setAdminGames(data.games);
+        diffSet(setAdminGames, data.games);
         setSelectedGame((prev) => {
           const cleanPrev = (prev || '').trim().toLowerCase();
           const exists = data.games.some((g) => (g.title || '').trim().toLowerCase() === cleanPrev);
@@ -139,10 +140,10 @@ export default function WithdrawPage() {
         fetchGameAccounts();
         fetchGames();
       }
-    }, 1500);
+    }, 3000);
 
     const handleUserSync = (e) => {
-      if (e.detail) setUser(e.detail);
+      if (e.detail) diffSet(setUser, e.detail);
     };
 
     const handleFocus = () => {

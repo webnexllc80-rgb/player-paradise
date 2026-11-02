@@ -22,6 +22,7 @@ import {
   Headphones
 } from 'lucide-react';
 import NotificationsModal from '@/components/modals/NotificationsModal';
+import { areEqual } from '@/lib/fastDiff';
 
 export default function CyberNavbar({
   onToggleSidebar,
@@ -142,15 +143,17 @@ export default function CyberNavbar({
             setTimeout(() => setBalancePulse(false), 2200);
           }
           lastBalanceRef.current = currentBal;
-          setLiveUser(data.user);
-
-          // Dispatch event to sync parent page states automatically
-          if (typeof window !== 'undefined') {
-            if (data.user.email) {
-              localStorage.setItem('pp_user_email', data.user.email);
+          setLiveUser((prev) => {
+            if (areEqual(prev, data.user)) return prev;
+            // Only dispatch event to sync parent page states if user data actually changed
+            if (typeof window !== 'undefined') {
+              if (data.user.email) {
+                localStorage.setItem('pp_user_email', data.user.email);
+              }
+              window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
             }
-            window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
-          }
+            return data.user;
+          });
 
           // Fetch live unread notification count
           if (data.user.email) {

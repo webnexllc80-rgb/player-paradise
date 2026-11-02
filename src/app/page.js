@@ -23,6 +23,7 @@ import ExternalGameModal from '@/components/modals/ExternalGameModal';
 import SubscriptionPromoModal from '@/components/modals/SubscriptionPromoModal';
 import LoadCoinsModal from '@/components/modals/LoadCoinsModal';
 import KycModal from '@/components/modals/KycModal';
+import { diffSet, areEqual } from '@/lib/fastDiff';
 import BonusAlertToast from '@/components/common/BonusAlertToast';
 import PushNotificationManager from '@/components/common/PushNotificationManager';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
@@ -91,8 +92,8 @@ export default function HomePage() {
       const res = await fetch(`/api/game-accounts?email=${encodeURIComponent(userEmail)}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
-        setUserGameAccounts(data.gameAccounts || []);
-        setPendingAccountRequests(data.pendingRequests || []);
+        diffSet(setUserGameAccounts, data.gameAccounts || []);
+        diffSet(setPendingAccountRequests, data.pendingRequests || []);
       }
     } catch {}
   };
@@ -103,23 +104,22 @@ export default function HomePage() {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
       if (data.authenticated && data.user) {
-        setUser(data.user);
+        diffSet(setUser, data.user);
         loadUserGameAccounts(data.user.email);
       } else {
         setUser(null);
-        setUserGameAccounts([]);
-        setPendingAccountRequests([]);
+        diffSet(setUserGameAccounts, []);
+        diffSet(setPendingAccountRequests, []);
       }
     } catch {
       setUser(null);
-      setUserGameAccounts([]);
-      setPendingAccountRequests([]);
+      diffSet(setUserGameAccounts, []);
+      diffSet(setPendingAccountRequests, []);
     }
   };
 
   // Load Games
   const loadGames = async () => {
-    setLoadingGames(true);
     try {
       let url = '/api/games';
       const params = new URLSearchParams();
@@ -130,7 +130,7 @@ export default function HomePage() {
       const res = await fetch(url);
       const data = await res.json();
       if (data.success && data.games) {
-        setGames(data.games);
+        diffSet(setGames, data.games);
       }
     } catch (err) {
       console.error(err);
@@ -144,8 +144,11 @@ export default function HomePage() {
 
     const handleUserSync = (e) => {
       if (e.detail) {
-        setUser(e.detail);
-        loadUserGameAccounts(e.detail.email);
+        setUser((prev) => {
+          if (areEqual(prev, e.detail)) return prev;
+          loadUserGameAccounts(e.detail.email);
+          return e.detail;
+        });
       }
     };
 

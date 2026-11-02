@@ -20,6 +20,7 @@ import {
   DollarSign,
   Maximize2
 } from 'lucide-react';
+import { diffSet } from '@/lib/fastDiff';
 
 export default function CoinOperationsDesk({ sessionUser }) {
   const [activeSection, setActiveSection] = useState('loads'); // 'loads' | 'cashouts'
@@ -49,9 +50,9 @@ export default function CoinOperationsDesk({ sessionUser }) {
     setTimeout(() => setAlert(null), 5000);
   };
 
-  // Fetch all data
-  const fetchData = async () => {
-    setLoading(true);
+  // Fetch all data (silent background updates to prevent UI flicker)
+  const fetchData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const [loadsRes, cashoutsRes] = await Promise.all([
         fetch('/api/account-requests?type=COIN_LOAD&status=all'),
@@ -62,22 +63,24 @@ export default function CoinOperationsDesk({ sessionUser }) {
       const cashoutsData = await cashoutsRes.json();
 
       if (loadsData.success) {
-        setLoadRequests(loadsData.accountRequests || []);
+        diffSet(setLoadRequests, loadsData.accountRequests || []);
       }
       if (cashoutsData.success) {
-        setCashoutRequests(cashoutsData.redemptions || []);
+        diffSet(setCashoutRequests, cashoutsData.redemptions || []);
       }
     } catch (err) {
       console.error('Error fetching coin desk data:', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-    // Fast polling (1500ms) for real-time live desk operations
-    const interval = setInterval(fetchData, 1500);
+    fetchData(false);
+    // Silent polling for real-time live desk operations
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchData(true);
+    }, 2500);
 
     // Cross-tab broadcast listener for instant (0ms) cashout detection
     let channel = null;
