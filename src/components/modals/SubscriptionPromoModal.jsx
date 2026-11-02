@@ -20,7 +20,7 @@ export default function SubscriptionPromoModal({
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setPushGranted(Notification.permission === 'granted');
     }
-  }, [user, isOpen]);
+  }, [user?.email, isOpen]);
 
   // Android Native Back Button Support for APK & Mobile Browser
   useEffect(() => {

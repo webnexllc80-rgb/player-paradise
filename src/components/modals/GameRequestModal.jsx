@@ -91,7 +91,7 @@ export default function GameRequestModal({
     };
 
     loadModalData();
-  }, [isOpen, user?.email, initialGame]);
+  }, [isOpen, user?.email, initialGame?.title]);
 
   if (!isOpen) return null;
 
