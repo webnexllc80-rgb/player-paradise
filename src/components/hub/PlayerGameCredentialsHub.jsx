@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { diffSet } from '@/lib/fastDiff';
 import {
   Key,
   Copy,
@@ -110,9 +111,9 @@ export default function PlayerGameAccountsHub({
         });
       }
 
-      setActiveAccounts(readyList);
-      setPendingRequests(pendingList);
-      setRejectedRequests(rejectedList);
+      diffSet(setActiveAccounts, readyList);
+      diffSet(setPendingRequests, pendingList);
+      diffSet(setRejectedRequests, rejectedList);
     } catch (err) {
       console.error('Error fetching game accounts:', err);
     } finally {

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { diffSet } from '@/lib/fastDiff';
 import {
   X,
   Bell,
@@ -30,7 +31,7 @@ export default function NotificationsModal({ isOpen, onClose, user, onAllRead })
       const res = await fetch(url, { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.notifications)) {
-        setNotifs(data.notifications);
+        diffSet(setNotifs, data.notifications);
       }
     } catch {
       // silent fail

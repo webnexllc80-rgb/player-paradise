@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { diffSet } from '@/lib/fastDiff';
 import CyberNavbar from '@/components/navigation/CyberNavbar';
 import CyberSidebar from '@/components/navigation/CyberSidebar';
 import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
@@ -46,11 +47,11 @@ export default function ReferralPage() {
       const meRes = await fetch('/api/auth/me', { cache: 'no-store' });
       const meData = await meRes.json();
       if (meData.authenticated && meData.user) {
-        setUser(meData.user);
+        diffSet(setUser, meData.user);
         const affRes = await fetch('/api/affiliates', { cache: 'no-store' });
         const affData = await affRes.json();
         if (affData.success && affData.stats) {
-          setStats(affData.stats);
+          diffSet(setStats, affData.stats);
         }
       }
     } catch {}
