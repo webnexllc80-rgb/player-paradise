@@ -64,6 +64,10 @@ export default function CyberNavbar({
     notificationsOpenRef.current = notificationsOpen;
   }, [notificationsOpen]);
 
+  const handleAllRead = useCallback(() => {
+    setLiveUnreadCount(0);
+  }, []);
+
   // Handle opening notifications modal & immediately clearing badge
   const handleOpenNotifications = () => {
     setNotificationsOpen(true);
@@ -501,7 +505,7 @@ export default function CyberNavbar({
       isOpen={notificationsOpen}
       onClose={() => setNotificationsOpen(false)}
       user={activeUser}
-      onAllRead={() => setLiveUnreadCount(0)}
+      onAllRead={handleAllRead}
     />
   </>
   );

@@ -238,13 +238,18 @@ export default function PushNotificationManager() {
     }
   }, []);
 
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
   // 3. Poll for incoming broadcast notifications in real time
   useEffect(() => {
     let isCancelled = false;
 
     const checkIncomingNotifications = async () => {
       if (document.hidden) return; // Save VPS resources when tab inactive
-      if (pathname && pathname.startsWith('/admin')) return; // Never show on admin operations console
+      if (pathnameRef.current && pathnameRef.current.startsWith('/admin')) return; // Never show on admin operations console
 
       try {
         const activeGuestId = typeof window !== 'undefined' ? (localStorage.getItem('pp_guest_chat_id') || '') : '';
@@ -270,8 +275,8 @@ export default function PushNotificationManager() {
           return;
         }
 
-        // If a new notification arrived with a different ID
-        if (newest.id && newest.id !== lastSeenIdRef.current) {
+        // If a new unread notification arrived with a different ID
+        if (newest.id && newest.id !== lastSeenIdRef.current && !newest.read) {
           lastSeenIdRef.current = newest.id;
           dispatchAlert(newest);
         }
@@ -281,11 +286,11 @@ export default function PushNotificationManager() {
     };
 
     checkIncomingNotifications();
-    const interval = setInterval(checkIncomingNotifications, 4000);
+    const interval = setInterval(checkIncomingNotifications, 6000);
 
     // Event listener for manual test or in-app triggers
     const handleCustomTrigger = (e) => {
-      if (pathname && pathname.startsWith('/admin')) return;
+      if (pathnameRef.current && pathnameRef.current.startsWith('/admin')) return;
       if (e.detail) dispatchAlert(e.detail);
     };
 
@@ -309,7 +314,7 @@ export default function PushNotificationManager() {
       clearInterval(interval);
       window.removeEventListener('paradise-show-notification', handleCustomTrigger);
     };
-  }, [pathname]);
+  }, []);
 
   // 4. Auto-bind FCM push token to user account whenever user logs in or switches
   useEffect(() => {
