@@ -15,7 +15,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
-export default function AccountRequestsView({
+const AccountRequestsView = React.memo(function AccountRequestsView({
   requests = [],
   filter = 'PENDING',
   onFilterChange,
@@ -568,4 +568,6 @@ export default function AccountRequestsView({
       )}
     </div>
   );
-}
+});
+
+export default AccountRequestsView;

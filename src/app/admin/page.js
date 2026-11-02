@@ -559,7 +559,7 @@ export default function AdminPortal({ initialTab }) {
   const [coinLoadRequests, setCoinLoadRequests] = useState([]);
 
   const fetchAccountRequests = () => {
-    fetch(`/api/account-requests?type=ACCOUNT_CREATION&status=${accountReqFilter}`)
+    fetch('/api/account-requests?type=ACCOUNT_CREATION&status=all', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (d.success) diffSet(setAccountRequests, d.accountRequests || []); })
       .catch(() => { });
@@ -868,14 +868,16 @@ export default function AdminPortal({ initialTab }) {
         unreadChatCount;
 
       if (typeof document !== 'undefined') {
-        if (totalPending > 0) {
-          document.title = `(${totalPending}) Players Paradise | Admin Operations`;
+        const nextTitle = totalPending > 0
+          ? `(${totalPending}) Players Paradise | Admin Operations`
+          : 'Players Paradise | Admin Operations';
+        if (document.title !== nextTitle) {
+          document.title = nextTitle;
           updateFaviconBadge(totalPending);
-          if ('setAppBadge' in navigator) navigator.setAppBadge(totalPending).catch(() => {});
-        } else {
-          document.title = 'Players Paradise | Admin Operations';
-          updateFaviconBadge(0);
-          if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
+          if ('setAppBadge' in navigator) {
+            if (totalPending > 0) navigator.setAppBadge(totalPending).catch(() => {});
+            else if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
+          }
         }
       }
 
@@ -1162,7 +1164,7 @@ export default function AdminPortal({ initialTab }) {
     syncRequestsAndAlerts();
     const interval = setInterval(() => {
       syncRequestsAndAlerts();
-    }, 1200);
+    }, 2500);
 
     const handleFocus = () => {
       syncRequestsAndAlerts();

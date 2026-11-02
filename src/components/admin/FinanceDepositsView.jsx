@@ -20,7 +20,7 @@ import {
   Filter,
 } from 'lucide-react';
 
-export default function FinanceDepositsView({
+const FinanceDepositsView = React.memo(function FinanceDepositsView({
   deposits = [],
   onApprove,
   onReject,
@@ -755,4 +755,6 @@ export default function FinanceDepositsView({
       )}
     </div>
   );
-}
+});
+
+export default FinanceDepositsView;

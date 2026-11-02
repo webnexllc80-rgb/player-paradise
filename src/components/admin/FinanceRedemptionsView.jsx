@@ -18,7 +18,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
-export default function FinanceRedemptionsView({
+const FinanceRedemptionsView = React.memo(function FinanceRedemptionsView({
   redemptions = [],
   onApprove,
   onReject,
@@ -672,4 +672,6 @@ export default function FinanceRedemptionsView({
       )}
     </div>
   );
-}
+});
+
+export default FinanceRedemptionsView;
