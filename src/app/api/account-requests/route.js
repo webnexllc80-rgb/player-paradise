@@ -1,9 +1,24 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
-import { getSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
+import { getSessionUser, getAdminSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
+
+const STAFF_ROLES = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.OPERATION_ADMIN,
+  ROLES.FINANCIAL_MANAGER,
+  ROLES.COIN_MANAGER,
+  ROLES.CHAT_SUPPORT,
+  'super_admin',
+  'admin',
+  'operation_admin',
+  'financial_manager',
+  'coin_manager',
+  'chat_support',
+];
 
 // GET Account Requests
 export async function GET(req) {
@@ -330,8 +345,8 @@ export async function POST(req) {
 // PUT - Admin approves or cancels account or load request
 export async function PUT(req) {
   try {
-    const session = await getSessionUser();
-    if (!session || !['super_admin', 'operation_admin', 'financial_manager', 'coin_manager', 'chat_support'].includes(session.role)) {
+    const session = (await getAdminSessionUser()) || (await getSessionUser());
+    if (!session || !STAFF_ROLES.includes(session.role)) {
       return NextResponse.json({ success: false, message: 'Unauthorized staff action.' }, { status: 403 });
     }
 
@@ -570,25 +585,50 @@ export async function PUT(req) {
 // DELETE - Dismiss or remove an account request
 export async function DELETE(req) {
   try {
-    const session = await getSessionUser();
+    const session = (await getAdminSessionUser()) || (await getSessionUser());
+    const isStaff = session && STAFF_ROLES.includes(session.role);
+
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
+    let id = searchParams.get('id');
+
+    let body = {};
+    try {
+      body = await req.json();
+    } catch {}
+
+    if (!id && body.id) id = body.id;
+
+    const db = await getDb();
+    const requestsCol = db.collection('accountRequests');
+
+    // Bulk dismiss historical freeplay requests
+    if (body.clearAllOldFreeplay && isStaff) {
+      const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000);
+      const res = await requestsCol.updateMany(
+        { freeplayPending: true, status: 'PENDING', createdAt: { $lt: cutoff } },
+        { $set: { status: 'DISMISSED', dismissalReason: 'Staff bulk dismissed', dismissedBy: session.username, dismissedAt: new Date() } }
+      );
+      return NextResponse.json({ success: true, count: res.modifiedCount, message: 'Historical freeplay requests dismissed.' });
+    }
+
+    // Bulk delete by ids array
+    if (Array.isArray(body.ids) && body.ids.length > 0 && isStaff) {
+      const filters = body.ids.map(i => safeIdFilter(i));
+      await requestsCol.deleteMany({ $or: filters });
+      return NextResponse.json({ success: true, message: `${body.ids.length} requests dismissed successfully.` });
+    }
 
     if (!id) {
       return NextResponse.json({ success: false, message: 'ID required.' }, { status: 400 });
     }
 
-    const db = await getDb();
-    const requestsCol = db.collection('accountRequests');
     const target = await requestsCol.findOne(safeIdFilter(id));
-
     if (!target) {
       return NextResponse.json({ success: false, message: 'Request not found.' }, { status: 404 });
     }
 
     // Only allow player if it's their own request, or staff
     const isOwner = session && session.email?.toLowerCase().trim() === target.userEmail?.toLowerCase().trim();
-    const isStaff = session && ['super_admin', 'operation_admin', 'financial_manager', 'coin_manager', 'chat_support'].includes(session.role);
 
     if (!isOwner && !isStaff) {
       return NextResponse.json({ success: false, message: 'Unauthorized.' }, { status: 403 });

@@ -13,6 +13,7 @@ import {
   Coins,
   ShieldCheck,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 
 const AccountRequestsView = React.memo(function AccountRequestsView({
@@ -21,6 +22,7 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
   onFilterChange,
   onOpenApproveModal,
   onCancelRequest,
+  onDismissRequest,
   onRefresh,
   isRefreshing = false,
 }) {
@@ -380,18 +382,38 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                             <button
                               onClick={() => onCancelRequest(req.id)}
                               className="p-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold transition active:scale-95"
-                              title="Cancel Request"
+                              title="Reject / Cancel Request"
                             >
                               <X size={14} />
                             </button>
+                            {onDismissRequest && (
+                              <button
+                                onClick={() => onDismissRequest(req.id)}
+                                className="p-2 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-gray-400 hover:text-red-300 font-bold transition active:scale-95"
+                                title="Permanently Delete / Dismiss Request"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         ) : (
-                          <button
-                            onClick={() => onOpenApproveModal(req)}
-                            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
-                          >
-                            Edit Credentials
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => onOpenApproveModal(req)}
+                              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
+                            >
+                              Edit Credentials
+                            </button>
+                            {onDismissRequest && (
+                              <button
+                                onClick={() => onDismissRequest(req.id)}
+                                className="p-2 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-gray-400 hover:text-red-300 font-bold transition active:scale-95"
+                                title="Permanently Delete / Dismiss Request"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -494,29 +516,50 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                   )}
 
                   {isPending ? (
-                    <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="grid grid-cols-3 gap-2 pt-1">
                       <button
                         onClick={() => onOpenApproveModal(req)}
-                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95"
+                        className="py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs flex items-center justify-center gap-1 shadow-lg shadow-amber-500/20 active:scale-95"
                       >
                         <Key size={13} />
-                        <span>Issue Login</span>
+                        <span>Issue</span>
                       </button>
                       <button
                         onClick={() => onCancelRequest(req.id)}
-                        className="w-full py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-black text-xs flex items-center justify-center gap-1 active:scale-95"
+                        className="py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-black text-xs flex items-center justify-center gap-1 active:scale-95"
                       >
                         <X size={13} />
-                        <span>Cancel</span>
+                        <span>Reject</span>
                       </button>
+                      {onDismissRequest && (
+                        <button
+                          onClick={() => onDismissRequest(req.id)}
+                          className="py-2.5 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 text-gray-400 hover:text-red-300 font-black text-xs flex items-center justify-center gap-1 active:scale-95"
+                          title="Delete / Dismiss"
+                        >
+                          <Trash2 size={13} />
+                          <span>Delete</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
-                    <button
-                      onClick={() => onOpenApproveModal(req)}
-                      className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
-                    >
-                      Edit Credentials
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onOpenApproveModal(req)}
+                        className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
+                      >
+                        Edit Credentials
+                      </button>
+                      {onDismissRequest && (
+                        <button
+                          onClick={() => onDismissRequest(req.id)}
+                          className="p-2 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 text-gray-400 hover:text-red-300 font-bold transition"
+                          title="Delete / Dismiss"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               );

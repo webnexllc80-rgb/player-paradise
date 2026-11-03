@@ -643,20 +643,47 @@ export default function AdminPortal({ initialTab }) {
 
   const handleCancelRequest = async (id) => {
     const reason = prompt('Enter rejection reason for player:', 'Temporary platform maintenance. Please contact 24/7 Concierge.');
-    if (!reason) return;
+    if (reason === null) return;
+
+    const resolvedReason = reason.trim() || 'Temporary platform maintenance. Please contact 24/7 Concierge.';
 
     // Optimistically mark as rejected (0ms)
     setAccountRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: 'REJECTED', rejectionReason: reason } : r))
+      prev.map((r) => (r.id === id || r._id === id ? { ...r, status: 'REJECTED', rejectionReason: resolvedReason } : r))
     );
     setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
 
     try {
-      await fetch('/api/account-requests', {
+      const res = await fetch('/api/account-requests', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action: 'cancel', reason }),
+        body: JSON.stringify({ id, action: 'cancel', reason: resolvedReason }),
       });
+      const data = await res.json();
+      if (!data.success) {
+        console.error('Failed to cancel request:', data.message);
+      }
+      syncRequestsAndAlerts();
+    } catch (e) {
+      console.error(e);
+      fetchAccountRequests();
+    }
+  };
+
+  const handleDismissRequest = async (id) => {
+    if (!confirm('Are you sure you want to permanently dismiss/delete this request?')) return;
+
+    setAccountRequests((prev) => prev.filter((r) => r.id !== id && r._id !== id));
+    setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
+
+    try {
+      const res = await fetch(`/api/account-requests?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!data.success) {
+        console.error('Failed to dismiss request:', data.message);
+      }
       syncRequestsAndAlerts();
     } catch (e) {
       console.error(e);
@@ -2447,6 +2474,7 @@ export default function AdminPortal({ initialTab }) {
                 }}
                 onOpenApproveModal={handleOpenApproveModal}
                 onCancelRequest={handleCancelRequest}
+                onDismissRequest={handleDismissRequest}
                 onRefresh={() => {
                   fetchAccountRequests();
                   syncRequestsAndAlerts();
