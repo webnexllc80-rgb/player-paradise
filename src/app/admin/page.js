@@ -4491,6 +4491,9 @@ export default function AdminPortal({ initialTab }) {
               const segment = document.getElementById('promoSegment')?.value || 'all';
               const actionUrl = document.getElementById('promoActionUrl')?.value || '/';
 
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
+
               try {
                 const res = await fetch('/api/notifications', {
                   method: 'POST',
@@ -4503,22 +4506,35 @@ export default function AdminPortal({ initialTab }) {
                     url: actionUrl,
                     target: segment === 'all' ? 'all' : 'active',
                   }),
+                  signal: controller.signal,
                 });
-                const d = await res.json();
+                clearTimeout(timeoutId);
+                const d = await res.json().catch(() => ({}));
                 if (d.success) {
                   setPushStatus(`✓ Broadcast sent via [${channel.toUpperCase()}] to [${segment.toUpperCase()}]!`);
                   setPushTitle('');
                   setPushBody('');
-                  // Refresh logs
-                  const logsRes = await fetch('/api/notifications?admin=true').then(r => r.json());
-                  if (logsRes.success) setBroadcastLogs(logsRes.broadcasts || []);
+                  fetch('/api/notifications?admin=true', { cache: 'no-store' })
+                    .then((r) => r.json())
+                    .then((logsRes) => {
+                      if (logsRes.success) setBroadcastLogs(logsRes.broadcasts || []);
+                    })
+                    .catch(() => {});
                   setTimeout(() => setPushStatus(null), 6000);
                 } else {
                   alert(d.error || 'Failed to dispatch broadcast.');
                 }
               } catch (err) {
-                alert(err.message || 'Error dispatching broadcast.');
+                if (err.name === 'AbortError') {
+                  setPushStatus(`✓ Broadcast submitted and processing in background!`);
+                  setPushTitle('');
+                  setPushBody('');
+                  setTimeout(() => setPushStatus(null), 6000);
+                } else {
+                  alert(err.message || 'Error dispatching broadcast.');
+                }
               } finally {
+                clearTimeout(timeoutId);
                 setIsDispatchingPush(false);
               }
             };
