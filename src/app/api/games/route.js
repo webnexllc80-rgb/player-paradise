@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { ensureDbInitialized } from '@/lib/initDb';
+import { getGameThumbnail } from '@/lib/gameAssets';
 
 export async function GET(req) {
   try {
@@ -28,7 +29,10 @@ export async function GET(req) {
         success: true,
         games: games.map(g => {
           const sid = g._id ? g._id.toString() : (g.id || g.gameId);
-          const resolvedImage = g.thumbnail || g.image || g.imageUrl || '/images/vegas-777.svg';
+          const rawThumb = g.thumbnail || g.image || g.imageUrl;
+          const resolvedImage = (rawThumb && !rawThumb.startsWith('data:image'))
+            ? rawThumb
+            : getGameThumbnail(g.title, '/images/vegas-777.webp');
           return {
             id: sid,
             _id: sid,

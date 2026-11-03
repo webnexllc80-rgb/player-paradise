@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import LoadCoinsModal from '@/components/modals/LoadCoinsModal';
+import { getGameThumbnail } from '@/lib/gameAssets';
 
 export default function PlayerGameAccountsHub({
   user,
@@ -420,7 +421,7 @@ export default function PlayerGameAccountsHub({
               const matchedGame = games.find(
                 (g) => (g.title || g.name || '').toLowerCase().trim() === (acc.gameTitle || '').toLowerCase().trim()
               );
-              const thumb = matchedGame?.thumbnail || '/images/vegas-777.webp';
+              const thumb = getGameThumbnail(acc.gameTitle, matchedGame?.thumbnail);
               const isPasswordVisible = showPasswordMap[`acc_${index}`];
 
               return (
@@ -454,8 +455,10 @@ export default function PlayerGameAccountsHub({
                       >
                         <Image
                           src={thumb}
-                          alt={acc.gameTitle}
+                          alt={acc.gameTitle || 'Game'}
                           fill
+                          sizes="48px"
+                          priority={index < 4}
                           style={{ objectFit: 'cover' }}
                         />
                       </div>

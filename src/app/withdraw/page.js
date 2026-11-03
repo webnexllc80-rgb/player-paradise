@@ -27,6 +27,7 @@ import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
 import CyberFooter from '@/components/common/CyberFooter';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
 import { diffSet } from '@/lib/fastDiff';
+import { getAvailableGamePlatforms, ALL_PLATFORM_GAMES } from '@/lib/gameAssets';
 
 export default function WithdrawPage() {
   const router = useRouter();
@@ -49,7 +50,18 @@ export default function WithdrawPage() {
   const [gameScreenshotName, setGameScreenshotName] = useState('');
   const [qrCodeImage, setQrCodeImage] = useState('');
   const [qrCodeImageName, setQrCodeImageName] = useState('');
-  const [adminGames, setAdminGames] = useState([]);
+  const [adminGames, setAdminGames] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('cached_games_list');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return ALL_PLATFORM_GAMES.map((title) => ({ title }));
+  });
 
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -114,12 +126,10 @@ export default function WithdrawPage() {
       const res = await fetch('/api/games', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.games) && data.games.length > 0) {
-        diffSet(setAdminGames, data.games);
-        setSelectedGame((prev) => {
-          const cleanPrev = (prev || '').trim().toLowerCase();
-          const exists = data.games.some((g) => (g.title || '').trim().toLowerCase() === cleanPrev);
-          return exists ? prev : (data.games[0].title || '').trim();
-        });
+        setAdminGames(data.games);
+        try {
+          sessionStorage.setItem('cached_games_list', JSON.stringify(data.games));
+        } catch {}
       }
     } catch (err) {
       console.error(err);
@@ -382,13 +392,7 @@ export default function WithdrawPage() {
     { id: 'zelle', name: 'Zelle Pay', placeholder: 'e.g. phone number or email' },
   ];
 
-  const popularGames = (() => {
-    const list = adminGames.map((g) => (g.title || '').trim()).filter(Boolean);
-    if (list.length > 0) return list;
-    return userGameAccounts.length > 0
-      ? userGameAccounts.map((a) => (a.gameTitle || '').trim()).filter(Boolean)
-      : (selectedGame ? [selectedGame] : []);
-  })();
+  const popularGames = getAvailableGamePlatforms(adminGames, userGameAccounts);
 
   const presetAmounts = [20, 50, 100, 250, 500];
 

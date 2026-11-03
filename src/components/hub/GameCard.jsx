@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock,
 } from 'lucide-react';
+import { getGameThumbnail } from '@/lib/gameAssets';
 
 export default function GameCard({
   game,
@@ -22,13 +23,10 @@ export default function GameCard({
   isPending = false,
   onViewCredentials = null,
 }) {
-  const imgSrc =
-    game.thumbnail ||
-    game.image ||
-    game.imageUrl ||
-    game.cover ||
-    game.fallbackImage ||
-    '/images/vegas-777.svg';
+  const imgSrc = getGameThumbnail(
+    game.title,
+    game.thumbnail || game.image || game.imageUrl || '/images/vegas-777.webp'
+  );
 
   return (
     <div className="group relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-900/80 hover:border-[var(--neon-cyan)]/70 hover:shadow-[0_10px_30px_rgba(0,240,255,0.2)] transition-all duration-300 flex flex-col">

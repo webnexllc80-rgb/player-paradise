@@ -71,6 +71,7 @@ import SoundSettingsModal from '@/components/admin/SoundSettingsModal';
 import IncomingRequestToast from '@/components/admin/IncomingRequestToast';
 import Player360ProfileModal from '@/components/admin/Player360ProfileModal';
 import AffiliateManagementHub from '@/components/admin/AffiliateManagementHub';
+import { getGameThumbnail } from '@/lib/gameAssets';
 import {
   playTune,
   unlockAudioContext,
@@ -3006,7 +3007,7 @@ export default function AdminPortal({ initialTab }) {
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={g.thumbnail || '/images/vegas-777.webp'}
+                                  src={getGameThumbnail(g.title, g.thumbnail)}
                                   alt={g.title}
                                   className="w-full h-full object-cover"
                                 />
@@ -3210,7 +3211,7 @@ export default function AdminPortal({ initialTab }) {
                                   >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
-                                      src={g.thumbnail || '/images/vegas-777.webp'}
+                                      src={getGameThumbnail(g.title, g.thumbnail)}
                                       alt={g.title}
                                       className="w-full h-full object-cover"
                                     />

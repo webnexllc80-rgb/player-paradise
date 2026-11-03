@@ -29,6 +29,7 @@ import CyberNavbar from '@/components/navigation/CyberNavbar';
 import CyberSidebar from '@/components/navigation/CyberSidebar';
 import CyberMobileBottomNav from '@/components/navigation/CyberMobileBottomNav';
 import { diffSet } from '@/lib/fastDiff';
+import { getAvailableGamePlatforms, ALL_PLATFORM_GAMES } from '@/lib/gameAssets';
 import CyberFooter from '@/components/common/CyberFooter';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
 
@@ -56,8 +57,19 @@ export default function DepositPage() {
   const [transactionId, setTransactionId] = useState('');
   const [proofImage, setProofImage] = useState('');
   const [proofFileName, setProofFileName] = useState('');
-  const [selectedGame, setSelectedGame] = useState('Ultra Panda');
-  const [adminGames, setAdminGames] = useState([]);
+  const [selectedGame, setSelectedGame] = useState('Panda Master');
+  const [adminGames, setAdminGames] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('cached_games_list');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return ALL_PLATFORM_GAMES.map((title) => ({ title }));
+  });
   const [userGameAccounts, setUserGameAccounts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -166,6 +178,14 @@ export default function DepositPage() {
       const data = await res.json();
       if (data.success && Array.isArray(data.gameAccounts)) {
         diffSet(setUserGameAccounts, data.gameAccounts);
+        if (data.gameAccounts.length > 0) {
+          setSelectedGame((prev) => {
+            const hasPrev = data.gameAccounts.some(
+              (a) => (a.gameTitle || '').toLowerCase().trim() === (prev || '').toLowerCase().trim()
+            );
+            return hasPrev ? prev : (data.gameAccounts[0].gameTitle || prev);
+          });
+        }
       }
     } catch (err) {
       console.error(err);
@@ -178,11 +198,13 @@ export default function DepositPage() {
       const res = await fetch('/api/games', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && Array.isArray(data.games) && data.games.length > 0) {
-        diffSet(setAdminGames, data.games);
+        setAdminGames(data.games);
+        try {
+          sessionStorage.setItem('cached_games_list', JSON.stringify(data.games));
+        } catch {}
         setSelectedGame((prev) => {
-          const cleanPrev = (prev || '').trim().toLowerCase();
-          const exists = data.games.some((g) => (g.title || '').trim().toLowerCase() === cleanPrev);
-          return exists ? prev : (data.games[0].title || '').trim();
+          if (!prev) return data.games[0].title || 'Panda Master';
+          return prev;
         });
       }
     } catch (err) {
@@ -646,13 +668,11 @@ export default function DepositPage() {
                   {/* Field: Target Game Platform */}
                   <div>
                     {(() => {
+                      const displayGames = getAvailableGamePlatforms(adminGames, userGameAccounts);
+                      const currentSelected = selectedGame || (displayGames[0] || 'Panda Master');
                       const linkedAcc = userGameAccounts.find(
-                        (a) => (a.gameTitle || '').toLowerCase().trim() === selectedGame.toLowerCase().trim()
+                        (a) => (a.gameTitle || '').toLowerCase().trim() === currentSelected.toLowerCase().trim()
                       );
-                      const gamesList = adminGames
-                        .map((g) => (g.title || '').trim())
-                        .filter(Boolean);
-                      const displayGames = gamesList.length > 0 ? gamesList : (selectedGame ? [selectedGame] : []);
 
                       return (
                         <>

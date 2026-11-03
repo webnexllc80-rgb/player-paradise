@@ -25,8 +25,23 @@ import {
 export default function MyGameIdsPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [games, setGames] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [games, setGames] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('cached_games_list');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        if (sessionStorage.getItem('cached_games_list')) return false;
+      } catch {}
+    }
+    return true;
+  });
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -54,13 +69,18 @@ export default function MyGameIdsPage() {
   };
 
   const loadGames = async () => {
-    setLoading(true);
     try {
       const res = await fetch('/api/games');
       const data = await res.json();
-      if (data.success && data.games) setGames(data.games);
-    } catch {}
-    setLoading(false);
+      if (data.success && data.games) {
+        setGames(data.games);
+        try {
+          sessionStorage.setItem('cached_games_list', JSON.stringify(data.games));
+        } catch {}
+      }
+    } catch {} finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
