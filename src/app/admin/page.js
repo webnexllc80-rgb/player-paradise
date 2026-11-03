@@ -921,18 +921,25 @@ export default function AdminPortal({ initialTab }) {
         const newest = newPendingReqs[0] || pendingReqs[0];
         unlockAudioContext();
         playAdminChime();
-        const alertTitle = '🎯 New Game ID Request!';
-        const alertBody = `${newest?.gameTitle || 'Game'} ID requested by ${newest?.userName || 'Player'}`;
+        const isFreeplay = Boolean(newest?.freeplayPending);
+        const alertTitle = isFreeplay
+          ? '🎁 New Freeplay Task Proof!'
+          : '🎯 New Game ID Request!';
+        const alertBody = isFreeplay
+          ? `${newest?.userName || 'Player'} submitted Freeplay proof for $${Number(newest?.freeplayAmount || 3).toFixed(0)} SC on ${newest?.gameTitle || 'Game'}`
+          : `${newest?.gameTitle || 'Game'} ID requested by ${newest?.userName || 'Player'}`;
         sendDesktopNotification(alertTitle, alertBody, '/admin/account_requests');
         setActiveAlertToast({
-          type: 'account',
+          type: isFreeplay ? 'freeplay' : 'account',
           title: alertTitle,
-          message: `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
-          subtext: 'Tap to review & issue credentials',
+          message: isFreeplay
+            ? `Freeplay Task ($${Number(newest?.freeplayAmount || 3).toFixed(0)} SC) from ${newest?.userName || 'Player'}`
+            : `${newest?.gameTitle || 'Game'} request from ${newest?.userName || 'Player'}`,
+          subtext: isFreeplay ? 'Tap to view screenshot & issue credits' : 'Tap to review & issue credentials',
           targetTab: 'account_requests',
         });
       } else if (pendingReqs.length === 0) {
-        setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
+        setActiveAlertToast((curr) => (curr?.type === 'account' || curr?.type === 'freeplay' ? null : curr));
       }
 
       // 2. Incoming new deposits

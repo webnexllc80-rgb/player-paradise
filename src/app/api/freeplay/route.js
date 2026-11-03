@@ -34,7 +34,16 @@ export async function GET(req) {
       user = await db.collection('users').findOne({ email: session.email.toLowerCase().trim() });
     }
 
-    const claimed = Boolean(user?.freeplayClaimed);
+    // Check if user has already claimed or had an approved task in lifetime
+    const approvedTask = await db.collection('freeplay_tasks').findOne({
+      $or: [
+        { userId: user?._id ? user._id.toString() : '' },
+        { email: user?.email ? user.email.toLowerCase().trim() : '' },
+      ],
+      status: { $in: ['approved', 'completed', 'claimed'] },
+    });
+
+    const claimed = Boolean(user?.freeplayClaimed || approvedTask);
 
     // Check if there is an active pending freeplay task
     const pendingTask = await db.collection('freeplay_tasks').findOne({
@@ -106,11 +115,32 @@ export async function POST(req) {
       );
     }
 
+    // 1-Time Freeplay Check: Block if already claimed
     if (user.freeplayClaimed) {
       return NextResponse.json({
         success: false,
         alreadyClaimed: true,
-        message: 'You have already claimed your Freeplay bonus! Make a deposit to receive extra reload bonuses.',
+        message: 'You have already claimed your 1-time Freeplay bonus! Make a deposit to receive extra reload bonuses.',
+      });
+    }
+
+    const existingApproved = await db.collection('freeplay_tasks').findOne({
+      $or: [
+        { userId: user._id.toString() },
+        { email: user.email.toLowerCase().trim() },
+      ],
+      status: { $in: ['approved', 'completed', 'claimed'] },
+    });
+
+    if (existingApproved) {
+      await usersCol.updateOne(
+        { _id: user._id },
+        { $set: { freeplayClaimed: true, freeplayClaimedAt: existingApproved.approvedAt || new Date() } }
+      );
+      return NextResponse.json({
+        success: false,
+        alreadyClaimed: true,
+        message: 'You have already claimed your 1-time Freeplay bonus! Make a deposit to receive extra reload bonuses.',
       });
     }
 
@@ -152,7 +182,7 @@ export async function POST(req) {
       taskId: resolvedTaskId,
       userId: user._id.toString(),
       username: user.username,
-      email: user.email,
+      email: user.email.toLowerCase().trim(),
       gameTitle: String(gameTitle).trim(),
       screenshot,
       amount: configuredAmount,
@@ -160,11 +190,17 @@ export async function POST(req) {
       createdAt: new Date(),
     });
 
-    // Create an account request with freeplay attached so Coin Desk / Staff can approve
-    await db.collection('account_requests').insertOne({
+    // Mark freeplay requested on user profile
+    await usersCol.updateOne(
+      { _id: user._id },
+      { $set: { freeplayRequested: true, freeplayRequestedAt: new Date() } }
+    );
+
+    // Create an account request in accountRequests (camelCase) so Coin Desk / Staff can approve
+    await db.collection('accountRequests').insertOne({
       userId: user._id.toString(),
       userName: user.username,
-      userEmail: user.email,
+      userEmail: user.email.toLowerCase().trim(),
       gameTitle: String(gameTitle).trim(),
       requestType: 'ACCOUNT_CREATION',
       status: 'PENDING',
@@ -172,6 +208,7 @@ export async function POST(req) {
       freeplayAmount: configuredAmount,
       freeplayScreenshot: screenshot,
       freeplayTaskId: resolvedTaskId,
+      notes: `🎁 Freeplay Welcome Bonus ($${configuredAmount.toFixed(2)} SC) • Task #${resolvedTaskId}`,
       createdAt: new Date(),
     });
 
@@ -186,6 +223,7 @@ export async function POST(req) {
         gameTitle,
         amount: String(configuredAmount),
         taskId: resolvedTaskId,
+        url: '/admin?tab=account_requests',
       },
     });
 

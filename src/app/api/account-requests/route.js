@@ -91,6 +91,11 @@ export async function GET(req) {
         gameAccountPassword: r.gameAccountPassword || '',
         transferAmount: Number(r.transferAmount || 0),
         rejectionReason: r.rejectionReason || r.rejectReason || '',
+        freeplayPending: Boolean(r.freeplayPending),
+        freeplayAmount: Number(r.freeplayAmount || 0),
+        freeplayScreenshot: r.freeplayScreenshot || r.screenshot || '',
+        freeplayTaskId: r.freeplayTaskId || '',
+        notes: r.notes || '',
         createdAt: r.createdAt || new Date(),
       })),
     });
@@ -426,6 +431,30 @@ export async function PUT(req) {
         { upsert: true }
       );
 
+      // 4. If this is a Freeplay Task request, mark 1-time Freeplay as claimed for user
+      if (targetRequest.freeplayPending) {
+        await usersCol.updateOne(
+          { email: cleanEmail },
+          {
+            $set: {
+              freeplayClaimed: true,
+              freeplayClaimedAt: new Date(),
+              freeplayGameTitle: cleanTitle,
+            },
+          }
+        );
+        await db.collection('freeplay_tasks').updateMany(
+          { email: cleanEmail, status: 'pending' },
+          {
+            $set: {
+              status: 'approved',
+              approvedAt: new Date(),
+              approvedBy: session.username,
+            },
+          }
+        );
+      }
+
       // Clean up any older REJECTED or CANCELLED requests for this user and game
       try {
         await requestsCol.deleteMany({
@@ -502,6 +531,21 @@ export async function PUT(req) {
           },
         }
       );
+
+      // If this was a Freeplay request, update freeplay_tasks status
+      if (targetRequest.freeplayPending) {
+        await db.collection('freeplay_tasks').updateMany(
+          { email: cleanEmail, status: 'pending' },
+          {
+            $set: {
+              status: 'rejected',
+              rejectedAt: new Date(),
+              rejectedBy: session.username,
+              rejectionReason: reason,
+            },
+          }
+        );
+      }
 
       notifyPlayer({
         userEmail: cleanEmail,

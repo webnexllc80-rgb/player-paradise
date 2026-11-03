@@ -18,6 +18,41 @@ export async function POST(req) {
     }
 
     const db = await getDb();
+
+    // Enforce 1-Time Freeplay per user
+    const existingUser = await db.collection('users').findOne({ email: targetEmail });
+    if (existingUser?.freeplayClaimed) {
+      return NextResponse.json(
+        {
+          success: false,
+          alreadyClaimed: true,
+          message: 'You have already claimed your 1-time Freeplay welcome bonus! Make a deposit to receive extra reload bonuses.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const existingApproved = await db.collection('freeplay_tasks').findOne({
+      email: targetEmail,
+      status: { $in: ['approved', 'completed', 'claimed'] },
+    });
+    if (existingApproved) {
+      if (existingUser) {
+        await db.collection('users').updateOne(
+          { _id: existingUser._id },
+          { $set: { freeplayClaimed: true, freeplayClaimedAt: existingApproved.approvedAt || new Date() } }
+        );
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          alreadyClaimed: true,
+          message: 'You have already claimed your 1-time Freeplay welcome bonus! Make a deposit to receive extra reload bonuses.',
+        },
+        { status: 400 }
+      );
+    }
+
     const settingsDoc = await db.collection('system_settings').findOne({ key: 'general' });
     const configuredAmount = settingsDoc?.freeplayAmountSC !== undefined 
       ? Number(settingsDoc.freeplayAmountSC) 

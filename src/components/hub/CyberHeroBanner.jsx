@@ -29,6 +29,7 @@ export default function CyberHeroBanner({
   const [freeplayFeedback, setFreeplayFeedback] = useState(null);
   const [bonusSettings, setBonusSettings] = useState(null);
   const [freeplayModalOpen, setFreeplayModalOpen] = useState(false);
+  const [freeplayStatus, setFreeplayStatus] = useState({ claimed: false, pending: false });
 
   React.useEffect(() => {
     fetch('/api/admin/settings', { cache: 'no-store' })
@@ -39,12 +40,37 @@ export default function CyberHeroBanner({
         }
       })
       .catch(() => {});
-  }, []);
+
+    if (user?.email) {
+      fetch('/api/freeplay', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.success) {
+            setFreeplayStatus({ claimed: Boolean(d.claimed), pending: Boolean(d.pending) });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user]);
 
   const handleGetFreeplay = () => {
     if (!user) {
       if (onOpenAuth) onOpenAuth('register');
       else router.push('/register');
+      return;
+    }
+    if (freeplayStatus.claimed) {
+      setFreeplayFeedback({
+        type: 'info',
+        message: 'You have already claimed your 1-time Freeplay bonus! Make a deposit to enjoy up to 300% match bonuses.',
+      });
+      return;
+    }
+    if (freeplayStatus.pending) {
+      setFreeplayFeedback({
+        type: 'info',
+        message: 'Your Freeplay task proof is currently under review. Your credentials will be issued shortly!',
+      });
       return;
     }
     setFreeplayFeedback(null);
@@ -141,10 +167,17 @@ export default function CyberHeroBanner({
             {bonusSettings?.freeplayActive !== false && (
               <button
                 onClick={handleGetFreeplay}
-                className="cyber-btn-cyan py-3 px-6 text-sm font-black flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.3)]"
+                disabled={freeplayStatus.claimed}
+                className={`${freeplayStatus.claimed ? 'opacity-60 cursor-not-allowed bg-slate-800 text-slate-400 border border-slate-700' : 'cyber-btn-cyan cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.3)]'} py-3 px-6 text-sm font-black flex items-center gap-2`}
               >
-                <Gift size={17} className="text-black" />
-                <span>GET ${Number(bonusSettings?.freeplayAmountSC ?? 3).toFixed(0)} FREEPLAY</span>
+                <Gift size={17} className={freeplayStatus.claimed ? 'text-slate-400' : 'text-black'} />
+                <span>
+                  {freeplayStatus.claimed
+                    ? 'FREEPLAY CLAIMED ✓'
+                    : freeplayStatus.pending
+                    ? 'FREEPLAY PENDING ⏳'
+                    : `GET $${Number(bonusSettings?.freeplayAmountSC ?? 3).toFixed(0)} FREEPLAY`}
+                </span>
               </button>
             )}
 
@@ -256,6 +289,7 @@ export default function CyberHeroBanner({
         user={user}
         freeplayAmount={bonusSettings?.freeplayAmountSC ?? 3}
         onSuccess={(data) => {
+          setFreeplayStatus((prev) => ({ ...prev, pending: true }));
           setFreeplayFeedback({
             type: 'success',
             message: data.message || 'Freeplay task submitted successfully! Staff is reviewing your proof.',

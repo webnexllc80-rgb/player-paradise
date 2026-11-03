@@ -36,6 +36,7 @@ export default function FreeplayTaskModal({
   const [taskId, setTaskId] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [isClaimed, setIsClaimed] = useState(false);
   const fileInputRef = useRef(null);
   const initialEmailSentRef = useRef(false);
 
@@ -69,13 +70,28 @@ export default function FreeplayTaskModal({
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  // Auto-send verification email on first open
+  // Check freeplay claim status on open
   useEffect(() => {
-    if (isOpen && targetEmail && !initialEmailSentRef.current) {
+    if (!isOpen) return;
+    if (user?.email) {
+      fetch('/api/freeplay', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.success && d.claimed) {
+            setIsClaimed(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen, user]);
+
+  // Auto-send verification email on first open (only if not already claimed)
+  useEffect(() => {
+    if (isOpen && targetEmail && !initialEmailSentRef.current && !isClaimed) {
       initialEmailSentRef.current = true;
       handleSendEmail();
     }
-  }, [isOpen, targetEmail]);
+  }, [isOpen, targetEmail, isClaimed]);
 
   if (!isOpen) return null;
 
@@ -284,7 +300,32 @@ export default function FreeplayTaskModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Already Claimed 1-Time Freeplay Card */}
+        {isClaimed ? (
+          <div className="p-6 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-center space-y-4">
+            <div className="w-14 h-14 mx-auto rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+              <Sparkles size={28} />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-amber-200 uppercase tracking-wide">
+                Freeplay Welcome Bonus Already Claimed!
+              </h3>
+              <p className="text-xs text-slate-300 mt-1.5 leading-relaxed max-w-md mx-auto">
+                Each player is eligible for exactly <strong>one</strong> Freeplay welcome bonus after signup. You have already claimed yours! Make a deposit now to receive up to <strong>+300% match bonus</strong> on your funds.
+              </p>
+            </div>
+            <div className="pt-2">
+              <a
+                href="/deposit"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-black font-black text-sm hover:opacity-90 transition shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+              >
+                <span>Make a Deposit (Get Bonus)</span>
+                <ArrowRight size={16} />
+              </a>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
           {/* Step 1: Select Game Platform */}
           <div className="space-y-2">
             <label className="text-xs font-black text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -488,6 +529,7 @@ export default function FreeplayTaskModal({
             )}
           </button>
         </form>
+        )}
       </div>
     </div>
   );
