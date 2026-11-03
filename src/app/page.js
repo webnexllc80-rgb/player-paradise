@@ -74,11 +74,33 @@ export default function HomePage() {
   const [slotsOpen, setSlotsOpen] = useState(false);
   const [crashOpen, setCrashOpen] = useState(false);
 
-  // Games & Filter state
-  const [games, setGames] = useState([]);
+  // Games & Filter state with instant 0ms cached initialization
+  const [games, setGames] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('pp_games_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [category, setCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [loadingGames, setLoadingGames] = useState(true);
+  const [loadingGames, setLoadingGames] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('pp_games_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return false;
+        }
+      } catch {}
+    }
+    return true;
+  });
   const [userGameAccounts, setUserGameAccounts] = useState([]);
   const [pendingAccountRequests, setPendingAccountRequests] = useState([]);
 
@@ -131,6 +153,11 @@ export default function HomePage() {
       const data = await res.json();
       if (data.success && data.games) {
         diffSet(setGames, data.games);
+        try {
+          if (category === 'all' && !searchTerm) {
+            sessionStorage.setItem('pp_games_cache', JSON.stringify(data.games));
+          }
+        } catch {}
       }
     } catch (err) {
       console.error(err);
@@ -477,9 +504,19 @@ export default function HomePage() {
             </div>
 
             {/* Games Grid */}
-            {loadingGames ? (
-              <div className="py-20 text-center text-slate-500 font-mono text-sm">
-                SYNCHRONIZING VERIFIED PLATFORMS...
+            {loadingGames && games.length === 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-[var(--neon-cyan)]/20 bg-[#0B0F22]/80 p-4 space-y-3 animate-pulse shadow-lg"
+                  >
+                    <div className="h-44 bg-slate-800/60 rounded-xl" />
+                    <div className="h-4 bg-slate-700/60 rounded w-3/4" />
+                    <div className="h-3 bg-slate-800/60 rounded w-1/2" />
+                    <div className="h-9 bg-cyan-950/40 border border-cyan-500/20 rounded-xl" />
+                  </div>
+                ))}
               </div>
             ) : games.length === 0 ? (
               <div className="py-16 text-center space-y-2 text-slate-400">

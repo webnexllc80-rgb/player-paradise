@@ -202,11 +202,27 @@ export default function AdminPortal({ initialTab }) {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Overview Stats
-  const [stats, setStats] = useState(null);
+  // Overview Stats (0ms Instant Load via Stale-While-Revalidate Cache)
+  const [stats, setStats] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const c = sessionStorage.getItem('pp_admin_stats');
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return null;
+  });
 
-  // Games Tab state
-  const [games, setGames] = useState([]);
+  // Games Tab state (0ms Instant Load via Stale-While-Revalidate Cache)
+  const [games, setGames] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const c = sessionStorage.getItem('pp_admin_games');
+        if (c) return JSON.parse(c);
+      } catch {}
+    }
+    return [];
+  });
   const [newGame, setNewGame] = useState({
     title: '',
     provider: 'Players Paradise Studio',
@@ -1186,9 +1202,19 @@ export default function AdminPortal({ initialTab }) {
     const loadData = () => {
       if (document.hidden) return;
       if (activeTab === 'overview') {
-        fetch('/api/admin/stats', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) diffSet(setStats, d.stats); });
+        fetch('/api/admin/stats', { cache: 'no-store' }).then(r => r.json()).then(d => {
+          if (d.success && d.stats) {
+            diffSet(setStats, d.stats);
+            try { sessionStorage.setItem('pp_admin_stats', JSON.stringify(d.stats)); } catch {}
+          }
+        });
       } else if (activeTab === 'games') {
-        fetch('/api/games?all=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) diffSet(setGames, d.games); });
+        fetch('/api/games?all=true', { cache: 'no-store' }).then(r => r.json()).then(d => {
+          if (d.success && d.games) {
+            diffSet(setGames, d.games);
+            try { sessionStorage.setItem('pp_admin_games', JSON.stringify(d.games)); } catch {}
+          }
+        });
       } else if (activeTab === 'finance') {
         fetch('/api/payments/methods?all=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) diffSet(setPaymentMethods, d.methods || []); });
         fetch('/api/payments/deposit?status=all&lightweight=true', { cache: 'no-store' }).then(r => r.json()).then(d => { if (d.success) diffSet(setDeposits, d.deposits || []); });
@@ -1264,6 +1290,26 @@ export default function AdminPortal({ initialTab }) {
       document.removeEventListener('visibilitychange', handleFocus);
     };
   }, [user, activeTab, ledgerFilterUser, ledgerFilterType, accountReqFilter, userSearchQuery, allotmentSearch]);
+
+  // Idle pre-fetch: pre-warm games and stats into memory in background for instant 0ms tab display
+  useEffect(() => {
+    if (!user) return;
+    const idleTimer = setTimeout(() => {
+      fetch('/api/admin/stats').then(r => r.json()).then(d => {
+        if (d.success && d.stats) {
+          diffSet(setStats, d.stats);
+          try { sessionStorage.setItem('pp_admin_stats', JSON.stringify(d.stats)); } catch {}
+        }
+      }).catch(() => {});
+      fetch('/api/games?all=true').then(r => r.json()).then(d => {
+        if (d.success && d.games) {
+          diffSet(setGames, d.games);
+          try { sessionStorage.setItem('pp_admin_games', JSON.stringify(d.games)); } catch {}
+        }
+      }).catch(() => {});
+    }, 400);
+    return () => clearTimeout(idleTimer);
+  }, [user]);
 
   // Load chat messages when active conversation selected
   useEffect(() => {

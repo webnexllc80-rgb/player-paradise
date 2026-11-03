@@ -31,10 +31,32 @@ import { playTune } from '@/lib/soundAlerts';
 export default function GamesPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [games, setGames] = useState([]);
+  const [games, setGames] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('pp_games_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('pp_games_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return false;
+        }
+      } catch {}
+    }
+    return true;
+  });
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -95,7 +117,14 @@ export default function GamesPage() {
 
       const res = await fetch(url);
       const data = await res.json();
-      if (data.success && data.games) diffSet(setGames, data.games);
+      if (data.success && data.games) {
+        diffSet(setGames, data.games);
+        try {
+          if (category === 'all' && !search) {
+            sessionStorage.setItem('pp_games_cache', JSON.stringify(data.games));
+          }
+        } catch {}
+      }
     } catch {}
     setLoading(false);
   };
@@ -369,8 +398,20 @@ export default function GamesPage() {
           </div>
 
           {/* Grid */}
-          {loading ? (
-            <p className="text-xs text-center text-slate-500 py-16">LOADING GAMES CATALOG...</p>
+          {loading && games.length === 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border border-[var(--neon-cyan)]/20 bg-[#0B0F22]/80 p-4 space-y-3 animate-pulse shadow-lg"
+                >
+                  <div className="h-44 bg-slate-800/60 rounded-xl" />
+                  <div className="h-4 bg-slate-700/60 rounded w-3/4" />
+                  <div className="h-3 bg-slate-800/60 rounded w-1/2" />
+                  <div className="h-9 bg-cyan-950/40 border border-cyan-500/20 rounded-xl" />
+                </div>
+              ))}
+            </div>
           ) : games.length === 0 ? (
             <p className="text-xs text-center text-slate-400 py-16">No games found in this category.</p>
           ) : (

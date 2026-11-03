@@ -6,8 +6,6 @@ import { ensureDbInitialized } from '@/lib/initDb';
 
 export async function GET(req) {
   try {
-    await ensureDbInitialized();
-
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category');
     const all = searchParams.get('all') === 'true';
@@ -25,38 +23,45 @@ export async function GET(req) {
 
     const games = await gamesCol.find(query).sort({ isFeatured: -1, playsCount: -1 }).toArray();
 
-    return NextResponse.json({
-      success: true,
-      games: games.map(g => {
-        const sid = g._id ? g._id.toString() : (g.id || g.gameId);
-        const resolvedImage = g.thumbnail || g.image || g.imageUrl || '/images/vegas-777.svg';
-        return {
-          id: sid,
-          _id: sid,
-          gameId: g.gameId || sid,
-          title: g.title,
-          category: g.category || 'sweepstakes',
-          provider: g.provider || 'Players Paradise Studio',
-          thumbnail: resolvedImage,
-          image: resolvedImage,
-          imageUrl: resolvedImage,
-          fallbackImage: resolvedImage,
-          type: g.type || 'internal',
-          url: g.url || null,
-          playUrl: g.playUrl || g.url || null,
-          badge: g.badge || (g.isHot ? 'HOT' : (g.isFeatured ? 'EXCLUSIVE' : '')),
-          isActive: g.isActive !== false,
-          isHot: g.isHot ?? false,
-          isFeatured: g.isFeatured ?? false,
-          playsCount: g.playsCount || 0,
-          description: g.description || '',
-          platform: g.platform || g.provider || 'Players Paradise',
-          isInternal: g.isInternal ?? (g.type === 'internal'),
-          rtp: g.rtp || 98.2,
-          rating: g.rating || 4.9,
-        };
-      }),
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        games: games.map(g => {
+          const sid = g._id ? g._id.toString() : (g.id || g.gameId);
+          const resolvedImage = g.thumbnail || g.image || g.imageUrl || '/images/vegas-777.svg';
+          return {
+            id: sid,
+            _id: sid,
+            gameId: g.gameId || sid,
+            title: g.title,
+            category: g.category || 'sweepstakes',
+            provider: g.provider || 'Players Paradise Studio',
+            thumbnail: resolvedImage,
+            image: resolvedImage,
+            imageUrl: resolvedImage,
+            fallbackImage: resolvedImage,
+            type: g.type || 'internal',
+            url: g.url || null,
+            playUrl: g.playUrl || g.url || null,
+            badge: g.badge || (g.isHot ? 'HOT' : (g.isFeatured ? 'EXCLUSIVE' : '')),
+            isActive: g.isActive !== false,
+            isHot: g.isHot ?? false,
+            isFeatured: g.isFeatured ?? false,
+            playsCount: g.playsCount || 0,
+            description: g.description || '',
+            platform: g.platform || g.provider || 'Players Paradise',
+            isInternal: g.isInternal ?? (g.type === 'internal'),
+            rtp: g.rtp || 98.2,
+            rating: g.rating || 4.9,
+          };
+        }),
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        },
+      }
+    );
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

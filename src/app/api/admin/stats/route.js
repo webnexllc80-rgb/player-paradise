@@ -18,40 +18,43 @@ export async function GET() {
 
     const db = await getDb();
 
-    // 1. Players count
-    const totalPlayers = await db.collection('users').countDocuments({ role: ROLES.PLAYER });
-
-    // 2. Pending deposits and redemptions
-    const pendingDeposits = await db.collection('deposits').countDocuments({ status: 'pending' });
-    const pendingRedemptions = await db.collection('redemptions').countDocuments({ status: 'pending' });
-    const pendingKyc = await db.collection('kyc_requests').countDocuments({ status: 'pending' });
-
-    // 3. Deposit & Redemption financial aggregates
-    const depositStats = await db.collection('deposits').aggregate([
-      { $match: { status: 'approved' } },
-      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    ]).toArray();
-
-    const redemptionStats = await db.collection('redemptions').aggregate([
-      { $match: { status: 'approved' } },
-      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    ]).toArray();
+    // Run all counts & aggregations concurrently in parallel for 0.1s response
+    const [
+      totalPlayers,
+      pendingDeposits,
+      pendingRedemptions,
+      pendingKyc,
+      depositStats,
+      redemptionStats,
+      activityStats,
+    ] = await Promise.all([
+      db.collection('users').countDocuments({ role: ROLES.PLAYER }),
+      db.collection('deposits').countDocuments({ status: 'pending' }),
+      db.collection('redemptions').countDocuments({ status: 'pending' }),
+      db.collection('kyc_requests').countDocuments({ status: 'pending' }),
+      db.collection('deposits').aggregate([
+        { $match: { status: 'approved' } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]).toArray(),
+      db.collection('redemptions').aggregate([
+        { $match: { status: 'approved' } },
+        { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]).toArray(),
+      db.collection('game_activity').aggregate([
+        {
+          $group: {
+            _id: null,
+            totalBets: { $sum: '$betAmount' },
+            totalWins: { $sum: '$winAmount' },
+            totalRounds: { $sum: 1 },
+          },
+        },
+      ]).toArray(),
+    ]);
 
     const totalDeposited = depositStats[0]?.total || 0;
     const totalRedeemed = redemptionStats[0]?.total || 0;
     const netGGR = Number((totalDeposited - totalRedeemed).toFixed(2));
-
-    // 4. Game Activity volume
-    const activityStats = await db.collection('game_activity').aggregate([
-      {
-        $group: {
-          _id: null,
-          totalBets: { $sum: '$betAmount' },
-          totalWins: { $sum: '$winAmount' },
-          totalRounds: { $sum: 1 },
-        },
-      },
-    ]).toArray();
 
     const totalWagers = activityStats[0]?.totalBets || 0;
     const totalPayouts = activityStats[0]?.totalWins || 0;
