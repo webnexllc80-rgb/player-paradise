@@ -89,6 +89,32 @@ export default function LoadCoinsModal({
         setSuccessMsg(`🎉 $${amt.toFixed(2)} SC frozen in escrow and submitted to coin desk for ${gameTitle}!`);
         window.dispatchEvent(new CustomEvent('balanceUpdated'));
         if (onSuccess) onSuccess(data);
+
+        // Alert Admin & Coins Allotment Desk immediately (0ms cross-tab broadcast)
+        try {
+          const staffChannel = new BroadcastChannel('paradise_staff_alerts');
+          staffChannel.postMessage({
+            type: 'NEW_COIN_LOAD',
+            transferAmount: amt,
+            userName: user?.username || 'Player',
+            gameTitle,
+          });
+          staffChannel.close();
+        } catch {}
+
+        try {
+          localStorage.setItem(
+            'paradise_staff_event',
+            JSON.stringify({
+              type: 'NEW_COIN_LOAD',
+              transferAmount: amt,
+              userName: user?.username || 'Player',
+              gameTitle,
+              time: Date.now(),
+            })
+          );
+        } catch {}
+
         setTimeout(() => {
           onClose();
         }, 1800);

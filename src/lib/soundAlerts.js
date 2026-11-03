@@ -102,14 +102,13 @@ export function unlockAudioContext() {
   }
 }
 
-// Auto-register window listener to unlock on first click/touch/keydown
+// Auto-register window listener to unlock on first click/touch/keydown/focus
 if (typeof window !== 'undefined') {
-  const events = ['click', 'touchstart', 'keydown', 'pointerdown'];
+  const events = ['click', 'touchstart', 'keydown', 'pointerdown', 'mousedown', 'focus'];
   const handleFirstInteraction = () => {
     unlockAudioContext();
-    events.forEach(e => window.removeEventListener(e, handleFirstInteraction, true));
   };
-  events.forEach(e => window.addEventListener(e, handleFirstInteraction, { once: true, capture: true }));
+  events.forEach(e => window.addEventListener(e, handleFirstInteraction, { capture: true, passive: true }));
 }
 
 export const AVAILABLE_TUNES = [

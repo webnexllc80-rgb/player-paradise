@@ -438,6 +438,33 @@ export default function DepositPage() {
         setProofFileName('');
         fetchHistory(true);
         fetchUserAndSettings(true);
+
+        // Alert Admin & Finance Desk immediately (0ms cross-tab broadcast)
+        try {
+          const staffChannel = new BroadcastChannel('paradise_staff_alerts');
+          staffChannel.postMessage({
+            type: 'NEW_DEPOSIT',
+            depositId: data.depositId,
+            amount: finalAmount,
+            username: user?.username || 'Player',
+            methodName: selectedGateway?.name || 'Payment',
+          });
+          staffChannel.close();
+        } catch {}
+
+        try {
+          localStorage.setItem(
+            'paradise_staff_event',
+            JSON.stringify({
+              type: 'NEW_DEPOSIT',
+              depositId: data.depositId,
+              amount: finalAmount,
+              username: user?.username || 'Player',
+              methodName: selectedGateway?.name || 'Payment',
+              time: Date.now(),
+            })
+          );
+        } catch {}
       } else {
         // Rollback optimistic item on failure
         setDepositHistory((prev) => prev.filter((d) => d.id !== tempId));

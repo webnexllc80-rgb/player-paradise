@@ -859,6 +859,10 @@ export default function AdminPortal({ initialTab }) {
     chat: 0,
   });
   const seenRequestIdsRef = React.useRef(new Set());
+  const seenDepositIdsRef = React.useRef(new Set());
+  const seenRedemptionIdsRef = React.useRef(new Set());
+  const seenCoinLoadIdsRef = React.useRef(new Set());
+  const seenCoinCashoutIdsRef = React.useRef(new Set());
   const isInitialLoadRef = React.useRef(true);
 
   const syncRequestsAndAlerts = async () => {
@@ -927,6 +931,10 @@ export default function AdminPortal({ initialTab }) {
 
       if (isInitialLoadRef.current) {
         pendingReqs.forEach((r) => seenRequestIdsRef.current.add(r.id || r._id));
+        pendingDeps.forEach((d) => seenDepositIdsRef.current.add(d.id || d._id));
+        pendingWith.forEach((w) => seenRedemptionIdsRef.current.add(w.id || w._id));
+        pendingCoinLoads.forEach((l) => seenCoinLoadIdsRef.current.add(l.id || l._id));
+        pendingCoinCashouts.forEach((c) => seenCoinCashoutIdsRef.current.add(c.id || c._id));
         prevCountsRef.current = {
           deposits: pendingDeps.length,
           redemptions: pendingWith.length,
@@ -970,8 +978,11 @@ export default function AdminPortal({ initialTab }) {
       }
 
       // 2. Incoming new deposits
-      if (pendingDeps.length > (prevCountsRef.current.deposits || 0)) {
-        const newest = pendingDeps[0];
+      const newPendingDeps = pendingDeps.filter((d) => !seenDepositIdsRef.current.has(d.id || d._id));
+      if (newPendingDeps.length > 0 || pendingDeps.length > (prevCountsRef.current.deposits || 0)) {
+        pendingDeps.forEach((d) => seenDepositIdsRef.current.add(d.id || d._id));
+        const newest = newPendingDeps[0] || pendingDeps[0];
+        unlockAudioContext();
         playAdminChime();
         const alertTitle = '💰 New Deposit Request!';
         const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} USD from ${newest?.username || 'Player'} via ${newest?.methodName || 'Payment'}`;
@@ -989,8 +1000,11 @@ export default function AdminPortal({ initialTab }) {
       }
 
       // 3. Incoming new redemptions / cashouts
-      if (pendingWith.length > (prevCountsRef.current.redemptions || 0)) {
-        const newest = pendingWith[0];
+      const newPendingWith = pendingWith.filter((w) => !seenRedemptionIdsRef.current.has(w.id || w._id));
+      if (newPendingWith.length > 0 || pendingWith.length > (prevCountsRef.current.redemptions || 0)) {
+        pendingWith.forEach((w) => seenRedemptionIdsRef.current.add(w.id || w._id));
+        const newest = newPendingWith[0] || pendingWith[0];
+        unlockAudioContext();
         playAdminChime();
         const alertTitle = '💸 New Cashout Request!';
         const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'} via ${newest?.payoutMethod || 'Direct'}`;
@@ -1008,8 +1022,11 @@ export default function AdminPortal({ initialTab }) {
       }
 
       // 4. Incoming coin load requests
-      if (pendingCoinLoads.length > (prevCountsRef.current.coinLoads || 0)) {
-        const newest = pendingCoinLoads[0];
+      const newPendingCoinLoads = pendingCoinLoads.filter((l) => !seenCoinLoadIdsRef.current.has(l.id || l._id));
+      if (newPendingCoinLoads.length > 0 || pendingCoinLoads.length > (prevCountsRef.current.coinLoads || 0)) {
+        pendingCoinLoads.forEach((l) => seenCoinLoadIdsRef.current.add(l.id || l._id));
+        const newest = newPendingCoinLoads[0] || pendingCoinLoads[0];
+        unlockAudioContext();
         playAdminChime();
         const alertTitle = '⚡ New Coin Load Request!';
         const alertBody = `$${Number(newest?.transferAmount || 0).toFixed(2)} SC load for ${newest?.gameTitle || 'Game'} from ${newest?.userName || 'Player'}`;
@@ -1027,8 +1044,11 @@ export default function AdminPortal({ initialTab }) {
       }
 
       // 5. Incoming coin cashout proof verifications
-      if (pendingCoinCashouts.length > (prevCountsRef.current.coinCashouts || 0)) {
-        const newest = pendingCoinCashouts[0];
+      const newPendingCoinCashouts = pendingCoinCashouts.filter((c) => !seenCoinCashoutIdsRef.current.has(c.id || c._id));
+      if (newPendingCoinCashouts.length > 0 || pendingCoinCashouts.length > (prevCountsRef.current.coinCashouts || 0)) {
+        pendingCoinCashouts.forEach((c) => seenCoinCashoutIdsRef.current.add(c.id || c._id));
+        const newest = newPendingCoinCashouts[0] || pendingCoinCashouts[0];
+        unlockAudioContext();
         playAdminChime();
         const alertTitle = '🎮 New Cashout Verification (Coins Desk)!';
         const alertBody = `$${Number(newest?.amount || 0).toFixed(2)} SC for ${newest?.username || 'Player'} - ${newest?.gameTitle || 'Game'}`;
@@ -1108,6 +1128,42 @@ export default function AdminPortal({ initialTab }) {
           message: `${gTitle} requested by ${uName}`,
           subtext: 'Tap to review & issue credentials',
           targetTab: 'account_requests',
+        });
+        syncRequestsAndAlerts();
+      } else if (payload.type === 'NEW_DEPOSIT') {
+        unlockAudioContext();
+        playAdminChime();
+        const amt = Number(payload.amount || 0).toFixed(2);
+        const uName = payload.username || payload.userName || 'Player';
+        const mName = payload.methodName || 'Payment';
+        const alertTitle = '💰 New Deposit Request!';
+        const alertBody = `$${amt} USD from ${uName} via ${mName}`;
+        sendDesktopNotification(alertTitle, alertBody, '/admin/finance');
+        setActiveAlertToast({
+          type: 'deposit',
+          title: alertTitle,
+          message: alertBody,
+          subtext: 'Tap to review & verify deposit receipt',
+          targetTab: 'finance',
+          targetSubTab: 'deposits',
+        });
+        syncRequestsAndAlerts();
+      } else if (payload.type === 'NEW_COIN_LOAD') {
+        unlockAudioContext();
+        playAdminChime();
+        const amt = Number(payload.transferAmount || payload.amount || 0).toFixed(2);
+        const uName = payload.userName || payload.username || 'Player';
+        const gTitle = payload.gameTitle || 'Game';
+        const alertTitle = '⚡ New Coin Load Request!';
+        const alertBody = `$${amt} SC load for ${gTitle} from ${uName}`;
+        sendDesktopNotification(alertTitle, alertBody, '/admin/coins_allotment');
+        setActiveAlertToast({
+          type: 'coin_load',
+          title: alertTitle,
+          message: alertBody,
+          subtext: 'Tap to review & allot coins to game account',
+          targetTab: 'coins_allotment',
+          targetSubTab: 'loads',
         });
         syncRequestsAndAlerts();
       } else if (payload.type === 'NEW_FINANCE_REDEMPTION') {
@@ -1209,13 +1265,13 @@ export default function AdminPortal({ initialTab }) {
     };
   }, [user]);
 
-  // Run persistent poller every 1.2 seconds for lightning-fast responsiveness!
+  // Run persistent poller every 1.5 seconds for lightning-fast responsiveness!
   useEffect(() => {
     if (!user) return;
     syncRequestsAndAlerts();
     const interval = setInterval(() => {
       syncRequestsAndAlerts();
-    }, 7500);
+    }, 1500);
 
     const handleFocus = () => {
       syncRequestsAndAlerts();
