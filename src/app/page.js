@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+
+// Standalone Player Views for 0ms instant tab switching
+import DepositView from '@/components/player/DepositView';
+import WithdrawView from '@/components/player/WithdrawView';
+import SpinWheelView from '@/components/player/SpinWheelView';
+import ReferralView from '@/components/player/ReferralView';
+import PromotionsView from '@/components/player/PromotionsView';
+import DownloadAppView from '@/components/player/DownloadAppView';
+import HowToPlayView from '@/components/player/HowToPlayView';
 
 // Navigation Components
 import CyberSidebar from '@/components/navigation/CyberSidebar';
@@ -51,8 +60,47 @@ import {
 } from 'lucide-react';
 import { playTune } from '@/lib/soundAlerts';
 
-export default function HomePage() {
+export default function HomePage({ initialTab = 'lobby' }) {
   const router = useRouter();
+  const pathname = usePathname();
+
+  const getTabFromPath = (path) => {
+    if (!path || path === '/') return 'lobby';
+    const clean = path.replace(/^\//, '').split('?')[0];
+    return clean || 'lobby';
+  };
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (initialTab && initialTab !== 'lobby') return initialTab;
+    if (typeof window !== 'undefined') {
+      const fromUrl = getTabFromPath(window.location.pathname);
+      if (fromUrl && fromUrl !== 'admin') return fromUrl;
+    }
+    return 'lobby';
+  });
+
+  const handleSelectTab = (tabId, targetPath) => {
+    const finalTab = tabId || (targetPath === '/' ? 'lobby' : targetPath?.replace(/^\//, '')) || 'lobby';
+    const finalPath = targetPath || (finalTab === 'lobby' ? '/' : `/${finalTab}`);
+    setActiveTab(finalTab);
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname !== finalPath) {
+        window.history.pushState({ tab: finalTab }, '', finalPath);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window !== 'undefined') {
+        const current = getTabFromPath(window.location.pathname);
+        setActiveTab(current);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // User & UI States
   const [user, setUser] = useState(null);
@@ -406,7 +454,9 @@ export default function HomePage() {
         mobileOpen={mobileSidebarOpen}
         setMobileOpen={setMobileSidebarOpen}
         user={user}
-        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
+        activeTab={activeTab}
+        onSelectTab={handleSelectTab}
+        onOpenWallet={(tab) => handleSelectTab(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? 'withdraw' : 'deposit', tab === 'withdraw' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => handleRequestGame()}
         onOpenChat={() => {
           if (typeof window !== 'undefined') {
@@ -414,7 +464,8 @@ export default function HomePage() {
             if (typeof window.openLiveChat === 'function') window.openLiveChat();
           }
         }}
-        onOpenSpinWheel={() => setSpinWheelOpen(true)}
+        onOpenSpinWheel={() => handleSelectTab('spin-wheel', '/spin-wheel')}
+        onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
       />
 
       {/* Main Content Layout */}
@@ -427,171 +478,318 @@ export default function HomePage() {
         <CyberNavbar
           onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           user={user}
+          activeTab={activeTab}
+          onSelectTab={handleSelectTab}
           onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-          onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
-          onOpenSpinWheel={() => setSpinWheelOpen(true)}
+          onOpenWallet={(tab) => handleSelectTab(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? 'withdraw' : 'deposit', tab === 'withdraw' ? '/withdraw' : '/deposit')}
+          onOpenSpinWheel={() => handleSelectTab('spin-wheel', '/spin-wheel')}
           onLogout={handleLogout}
         />
 
         {/* Page Inner Container */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-          {/* Hero Banner */}
-          <CyberHeroBanner
-            user={user}
-            onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-            onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
-            onOpenGameRequest={() => handleRequestGame()}
-          />
-
-          {/* Marquee Ticker */}
-          <CyberLatestWinsTicker />
-
-          {/* Player Game Credentials & Request Station */}
-          <PlayerGameCredentialsHub
-            user={user}
-            onRequestNewGame={() => handleRequestGame()}
-            onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-          />
-
-          {/* Game Catalog Station */}
-          <div className="space-y-6 pt-4">
-            {/* Header & Filters */}
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Gamepad2 size={20} className="text-[var(--neon-cyan)]" />
-                  <h2 className="font-heading font-black text-2xl text-white">
-                    VERIFIED GAMES & PLATFORMS
-                  </h2>
+          {activeTab === 'deposit' ? (
+            <DepositView isEmbedded={true} onSelectTab={handleSelectTab} />
+          ) : activeTab === 'withdraw' ? (
+            <WithdrawView isEmbedded={true} onSelectTab={handleSelectTab} />
+          ) : activeTab === 'spin-wheel' ? (
+            <SpinWheelView user={user} onSelectTab={handleSelectTab} />
+          ) : activeTab === 'referral' ? (
+            <ReferralView user={user} onOpenAuth={(mode) => setAuthModal({ open: true, tab: mode })} />
+          ) : activeTab === 'promotions' ? (
+            <PromotionsView onSelectTab={handleSelectTab} />
+          ) : activeTab === 'download-app' ? (
+            <DownloadAppView onSelectTab={handleSelectTab} />
+          ) : activeTab === 'how-to-play' ? (
+            <HowToPlayView onSelectTab={handleSelectTab} />
+          ) : activeTab === 'my-game-ids' ? (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-heading font-black text-white flex items-center gap-2">
+                    <KeyRound className="text-[var(--neon-cyan)]" size={26} />
+                    <span>MY GAME CREDENTIALS & LOGINS</span>
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                    Manage all your active game accounts, copy passwords, and request new platform IDs
+                  </p>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Play in-house cyber originals or access popular external sweeps platforms
-                </p>
+                <button
+                  onClick={() => handleRequestGame()}
+                  className="cyber-btn-cyan text-xs py-2.5 px-4 font-bold flex items-center gap-1.5 shrink-0"
+                >
+                  <Gamepad2 size={16} />
+                  <span>Request New Game ID</span>
+                </button>
               </div>
-
-              {/* Search Bar */}
-              <div className="relative w-full md:w-80">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
-                <input
-                  type="text"
-                  placeholder="Search Ultra Panda, Fire Kirin..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-[#060917]/95 border border-[var(--neon-cyan)]/30 rounded-xl !pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--neon-cyan)] focus:shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all font-sans"
-                />
-              </div>
+              <PlayerGameCredentialsHub
+                user={user}
+                onRequestNewGame={() => handleRequestGame()}
+                onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+              />
             </div>
-
-            {/* Category Filter Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
-              {categories.map((cat) => {
-                const isSelected = category === cat.id;
-                return (
-                  <button
-                    key={cat.id}
-                    onClick={() => setCategory(cat.id)}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition-all ${
-                      isSelected
-                        ? 'bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]'
-                        : 'bg-slate-900/80 border border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
-                  >
-                    <span>{cat.icon}</span>
-                    <span>{cat.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Games Grid */}
-            {loadingGames && games.length === 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                  <div
-                    key={i}
-                    className="rounded-2xl border border-[var(--neon-cyan)]/20 bg-[#0B0F22]/80 p-4 space-y-3 animate-pulse shadow-lg"
-                  >
-                    <div className="h-44 bg-slate-800/60 rounded-xl" />
-                    <div className="h-4 bg-slate-700/60 rounded w-3/4" />
-                    <div className="h-3 bg-slate-800/60 rounded w-1/2" />
-                    <div className="h-9 bg-cyan-950/40 border border-cyan-500/20 rounded-xl" />
+          ) : activeTab === 'games' ? (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Games Catalog Header */}
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Trophy size={24} className="text-[var(--neon-cyan)]" />
+                    <h1 className="font-heading font-black text-2xl sm:text-3xl text-white">
+                      ALL PLAYABLE PLATFORMS & CYBER SLOTS
+                    </h1>
                   </div>
-                ))}
-              </div>
-            ) : games.length === 0 ? (
-              <div className="py-16 text-center space-y-2 text-slate-400">
-                <Gamepad2 size={36} className="mx-auto text-slate-600" />
-                <p className="font-heading text-sm text-white">No games matched your search.</p>
-                <p className="text-xs">Try selecting a different category or clearing the search query.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {games.map((g) => {
-                  const cleanGTitle = (g.title || '').toLowerCase().trim();
-                  const hasAcc = userGameAccounts.some((a) => {
-                    const t = (a.gameTitle || '').toLowerCase().trim();
-                    return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
-                  });
-                  const isPend = !hasAcc && pendingAccountRequests.some((p) => {
-                    const t = (p.gameTitle || '').toLowerCase().trim();
-                    return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
-                  });
+                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                    Play verified in-house web sweeps games or access external official platforms
+                  </p>
+                </div>
 
+                {/* Search Bar */}
+                <div className="relative w-full md:w-80">
+                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
+                  <input
+                    type="text"
+                    placeholder="Search Ultra Panda, Fire Kirin..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-[#060917]/95 border border-[var(--neon-cyan)]/30 rounded-xl !pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--neon-cyan)] focus:shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all font-sans"
+                  />
+                </div>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {categories.map((cat) => {
+                  const isSelected = category === cat.id;
                   return (
-                    <GameCard
-                      key={g.id}
-                      game={g}
-                      hasAccount={hasAcc}
-                      isPending={isPend}
-                      onPlay={handlePlayGame}
-                      onViewCredentials={handlePlayGame}
-                      onRequestAccount={handleRequestGame}
-                      onLoadCoins={(game) => setLoadCoinsModal({ open: true, game })}
-                    />
+                    <button
+                      key={cat.id}
+                      onClick={() => setCategory(cat.id)}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition-all ${
+                        isSelected
+                          ? 'bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]'
+                          : 'bg-slate-900/80 border border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <span>{cat.icon}</span>
+                      <span>{cat.label}</span>
+                    </button>
                   );
                 })}
               </div>
-            )}
-          </div>
 
-          {/* Platform Trust Highlights */}
-          <div className="my-12 grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
-                <Zap size={20} />
-              </div>
-              <h3 className="font-heading font-bold text-base text-white">
-                Under 5-Minute Cashouts
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Enjoy lightning redemptions directly into Cash App, Chime, Zelle, or Bitcoin with zero hidden fees.
-              </p>
-            </div>
+              {/* Games Grid */}
+              {loadingGames && games.length === 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                    <div
+                      key={i}
+                      className="rounded-2xl border border-[var(--neon-cyan)]/20 bg-[#0B0F22]/80 p-4 space-y-3 animate-pulse shadow-lg"
+                    >
+                      <div className="h-44 bg-slate-800/60 rounded-xl" />
+                      <div className="h-4 bg-slate-700/60 rounded w-3/4" />
+                      <div className="h-3 bg-slate-800/60 rounded w-1/2" />
+                      <div className="h-9 bg-cyan-950/40 border border-cyan-500/20 rounded-xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : games.length === 0 ? (
+                <div className="py-16 text-center space-y-2 text-slate-400">
+                  <Gamepad2 size={36} className="mx-auto text-slate-600" />
+                  <p className="font-heading text-sm text-white">No games matched your search.</p>
+                  <p className="text-xs">Try selecting a different category or clearing the search query.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                  {games.map((g) => {
+                    const cleanGTitle = (g.title || '').toLowerCase().trim();
+                    const hasAcc = userGameAccounts.some((a) => {
+                      const t = (a.gameTitle || '').toLowerCase().trim();
+                      return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
+                    });
+                    const isPend = !hasAcc && pendingAccountRequests.some((p) => {
+                      const t = (p.gameTitle || '').toLowerCase().trim();
+                      return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
+                    });
 
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[var(--neon-cyan)]/20 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/30 flex items-center justify-center font-bold">
-                <KeyRound size={20} />
-              </div>
-              <h3 className="font-heading font-bold text-base text-white">
-                1-Click Game Credentials
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Staff issues individual logins for Ultra Panda, Fire Kirin, and Orion Stars with real-time balance loading.
-              </p>
+                    return (
+                      <GameCard
+                        key={g.id}
+                        game={g}
+                        hasAccount={hasAcc}
+                        isPending={isPend}
+                        onPlay={handlePlayGame}
+                        onViewCredentials={handlePlayGame}
+                        onRequestAccount={handleRequestGame}
+                        onLoadCoins={(game) => setLoadCoinsModal({ open: true, game })}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
+          ) : (
+            /* Lobby View */
+            <div className="space-y-8 animate-in fade-in duration-200">
+              {/* Hero Banner */}
+              <CyberHeroBanner
+                user={user}
+                onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+                onOpenWallet={(tab) => handleSelectTab(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? 'withdraw' : 'deposit', tab === 'withdraw' ? '/withdraw' : '/deposit')}
+                onOpenGameRequest={() => handleRequestGame()}
+              />
 
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[var(--neon-purple)]/20 text-[var(--neon-purple-light)] border border-[var(--neon-purple)]/30 flex items-center justify-center font-bold">
-                <ShieldCheck size={20} />
+              {/* Marquee Ticker */}
+              <CyberLatestWinsTicker />
+
+              {/* Player Game Credentials & Request Station */}
+              <PlayerGameCredentialsHub
+                user={user}
+                onRequestNewGame={() => handleRequestGame()}
+                onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
+              />
+
+              {/* Game Catalog Station */}
+              <div className="space-y-6 pt-4">
+                {/* Header & Filters */}
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Gamepad2 size={20} className="text-[var(--neon-cyan)]" />
+                      <h2 className="font-heading font-black text-2xl text-white">
+                        VERIFIED GAMES & PLATFORMS
+                      </h2>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Play in-house cyber originals or access popular external sweeps platforms
+                    </p>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative w-full md:w-80">
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
+                    <input
+                      type="text"
+                      placeholder="Search Ultra Panda, Fire Kirin..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full bg-[#060917]/95 border border-[var(--neon-cyan)]/30 rounded-xl !pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--neon-cyan)] focus:shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all font-sans"
+                    />
+                  </div>
+                </div>
+
+                {/* Category Filter Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+                  {categories.map((cat) => {
+                    const isSelected = category === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setCategory(cat.id)}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap transition-all ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-[var(--neon-cyan)] to-blue-500 text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]'
+                            : 'bg-slate-900/80 border border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <span>{cat.icon}</span>
+                        <span>{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Games Grid */}
+                {loadingGames && games.length === 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                      <div
+                        key={i}
+                        className="rounded-2xl border border-[var(--neon-cyan)]/20 bg-[#0B0F22]/80 p-4 space-y-3 animate-pulse shadow-lg"
+                      >
+                        <div className="h-44 bg-slate-800/60 rounded-xl" />
+                        <div className="h-4 bg-slate-700/60 rounded w-3/4" />
+                        <div className="h-3 bg-slate-800/60 rounded w-1/2" />
+                        <div className="h-9 bg-cyan-950/40 border border-cyan-500/20 rounded-xl" />
+                      </div>
+                    ))}
+                  </div>
+                ) : games.length === 0 ? (
+                  <div className="py-16 text-center space-y-2 text-slate-400">
+                    <Gamepad2 size={36} className="mx-auto text-slate-600" />
+                    <p className="font-heading text-sm text-white">No games matched your search.</p>
+                    <p className="text-xs">Try selecting a different category or clearing the search query.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    {games.map((g) => {
+                      const cleanGTitle = (g.title || '').toLowerCase().trim();
+                      const hasAcc = userGameAccounts.some((a) => {
+                        const t = (a.gameTitle || '').toLowerCase().trim();
+                        return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
+                      });
+                      const isPend = !hasAcc && pendingAccountRequests.some((p) => {
+                        const t = (p.gameTitle || '').toLowerCase().trim();
+                        return t === cleanGTitle || (cleanGTitle && t.includes(cleanGTitle)) || (t && cleanGTitle.includes(t));
+                      });
+
+                      return (
+                        <GameCard
+                          key={g.id}
+                          game={g}
+                          hasAccount={hasAcc}
+                          isPending={isPend}
+                          onPlay={handlePlayGame}
+                          onViewCredentials={handlePlayGame}
+                          onRequestAccount={handleRequestGame}
+                          onLoadCoins={(game) => setLoadCoinsModal({ open: true, game })}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <h3 className="font-heading font-bold text-base text-white">
-                100% US Legal Sweepstakes
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Operated strictly under United States promotional sweepstakes frameworks with verified cryptographic fairness.
-              </p>
+
+              {/* Platform Trust Highlights */}
+              <div className="my-12 grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+                    <Zap size={20} />
+                  </div>
+                  <h3 className="font-heading font-bold text-base text-white">
+                    Under 5-Minute Cashouts
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Enjoy lightning redemptions directly into Cash App, Chime, Zelle, or Bitcoin with zero hidden fees.
+                  </p>
+                </div>
+
+                <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--neon-cyan)]/20 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/30 flex items-center justify-center font-bold">
+                    <KeyRound size={20} />
+                  </div>
+                  <h3 className="font-heading font-bold text-base text-white">
+                    1-Click Game Credentials
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Staff issues individual logins for Ultra Panda, Fire Kirin, and Orion Stars with real-time balance loading.
+                  </p>
+                </div>
+
+                <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
+                  <div className="w-10 h-10 rounded-xl bg-[var(--neon-purple)]/20 text-[var(--neon-purple-light)] border border-[var(--neon-purple)]/30 flex items-center justify-center font-bold">
+                    <ShieldCheck size={20} />
+                  </div>
+                  <h3 className="font-heading font-bold text-base text-white">
+                    100% US Legal Sweepstakes
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Operated strictly under United States promotional sweepstakes frameworks with verified cryptographic fairness.
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </main>
 
         {/* Footer */}
@@ -601,10 +799,12 @@ export default function HomePage() {
       {/* Mobile Bottom Dock */}
       <CyberMobileBottomNav
         user={user}
+        activeTab={activeTab}
+        onSelectTab={handleSelectTab}
         onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
-        onOpenWallet={(tab) => router.push(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? '/withdraw' : '/deposit')}
+        onOpenWallet={(tab) => handleSelectTab(tab === 'withdraw' || tab === 'redeem' || tab === 'cashout' ? 'withdraw' : 'deposit', tab === 'withdraw' ? '/withdraw' : '/deposit')}
         onOpenGameRequest={() => handleRequestGame()}
-        onOpenSpinWheel={() => setSpinWheelOpen(true)}
+        onOpenSpinWheel={() => handleSelectTab('spin-wheel', '/spin-wheel')}
       />
 
       {/* Daily Lucky Spin Wheel Modal */}

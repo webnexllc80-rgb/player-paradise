@@ -13,6 +13,8 @@ import {
 
 export default function CyberMobileBottomNav({
   user,
+  activeTab,
+  onSelectTab,
   onOpenAuth,
   onOpenWallet,
   onOpenGameRequest,
@@ -21,42 +23,57 @@ export default function CyberMobileBottomNav({
   const pathname = usePathname();
   const router = useRouter();
 
+  const handleTabAction = (id, path, fallbackAction) => {
+    if (typeof onSelectTab === 'function') {
+      const tabId = id === 'ids' ? 'my-game-ids' : id;
+      onSelectTab(tabId, path);
+      return;
+    }
+    if (typeof fallbackAction === 'function') {
+      fallbackAction();
+      return;
+    }
+    router.push(path);
+  };
+
+  const currentTab = activeTab || (pathname === '/' ? 'lobby' : pathname.replace(/^\//, ''));
+
   const tabs = [
     {
       id: 'lobby',
       label: 'Lobby',
       icon: Gamepad2,
-      action: () => router.push('/'),
-      isActive: pathname === '/',
+      action: () => handleTabAction('lobby', '/'),
+      isActive: currentTab === 'lobby',
     },
     {
       id: 'games',
       label: 'Games',
       icon: Trophy,
-      action: () => router.push('/games'),
-      isActive: pathname === '/games',
+      action: () => handleTabAction('games', '/games'),
+      isActive: currentTab === 'games',
     },
     {
       id: 'ids',
       label: 'Game IDs',
       icon: KeyRound,
-      action: () => router.push('/my-game-ids'),
+      action: () => handleTabAction('ids', '/my-game-ids'),
       highlight: true,
-      isActive: pathname === '/my-game-ids',
+      isActive: currentTab === 'my-game-ids',
     },
     {
       id: 'deposit',
       label: 'Deposit',
       icon: Wallet,
-      action: () => router.push('/deposit'),
-      isActive: pathname === '/deposit',
+      action: () => handleTabAction('deposit', '/deposit', onOpenWallet ? () => onOpenWallet('deposit') : null),
+      isActive: currentTab === 'deposit',
     },
     {
       id: 'spin',
       label: 'Spin $50',
       icon: Sparkles,
-      action: onOpenSpinWheel || (() => router.push('/promotions')),
-      isActive: false,
+      action: () => handleTabAction('spin-wheel', '/spin-wheel', onOpenSpinWheel || (() => router.push('/spin-wheel'))),
+      isActive: currentTab === 'spin-wheel',
     },
   ];
 

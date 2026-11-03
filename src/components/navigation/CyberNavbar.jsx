@@ -34,6 +34,7 @@ export default function CyberNavbar({
   onOpenNotifications,
   onLogout,
   unreadNotifsCount = 0,
+  onSelectTab,
 }) {
   const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -57,7 +58,18 @@ export default function CyberNavbar({
 
   const handleWalletClick = (tab = 'deposit') => {
     const isRedeem = tab === 'withdraw' || tab === 'redeem' || tab === 'cashout';
-    router.push(isRedeem ? '/withdraw' : '/deposit');
+    const tabId = isRedeem ? 'withdraw' : 'deposit';
+    const targetPath = isRedeem ? '/withdraw' : '/deposit';
+
+    if (typeof onSelectTab === 'function') {
+      onSelectTab(tabId, targetPath);
+      return;
+    }
+    if (typeof onOpenWallet === 'function') {
+      onOpenWallet(tabId);
+      return;
+    }
+    router.push(targetPath);
   };
 
   useEffect(() => {
@@ -254,7 +266,13 @@ export default function CyberNavbar({
         </button>
 
         <div
-          onClick={() => router.push('/')}
+          onClick={() => {
+            if (typeof onSelectTab === 'function') {
+              onSelectTab('lobby', '/');
+            } else {
+              router.push('/');
+            }
+          }}
           className="flex items-center gap-2 cursor-pointer lg:hidden shrink-0"
         >
           <div
@@ -290,6 +308,12 @@ export default function CyberNavbar({
             {/* Live Single Wallet Balance Chip */}
             <Link
               href="/deposit"
+              onClick={(e) => {
+                if (typeof onSelectTab === 'function' || typeof onOpenWallet === 'function') {
+                  e.preventDefault();
+                  handleWalletClick('deposit');
+                }
+              }}
               className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900/90 border transition-all duration-300 shrink-0 ${
                 balancePulse
                   ? 'border-emerald-400 bg-emerald-950/40 shadow-[0_0_18px_rgba(16,185,129,0.5)] scale-105'
@@ -312,6 +336,12 @@ export default function CyberNavbar({
             {/* Deposit Direct Action */}
             <Link
               href="/deposit"
+              onClick={(e) => {
+                if (typeof onSelectTab === 'function' || typeof onOpenWallet === 'function') {
+                  e.preventDefault();
+                  handleWalletClick('deposit');
+                }
+              }}
               className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-500 text-black text-xs font-heading font-black shadow-[0_0_12px_rgba(16,185,129,0.35)] hover:scale-102 active:scale-98 transition-all shrink-0"
               title="Deposit Funds"
             >
@@ -322,6 +352,12 @@ export default function CyberNavbar({
             {/* Redeem Cashout Direct Action (Wide screen only, also in sidebar & profile) */}
             <Link
               href="/withdraw"
+              onClick={(e) => {
+                if (typeof onSelectTab === 'function' || typeof onOpenWallet === 'function') {
+                  e.preventDefault();
+                  handleWalletClick('withdraw');
+                }
+              }}
               className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-colors shrink-0"
               title="Redeem Winnings"
             >
@@ -330,10 +366,16 @@ export default function CyberNavbar({
             </Link>
 
             {/* Daily Lucky Spin Wheel Button */}
-            {onOpenSpinWheel && (
+            {(onOpenSpinWheel || onSelectTab) && (
               <button
                 type="button"
-                onClick={onOpenSpinWheel}
+                onClick={() => {
+                  if (typeof onSelectTab === 'function') {
+                    onSelectTab('spin-wheel', '/spin-wheel');
+                  } else if (typeof onOpenSpinWheel === 'function') {
+                    onOpenSpinWheel();
+                  }
+                }}
                 className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 text-amber-300 text-xs font-bold transition-all shadow-[0_0_12px_rgba(245,158,11,0.25)] shrink-0"
                 title="Daily Free Spin Wheel (Win up to $50)"
               >
@@ -446,7 +488,11 @@ export default function CyberNavbar({
 
                   <div
                     onClick={() => {
-                      router.push('/promotions');
+                      if (typeof onSelectTab === 'function') {
+                        onSelectTab('promotions', '/promotions');
+                      } else {
+                        router.push('/promotions');
+                      }
                       setProfileOpen(false);
                     }}
                     className="flex items-center gap-2 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800/80 rounded-xl cursor-pointer"
