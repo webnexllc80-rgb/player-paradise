@@ -1164,7 +1164,7 @@ export default function AdminPortal({ initialTab }) {
     syncRequestsAndAlerts();
     const interval = setInterval(() => {
       syncRequestsAndAlerts();
-    }, 2500);
+    }, 7500);
 
     const handleFocus = () => {
       syncRequestsAndAlerts();
@@ -1250,7 +1250,7 @@ export default function AdminPortal({ initialTab }) {
     };
 
     loadData();
-    const interval = setInterval(loadData, 5000);
+    const interval = setInterval(loadData, 10000);
 
     const handleFocus = () => {
       if (!document.hidden) loadData();

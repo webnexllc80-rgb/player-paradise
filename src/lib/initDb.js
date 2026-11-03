@@ -24,12 +24,19 @@ export async function ensureDbInitialized() {
             db.collection('redemptions').createIndex({ status: 1, createdAt: -1 }),
             db.collection('redemptions').createIndex({ userId: 1, createdAt: -1 }),
             db.collection('accountRequests').createIndex({ status: 1, createdAt: -1 }),
-            db.collection('accountRequests').createIndex({ userEmail: 1 }),
+            db.collection('accountRequests').createIndex({ userEmail: 1, status: 1 }),
+            db.collection('gameAccounts').createIndex({ userEmail: 1, gameTitle: 1 }),
+            db.collection('chat_messages').createIndex({ conversationId: 1, createdAt: 1 }),
+            db.collection('chat_messages').createIndex({ createdAt: -1 }),
+            db.collection('subscriptions').createIndex({ email: 1 }),
+            db.collection('subscriptions').createIndex({ userId: 1 }),
             db.collection('notifications').createIndex({ target: 1, createdAt: -1 }),
             db.collection('notifications').createIndex({ email: 1, createdAt: -1 }),
             db.collection('games').createIndex({ isActive: 1, isFeatured: -1 }),
             db.collection('payment_methods').createIndex({ isActive: 1 }),
             db.collection('ledger').createIndex({ userId: 1, createdAt: -1 }),
+            db.collection('kyc_requests').createIndex({ status: 1, createdAt: -1 }),
+            db.collection('game_activity').createIndex({ createdAt: -1 }),
           ]);
         }
       } catch (idxErr) {

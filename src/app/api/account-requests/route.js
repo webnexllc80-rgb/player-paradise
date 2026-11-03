@@ -162,14 +162,17 @@ export async function POST(req) {
     }
 
     // If this is an ACCOUNT_CREATION request, check if user ALREADY has credentials generated
+    const cleanUserEmail = userEmail.toLowerCase().trim();
+    const emailFilter = cleanUserEmail === userEmail.trim() ? cleanUserEmail : { $in: [cleanUserEmail, userEmail.trim()] };
+    const cleanGameTitle = gameTitle.trim();
+
     if (requestType !== 'COIN_LOAD') {
       const gameAccountsCol = db.collection('gameAccounts');
-      const gameRegex = new RegExp(`^${gameTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
       // 1. Check if user already has active credentials in gameAccounts collection
       const existingAccount = await gameAccountsCol.findOne({
-        userEmail: { $regex: new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-        gameTitle: gameRegex,
+        userEmail: emailFilter,
+        gameTitle: cleanGameTitle,
         status: 'READY',
       });
 
@@ -188,8 +191,8 @@ export async function POST(req) {
 
       // 2. Check if user already has an approved READY request in accountRequests
       const existingReadyRequest = await requestsCol.findOne({
-        userEmail: { $regex: new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-        gameTitle: gameRegex,
+        userEmail: emailFilter,
+        gameTitle: cleanGameTitle,
         status: 'READY',
       });
 
@@ -209,8 +212,8 @@ export async function POST(req) {
 
     // Check if player already has a PENDING request for this game of this exact type
     const existingPendingQuery = {
-      userEmail: { $regex: new RegExp(`^${userEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-      gameTitle: new RegExp(`^${gameTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+      userEmail: emailFilter,
+      gameTitle: cleanGameTitle,
       status: 'PENDING',
     };
     if (requestType === 'COIN_LOAD') {

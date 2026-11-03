@@ -129,7 +129,12 @@ export default function GameRequestModal({
       return;
     }
 
-    setStatus({ error: '', success: '' });
+    // 0ms Optimistic UI update: Instantly register as pending in UI
+    setPendingRequests((prev) => [...prev, { gameTitle: selectedGame, status: 'PENDING' }]);
+    setStatus({
+      error: '',
+      success: `Request for ${selectedGame} credentials submitted! Desk is reviewing.`,
+    });
     setLoading(true);
 
     try {
@@ -147,6 +152,8 @@ export default function GameRequestModal({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        // Rollback on failure
+        setPendingRequests((prev) => prev.filter((p) => (p.gameTitle || '').toLowerCase() !== selectedGame.toLowerCase()));
         throw new Error(data.message || 'Failed to submit account request.');
       }
 

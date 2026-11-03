@@ -25,9 +25,25 @@ function isStaffRole(role) {
 async function buildStaffInbox(chatCol) {
   try {
     const rawMessages = await chatCol
-      .find({})
+      .find(
+        {},
+        {
+          projection: {
+            conversationId: 1,
+            userId: 1,
+            username: 1,
+            customerUsername: 1,
+            customerUserId: 1,
+            senderRole: 1,
+            read: 1,
+            text: 1,
+            createdAt: 1,
+            hasImage: { $cond: [{ $ifNull: ['$imageUrl', false] }, true, false] },
+          },
+        }
+      )
       .sort({ createdAt: -1 })
-      .limit(2000)
+      .limit(500)
       .toArray();
 
     const convMap = new Map();
@@ -49,7 +65,7 @@ async function buildStaffInbox(chatCol) {
           userId: customerUid || msg.userId || cid,
           username: customerName || msg.username || 'Player',
           lastMessage:
-            msg.text || (msg.imageUrl ? '📷 [Image Attachment]' : 'Active inquiry'),
+            msg.text || (msg.hasImage || msg.imageUrl ? '📷 [Image Attachment]' : 'Active inquiry'),
           lastSenderRole: msg.senderRole || 'player',
           updatedAt: msg.createdAt || new Date(),
           unreadCount: isUnreadPlayerMsg ? 1 : 0,

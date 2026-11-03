@@ -15,25 +15,27 @@ export async function GET(req) {
 
     const db = await getDb();
     const cleanEmail = email.toLowerCase().trim();
-    const emailRegex = { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+    const emailFilter = cleanEmail === email.trim() 
+      ? cleanEmail 
+      : { $in: [cleanEmail, email.trim()] };
 
-    // 1. Fetch from gameAccounts collection
+    // 1. Fetch from gameAccounts collection with indexed lookup
     const accounts = await db
       .collection('gameAccounts')
-      .find({ userEmail: emailRegex, status: 'READY' })
+      .find({ userEmail: emailFilter, status: 'READY' })
       .toArray();
 
     // 2. Also fetch approved READY requests from accountRequests
     const readyRequests = await db
       .collection('accountRequests')
-      .find({ userEmail: emailRegex, status: 'READY' })
+      .find({ userEmail: emailFilter, status: 'READY' })
       .toArray();
 
     // 3. Fetch any PENDING account requests
     const pending = await db
       .collection('accountRequests')
       .find({
-        userEmail: emailRegex,
+        userEmail: emailFilter,
         status: 'PENDING',
         requestType: { $ne: 'COIN_LOAD' },
       })

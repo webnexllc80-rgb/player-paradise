@@ -80,7 +80,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
     // Silent polling for real-time live desk operations
     const interval = setInterval(() => {
       if (!document.hidden) fetchData(true);
-    }, 2500);
+    }, 9000);
 
     // Cross-tab broadcast listener for instant (0ms) cashout detection
     let channel = null;

@@ -364,6 +364,24 @@ export default function DepositPage() {
         gameAccountUsername: linkedAccount ? linkedAccount.username : '',
       };
 
+      // 0ms Optimistic UI update: Instantly show pending deposit in history table
+      const tempId = 'temp_' + Date.now();
+      const optimisticDeposit = {
+        id: tempId,
+        _id: tempId,
+        amount: finalAmount,
+        totalSC,
+        bonusSC,
+        bonusPercent,
+        bonusType,
+        status: 'pending',
+        methodName: chosenMethodName,
+        gameTitle: selectedGame || null,
+        gameAccountUsername: linkedAccount ? linkedAccount.username : '',
+        createdAt: new Date().toISOString(),
+      };
+      setDepositHistory((prev) => [optimisticDeposit, ...prev]);
+
       const res = await fetch('/api/payments/deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -381,12 +399,15 @@ export default function DepositPage() {
         setTransactionId('');
         setProofImage('');
         setProofFileName('');
-        fetchHistory();
-        fetchUserAndSettings();
+        fetchHistory(true);
+        fetchUserAndSettings(true);
       } else {
+        // Rollback optimistic item on failure
+        setDepositHistory((prev) => prev.filter((d) => d.id !== tempId));
         setStatusMessage({ type: 'error', text: data.message || data.error || 'Deposit submission failed.' });
       }
     } catch (err) {
+      setDepositHistory((prev) => prev.filter((d) => d.id !== tempId));
       setStatusMessage({ type: 'error', text: err.message || 'Network error occurred.' });
     } finally {
       setSubmitting(false);

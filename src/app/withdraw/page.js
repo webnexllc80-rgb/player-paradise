@@ -132,15 +132,13 @@ export default function WithdrawPage() {
     fetchGameAccounts();
     fetchGames();
 
-    // Zero-refresh live polling: fast updates as soon as admin approves/rejects
+    // Zero-refresh live polling: gentle background sync with instant broadcast listeners
     const pollInterval = setInterval(() => {
       if (!document.hidden) {
         fetchHistory(true);
         fetchUser(true);
-        fetchGameAccounts();
-        fetchGames();
       }
-    }, 3000);
+    }, 10000);
 
     const handleUserSync = (e) => {
       if (e.detail) diffSet(setUser, e.detail);
@@ -303,6 +301,23 @@ export default function WithdrawPage() {
         gameScreenshot,
         qrCodeImage,
       };
+
+      // 0ms Optimistic UI update: Instantly show pending redemption in player table
+      const tempId = 'temp_' + Date.now();
+      const optimisticItem = {
+        id: tempId,
+        _id: tempId,
+        amount: finalAmount,
+        payoutMethod: method,
+        destinationTag: recipientTag.trim(),
+        destinationAddress: recipientTag.trim(),
+        gameTitle: selectedGame,
+        gameAccountUsername: linkedAccount.username,
+        status: 'pending',
+        stage: 'coin_verification',
+        createdAt: new Date().toISOString(),
+      };
+      setWithdrawHistory((prev) => [optimisticItem, ...prev]);
 
       const res = await fetch('/api/payments/withdraw', {
         method: 'POST',

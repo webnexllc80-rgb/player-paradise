@@ -180,7 +180,7 @@ export default function HomePage() {
         if (!document.hidden) {
           loadUserGameAccounts(user.email);
         }
-      }, 3000);
+      }, 10000);
       return () => clearInterval(interval);
     }
   }, [user?.email]);

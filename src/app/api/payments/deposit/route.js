@@ -333,15 +333,23 @@ export async function PUT(req) {
     }));
 
     if (!user && deposit.username) {
-      user = await usersCol.findOne({
-        username: { $regex: new RegExp(`^${deposit.username.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-      });
+      const uTrim = deposit.username.trim();
+      user = await usersCol.findOne({ username: uTrim });
+      if (!user) {
+        user = await usersCol.findOne({
+          username: { $regex: new RegExp(`^${uTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        });
+      }
     }
 
     if (!user && deposit.playerPaymentEmail) {
-      user = await usersCol.findOne({
-        email: { $regex: new RegExp(`^${deposit.playerPaymentEmail.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-      });
+      const eClean = deposit.playerPaymentEmail.trim().toLowerCase();
+      user = await usersCol.findOne({ email: eClean });
+      if (!user) {
+        user = await usersCol.findOne({
+          email: { $regex: new RegExp(`^${deposit.playerPaymentEmail.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        });
+      }
     }
 
     if (!user) {
@@ -636,8 +644,8 @@ export async function PUT(req) {
         if (!accCheck.exists) {
           // Check if an account request is already pending
           const existingPending = await db.collection('accountRequests').findOne({
-            userEmail: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-            gameTitle: { $regex: new RegExp(`^${cleanGameTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+            userEmail: cleanEmail,
+            gameTitle: cleanGameTitle,
             status: 'PENDING',
             requestType: { $ne: 'COIN_LOAD' },
           });

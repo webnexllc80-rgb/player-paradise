@@ -188,8 +188,8 @@ export default function CyberNavbar({
     // Initial silent check
     syncUserData();
 
-    // 5-second polling loop
-    const syncInterval = setInterval(syncUserData, 5000);
+    // 10-second polling loop with instant event triggers
+    const syncInterval = setInterval(syncUserData, 10000);
 
     // Event-based triggers: tab focus, visibility change, and custom in-app balance events
     const handleFocus = () => syncUserData();
