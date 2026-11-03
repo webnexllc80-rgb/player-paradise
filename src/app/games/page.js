@@ -13,6 +13,7 @@ import GameRequestModal from '@/components/modals/GameRequestModal';
 import ExternalGameModal from '@/components/modals/ExternalGameModal';
 import Panda777SlotsModal from '@/components/games/Panda777SlotsModal';
 import CyberCrashModal from '@/components/games/CyberCrashModal';
+import LoadCoinsModal from '@/components/modals/LoadCoinsModal';
 import { diffSet } from '@/lib/fastDiff';
 
 import {
@@ -68,6 +69,7 @@ export default function GamesPage() {
   const [activeExternalGame, setActiveExternalGame] = useState(null);
   const [slotsOpen, setSlotsOpen] = useState(false);
   const [crashOpen, setCrashOpen] = useState(false);
+  const [loadCoinsModal, setLoadCoinsModal] = useState({ open: false, game: null });
 
   const [userGameAccounts, setUserGameAccounts] = useState([]);
   const [pendingAccountRequests, setPendingAccountRequests] = useState([]);
@@ -436,6 +438,7 @@ export default function GamesPage() {
                     onPlay={handlePlayGame}
                     onViewCredentials={handlePlayGame}
                     onRequestAccount={handleRequestGame}
+                    onLoadCoins={(game) => setLoadCoinsModal({ open: true, game })}
                   />
                 );
               })}
@@ -498,6 +501,14 @@ export default function GamesPage() {
         onClose={() => setCrashOpen(false)}
         user={user}
         onBalanceUpdated={loadUser}
+      />
+
+      <LoadCoinsModal
+        isOpen={loadCoinsModal.open}
+        onClose={() => setLoadCoinsModal({ open: false, game: null })}
+        game={loadCoinsModal.game}
+        user={user}
+        onSuccess={loadUser}
       />
 
       {/* 1-Click Game ID Request Toast Notification */}

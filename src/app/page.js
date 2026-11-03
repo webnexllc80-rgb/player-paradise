@@ -546,6 +546,7 @@ export default function HomePage() {
                       onPlay={handlePlayGame}
                       onViewCredentials={handlePlayGame}
                       onRequestAccount={handleRequestGame}
+                      onLoadCoins={(game) => setLoadCoinsModal({ open: true, game })}
                     />
                   );
                 })}

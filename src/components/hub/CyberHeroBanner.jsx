@@ -121,7 +121,7 @@ export default function CyberHeroBanner({
           </p>
 
           {/* Dynamic Bonus Highlight Card */}
-          {bonusSettings?.welcomeBonusActive !== false && Number(bonusSettings?.welcomeBonusPercent ?? 300) > 0 && (
+          {bonusSettings?.welcomeBonusActive !== false && Number(bonusSettings?.welcomeBonusPercent ?? 100) > 0 && (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/50 via-slate-900/70 to-cyan-950/40 border border-purple-500/30 flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--neon-purple)] to-[var(--neon-cyan)] flex items-center justify-center text-black font-black text-xl shrink-0 shadow-[0_0_15px_rgba(192,38,211,0.5)]">
                 %
@@ -131,7 +131,7 @@ export default function CyberHeroBanner({
                   {bonusSettings?.welcomeBonusTitle || 'WELCOME BONUS'}
                 </div>
                 <div className="font-heading font-extrabold text-base sm:text-lg text-white">
-                  {bonusSettings?.welcomeBonusPercent ?? 300}% Match Bonus + Free 10,000 GC Credits
+                  {bonusSettings?.welcomeBonusPercent ?? 100}% Match Bonus + Free 10,000 GC Credits
                 </div>
                 {bonusSettings?.welcomeBonusSubtitle && (
                   <p className="text-[11px] text-slate-300 mt-0.5 leading-snug m-0">

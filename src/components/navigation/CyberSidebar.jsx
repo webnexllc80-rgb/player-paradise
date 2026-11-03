@@ -88,12 +88,11 @@ export default function CyberSidebar({
       >
         {/* Brand Header */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-[var(--chrome-border)]/60">
-          <div
-            onClick={() => {
-              router.push('/');
-              setMobileOpen(false);
-            }}
-            className="flex items-center gap-3 cursor-pointer overflow-hidden"
+          <Link
+            href="/"
+            prefetch={true}
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 cursor-pointer overflow-hidden no-underline text-inherit"
           >
             <div
               className="relative w-11 h-11 shrink-0 rounded-xl overflow-hidden border-2 border-[var(--neon-cyan)] shadow-[0_0_15px_rgba(0,240,255,0.5)]"
@@ -117,7 +116,7 @@ export default function CyberSidebar({
                 </span>
               </div>
             )}
-          </div>
+          </Link>
 
           {/* Desktop collapse button */}
           <button
@@ -193,28 +192,30 @@ export default function CyberSidebar({
 
             if (item.action) {
               return (
-                <div
+                <button
+                  type="button"
                   key={idx}
                   onClick={() => {
                     item.action();
                     setMobileOpen(false);
                   }}
+                  className="w-full text-left bg-transparent border-0 p-0 cursor-pointer block"
                 >
                   {content}
-                </div>
+                </button>
               );
             }
 
             return (
-              <div
+              <Link
                 key={idx}
-                onClick={() => {
-                  router.push(item.path);
-                  setMobileOpen(false);
-                }}
+                href={item.path}
+                prefetch={true}
+                onClick={() => setMobileOpen(false)}
+                className="block no-underline text-inherit focus:outline-none"
               >
                 {content}
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -223,27 +224,23 @@ export default function CyberSidebar({
         {(!collapsed || mobileOpen) ? (
           <div className="p-3 border-t border-[var(--chrome-border)]/60 bg-slate-950/40 space-y-2">
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  router.push('/deposit');
-                  setMobileOpen(false);
-                }}
-                className="cyber-btn-cyan text-[11px] py-2 font-bold flex items-center justify-center gap-1"
+              <Link
+                href="/deposit"
+                prefetch={true}
+                onClick={() => setMobileOpen(false)}
+                className="cyber-btn-cyan text-[11px] py-2 font-bold flex items-center justify-center gap-1 no-underline text-center"
               >
                 <Wallet size={13} />
                 <span>DEPOSIT</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  router.push('/withdraw');
-                  setMobileOpen(false);
-                }}
-                className="rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-200 text-[11px] py-2 font-bold flex items-center justify-center gap-1 transition-all"
+              </Link>
+              <Link
+                href="/withdraw"
+                prefetch={true}
+                onClick={() => setMobileOpen(false)}
+                className="rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-200 text-[11px] py-2 font-bold flex items-center justify-center gap-1 transition-all no-underline text-center"
               >
                 <span>REDEEM</span>
-              </button>
+              </Link>
             </div>
             <div className="text-[10px] text-center text-slate-500 font-mono">
               PLAYERS PARADISE v1.0 • 2026
@@ -251,13 +248,14 @@ export default function CyberSidebar({
           </div>
         ) : (
           <div className="p-2 border-t border-[var(--chrome-border)]/60 flex justify-center">
-            <button
-              onClick={() => router.push('/deposit')}
-              className="w-10 h-10 rounded-xl bg-[var(--neon-cyan)] text-black flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.4)] hover:scale-105 transition-transform"
+            <Link
+              href="/deposit"
+              prefetch={true}
+              className="w-10 h-10 rounded-xl bg-[var(--neon-cyan)] text-black flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.4)] hover:scale-105 transition-transform no-underline"
               title="Deposit Credits"
             >
               <Wallet size={18} />
-            </button>
+            </Link>
           </div>
         )}
       </aside>

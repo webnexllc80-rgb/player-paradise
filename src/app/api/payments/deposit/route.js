@@ -197,8 +197,8 @@ export async function POST(req) {
     const bonusPercent = !isBonusActive
       ? 0
       : hasClaimedWelcome
-      ? Number(settings?.regularBonusPercent ?? 50)
-      : Number(settings?.welcomeBonusPercent ?? 300);
+      ? Number(settings?.regularBonusPercent ?? 10)
+      : Number(settings?.welcomeBonusPercent ?? 100);
     const bonusMax = hasClaimedWelcome
       ? Number(settings?.regularBonusMax ?? 2500)
       : Number(settings?.welcomeBonusMax ?? 7500);

@@ -43,8 +43,10 @@ export default function DepositPage() {
 
   // Settings for Bonus System
   const [settings, setSettings] = useState({
-    welcomeBonusPercent: 300,
-    regularBonusPercent: 50,
+    welcomeBonusPercent: 100,
+    regularBonusPercent: 10,
+    welcomeBonusActive: true,
+    regularBonusActive: true,
   });
 
   // Deposit Form State
@@ -103,8 +105,10 @@ export default function DepositPage() {
 
       if (sData.success && sData.settings) {
         diffSet(setSettings, {
-          welcomeBonusPercent: Number(sData.settings.welcomeBonusPercent ?? 300),
-          regularBonusPercent: Number(sData.settings.regularBonusPercent ?? 50),
+          welcomeBonusPercent: Number(sData.settings.welcomeBonusPercent ?? 100),
+          regularBonusPercent: Number(sData.settings.regularBonusPercent ?? 10),
+          welcomeBonusActive: sData.settings.welcomeBonusActive !== false,
+          regularBonusActive: sData.settings.regularBonusActive !== false,
         });
       }
     } catch (err) {
@@ -326,13 +330,22 @@ export default function DepositPage() {
 
   // Bonus Calculation Logic
   const hasApprovedDeposit =
-    depositHistory.some((d) => d.status === 'approved' || d.status === 'completed') ||
-    Boolean(user?.totalDeposited && user.totalDeposited > 0);
+    Boolean(user?.welcomeBonusClaimed) ||
+    Boolean(user?.totalDeposited && user.totalDeposited > 0) ||
+    depositHistory.some((d) => d.status === 'approved' || d.status === 'completed');
 
-  const bonusPercent = hasApprovedDeposit
-    ? settings.regularBonusPercent
-    : settings.welcomeBonusPercent;
+  const bonusType = hasApprovedDeposit ? 'regular' : 'welcome';
   const isWelcome = !hasApprovedDeposit;
+
+  const isBonusActive = hasApprovedDeposit
+    ? settings.regularBonusActive !== false
+    : settings.welcomeBonusActive !== false;
+
+  const bonusPercent = !isBonusActive
+    ? 0
+    : hasApprovedDeposit
+    ? Number(settings.regularBonusPercent ?? 10)
+    : Number(settings.welcomeBonusPercent ?? 100);
 
   const bonusSC = Number(((finalAmount * bonusPercent) / 100).toFixed(2));
   const totalSC = Number((finalAmount + bonusSC).toFixed(2));
@@ -384,6 +397,8 @@ export default function DepositPage() {
         proofImage,
         gameTitle: selectedGame,
         gameAccountUsername: linkedAccount ? linkedAccount.username : '',
+        bonusType,
+        bonusPercent,
       };
 
       // 0ms Optimistic UI update: Instantly show pending deposit in history table

@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   Clock,
+  Coins,
 } from 'lucide-react';
 import { getGameThumbnail } from '@/lib/gameAssets';
 
@@ -22,6 +23,7 @@ export default function GameCard({
   hasAccount = false,
   isPending = false,
   onViewCredentials = null,
+  onLoadCoins = null,
 }) {
   const imgSrc = getGameThumbnail(
     game.title,
@@ -106,12 +108,12 @@ export default function GameCard({
 
           {hasAccount ? (
             <button
-              onClick={() => (onViewCredentials ? onViewCredentials(game) : onPlay(game))}
-              title="Credentials already created. Click to view credentials."
-              className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/60 hover:border-emerald-400 text-emerald-300 font-heading font-bold text-xs transition-all shadow-[0_0_10px_rgba(16,185,129,0.25)]"
+              onClick={() => (onLoadCoins ? onLoadCoins(game) : onViewCredentials ? onViewCredentials(game) : onPlay(game))}
+              title="Credentials ready. Click to load coins into game account."
+              className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 hover:border-amber-400 text-amber-300 font-heading font-bold text-xs transition-all shadow-[0_0_10px_rgba(245,158,11,0.25)] active:scale-95"
             >
-              <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
-              <span>ID READY</span>
+              <Coins size={13} className="text-amber-400 shrink-0" />
+              <span>LOAD COINS</span>
             </button>
           ) : isPending ? (
             <button

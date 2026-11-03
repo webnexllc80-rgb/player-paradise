@@ -39,7 +39,7 @@ export default function WithdrawPage() {
 
   // Withdrawal Form State
   const [amount, setAmount] = useState(50);
-  const [customAmount, setCustomAmount] = useState('');
+  const [customAmount, setCustomAmount] = useState('50');
   const [method, setMethod] = useState('Cash App');
   const [recipientTag, setRecipientTag] = useState('');
   const [selectedGame, setSelectedGame] = useState('Fire Kirin');
@@ -493,7 +493,7 @@ export default function WithdrawPage() {
                     </span>
                     Game Platform &amp; Payout Method
                   </h3>
-                  <span className="text-xs text-slate-400">Min $20.00</span>
+                  <span className="text-xs text-emerald-400 font-bold">100% Flexible Amount</span>
                 </div>
 
                 {/* Game Select & Account Detection */}
@@ -635,53 +635,80 @@ export default function WithdrawPage() {
                     </span>
                     Cashout Amount ($ USD)
                   </h3>
-                  <span className="text-xs text-slate-400 font-mono">1 SC = $1.00 USD</span>
+                  <span className="text-xs text-emerald-400 font-mono font-bold">1 SC = $1.00 USD</span>
                 </div>
 
-                {/* Presets */}
-                <div className="grid grid-cols-5 gap-2">
-                  {presetAmounts.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => {
-                        setAmount(p);
-                        setCustomAmount('');
-                      }}
-                      className={`py-3 rounded-xl font-heading font-bold text-sm transition-all cursor-pointer ${
-                        !customAmount && amount === p
-                          ? 'bg-[var(--neon-cyan)] text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]'
-                          : 'bg-slate-900 border border-slate-800 text-slate-200 hover:bg-slate-800'
-                      }`}
-                    >
-                      ${p}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom Amount */}
+                {/* Primary Direct Amount Input */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
-                    Or Enter Exact Amount:
+                  <label className="block text-xs font-bold text-slate-300 mb-2 uppercase flex items-center justify-between">
+                    <span>Enter Cashout Amount ($ USD) *</span>
+                    <span className="text-[11px] text-cyan-400 font-normal font-sans">Type any amount you want</span>
                   </label>
                   <div className="relative">
                     <DollarSign
-                      size={16}
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                      size={20}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-cyan-400 font-bold"
                     />
                     <input
                       type="number"
                       min="1"
-                      step="1"
-                      placeholder="e.g. 150"
+                      step="any"
+                      required
+                      placeholder="e.g. 25, 50, 75, 120..."
                       value={customAmount}
-                      onChange={(e) => setCustomAmount(e.target.value)}
-                      className="w-full pl-9 pr-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-[var(--neon-cyan)] text-sm"
+                      onChange={(e) => {
+                        setCustomAmount(e.target.value);
+                        setAmount(e.target.value ? parseFloat(e.target.value) || 0 : 0);
+                      }}
+                      className="w-full pl-11 pr-4 py-3.5 rounded-2xl bg-slate-900 border-2 border-cyan-500/40 text-white font-mono font-black text-lg focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_20px_rgba(0,240,255,0.25)] transition-all"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-                    💡 You can request to cash out any amount won from your game platform. Upload your score proof below for instant desk verification.
-                  </p>
+                </div>
+
+                {/* Quick Selection Shortcuts */}
+                <div>
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    Quick Preset Shortcuts:
+                  </span>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[20, 50, 100, 200, 500].map((p) => {
+                      const isSel = Number(customAmount || amount) === p;
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => {
+                            setCustomAmount(String(p));
+                            setAmount(p);
+                          }}
+                          className={`py-2.5 rounded-xl font-heading font-bold text-sm transition-all cursor-pointer ${
+                            isSel
+                              ? 'bg-[var(--neon-cyan)] text-black shadow-[0_0_15px_rgba(0,240,255,0.4)] scale-102 font-black'
+                              : 'bg-slate-900 border border-slate-800 text-slate-200 hover:bg-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          ${p}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Live Amount Summary Banner */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-purple-950/30 to-[#0e122b] border border-cyan-500/30 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">
+                      Cashout Amount To Receive
+                    </span>
+                    <span className="text-xl font-mono font-black text-emerald-400">
+                      ${(Number(customAmount || amount || 0)).toFixed(2)} USD
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[11px] text-cyan-300 font-bold bg-cyan-950/60 border border-cyan-500/30 px-2.5 py-1 rounded-full font-mono">
+                      Via {method}
+                    </span>
+                  </div>
                 </div>
               </div>
 
