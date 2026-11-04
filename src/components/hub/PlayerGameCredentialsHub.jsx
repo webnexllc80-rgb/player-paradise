@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { diffSet } from '@/lib/fastDiff';
@@ -46,8 +46,11 @@ export default function PlayerGameAccountsHub({
   const [requestSuccessMsg, setRequestSuccessMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
 
+  const isFetchingCredsRef = useRef(false);
+
   const fetchAccountsAndRequests = async (isSilent = false) => {
-    if (!user?.email) return;
+    if (!user?.email || isFetchingCredsRef.current) return;
+    isFetchingCredsRef.current = true;
 
     if (!isSilent) setLoading(true);
     try {
@@ -118,6 +121,7 @@ export default function PlayerGameAccountsHub({
     } catch (err) {
       console.error('Error fetching game accounts:', err);
     } finally {
+      isFetchingCredsRef.current = false;
       if (!isSilent) setLoading(false);
     }
   };
@@ -127,9 +131,11 @@ export default function PlayerGameAccountsHub({
       fetchAccountsAndRequests();
       const interval = setInterval(() => {
         if (!document.hidden) fetchAccountsAndRequests(true);
-      }, 4000);
+      }, 6000);
 
-      const handleFocus = () => fetchAccountsAndRequests(true);
+      const handleFocus = () => {
+        if (!document.hidden) fetchAccountsAndRequests(true);
+      };
       window.addEventListener('focus', handleFocus);
       document.addEventListener('visibilitychange', handleFocus);
       window.addEventListener('accountRequestUpdated', handleFocus);

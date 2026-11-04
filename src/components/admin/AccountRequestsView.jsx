@@ -14,21 +14,27 @@ import {
   ShieldCheck,
   RefreshCw,
   Trash2,
+  Zap,
 } from 'lucide-react';
+import AdminPagination from '@/components/admin/AdminPagination';
 
 const AccountRequestsView = React.memo(function AccountRequestsView({
   requests = [],
   filter = 'PENDING',
   onFilterChange,
   onOpenApproveModal,
+  onApproveCoinLoad,
   onCancelRequest,
   onDismissRequest,
   onRefresh,
   isRefreshing = false,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'ACCOUNT_CREATION' | 'COIN_LOAD'
   const [copiedId, setCopiedId] = useState(null);
   const [previewScreenshot, setPreviewScreenshot] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const handleCopy = (text, id) => {
     if (!text) return;
@@ -37,16 +43,28 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Strictly filter only account creation requests (never show coin loads here)
-  const accountCreationOnly = requests.filter(
-    (r) =>
-      r.requestType === 'ACCOUNT_CREATION' ||
-      (!r.requestType && (!r.transferAmount || Number(r.transferAmount) <= 0))
-  );
+  const allRequests = requests || [];
 
-  const filtered = accountCreationOnly.filter((r) => {
+  // Counts for tabs
+  const coinLoadsCount = allRequests.filter(
+    (r) => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
+  ).length;
+  const accountsCount = allRequests.filter(
+    (r) => r.requestType === 'ACCOUNT_CREATION' || (!r.requestType && (!r.transferAmount || Number(r.transferAmount) <= 0))
+  ).length;
+
+  const filtered = allRequests.filter((r) => {
+    const isCoinLoad = r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0;
+    
+    // Type filter
+    if (typeFilter === 'ACCOUNT_CREATION' && isCoinLoad) return false;
+    if (typeFilter === 'COIN_LOAD' && !isCoinLoad) return false;
+
+    // Status filter
     const matchesFilter =
       filter === 'ALL' ? true : (r.status || '').toUpperCase() === filter.toUpperCase();
+    
+    // Search query
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
       !q ||
@@ -54,11 +72,26 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
       r.userEmail?.toLowerCase().includes(q) ||
       r.gameTitle?.toLowerCase().includes(q) ||
       r.gameAccountUsername?.toLowerCase().includes(q);
+
     return matchesFilter && matchesSearch;
   });
 
-  const pendingCount = accountCreationOnly.filter((r) => (r.status || '').toUpperCase() === 'PENDING').length;
-  const readyCount = accountCreationOnly.filter((r) => (r.status || '').toUpperCase() === 'READY').length;
+  const pendingCount = allRequests.filter((r) => (r.status || '').toUpperCase() === 'PENDING').length;
+  const readyCount = allRequests.filter((r) => (r.status || '').toUpperCase() === 'READY').length;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedRequests = filtered.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
+
+  const handleFilterChangeWithReset = (newFilter) => {
+    if (onFilterChange) onFilterChange(newFilter);
+    setCurrentPage(1);
+  };
+
+  const handleTypeChangeWithReset = (newType) => {
+    setTypeFilter(newType);
+    setCurrentPage(1);
+  };
 
   const formatRelativeTime = (dateStr) => {
     if (!dateStr) return '';
@@ -77,7 +110,7 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
     <div className="flex flex-col gap-6 sm:gap-8 w-full" style={{ fontFamily: 'Lexend, -apple-system, sans-serif' }}>
       {/* Top Filter & Search Bar */}
       <div
-        className="p-5 sm:p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-2xl"
+        className="p-5 sm:p-6 rounded-2xl flex flex-col gap-4 shadow-2xl"
         style={{
           backgroundColor: '#0E0A24',
           background: 'linear-gradient(135deg, #0E0A24 0%, #140E33 100%)',
@@ -85,106 +118,152 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
           boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 25px rgba(0, 240, 255, 0.1)',
         }}
       >
-        <div
-          className="flex items-center gap-2 p-1.5 rounded-xl w-full md:w-auto overflow-x-auto"
-          style={{
-            backgroundColor: '#070514',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-          }}
-        >
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+          {/* Status Filter Tabs */}
+          <div
+            className="flex items-center gap-2 p-1.5 rounded-xl w-full lg:w-auto overflow-x-auto"
+            style={{
+              backgroundColor: '#070514',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
+            {[
+              { key: 'PENDING', label: 'Pending', count: pendingCount, color: '#F59E0B' },
+              { key: 'READY', label: 'Ready', count: readyCount, color: '#10B981' },
+              { key: 'ALL', label: 'All Requests', count: allRequests.length, color: '#00F0FF' },
+            ].map(({ key, label, count, color }) => {
+              const isActive = filter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => handleFilterChangeWithReset(key)}
+                  className="px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer hover:scale-[1.02]"
+                  style={
+                    isActive
+                      ? {
+                          backgroundColor: color,
+                          color: key === 'READY' ? '#FFFFFF' : '#070514',
+                          boxShadow: `0 0 16px ${color}55`,
+                        }
+                      : {
+                          backgroundColor: 'transparent',
+                          color: '#9A91A8',
+                        }
+                  }
+                >
+                  {key === 'PENDING' && (
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{
+                        backgroundColor: isActive ? '#070514' : '#F59E0B',
+                        boxShadow: isActive ? 'none' : '0 0 8px #F59E0B',
+                      }}
+                    />
+                  )}
+                  <span>{label}</span>
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[10.5px] font-mono font-bold"
+                    style={{
+                      backgroundColor: isActive ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.08)',
+                      color: isActive ? 'inherit' : '#9A91A8',
+                    }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search Bar & Refresh */}
+          <div className="flex items-center gap-3 w-full lg:w-auto">
+            <div
+              className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl w-full lg:w-72 transition-all"
+              style={{
+                backgroundColor: '#070514',
+                border: '1px solid rgba(0, 240, 255, 0.28)',
+              }}
+            >
+              <Search size={14} className="text-cyan-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Search player, game, ID..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none p-0 border-none"
+                style={{ fontFamily: 'Lexend, sans-serif' }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCurrentPage(1);
+                  }}
+                  className="text-gray-400 hover:text-white shrink-0 cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shrink-0 cursor-pointer hover:scale-[1.03]"
+              style={{
+                background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.15) 0%, rgba(224, 38, 216, 0.15) 100%)',
+                border: '1px solid rgba(0, 240, 255, 0.4)',
+                color: '#00F0FF',
+                boxShadow: '0 0 15px rgba(0, 240, 255, 0.2)',
+                fontFamily: 'Lexend, sans-serif',
+              }}
+            >
+              <RefreshCw size={13} strokeWidth={2.5} className={isRefreshing ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Request Type Segment Filter (All vs Game Accounts vs Coin Loads) */}
+        <div className="flex items-center gap-2 pt-2 border-t border-white/5 overflow-x-auto">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider shrink-0 mr-1">
+            Request Type:
+          </span>
           {[
-            { key: 'PENDING', label: 'Pending', count: pendingCount, color: '#F59E0B' },
-            { key: 'READY', label: 'Ready', count: readyCount, color: '#10B981' },
-            { key: 'ALL', label: 'All Requests', count: requests.length, color: '#00F0FF' },
-          ].map(({ key, label, count, color }) => {
-            const isActive = filter === key;
+            { id: 'ALL', label: 'All Requests', count: allRequests.length, icon: null },
+            { id: 'ACCOUNT_CREATION', label: 'Game IDs', count: accountsCount, icon: Gamepad2 },
+            { id: 'COIN_LOAD', label: '⚡ Coin Loads', count: coinLoadsCount, icon: Coins },
+          ].map(({ id, label, count, icon: Icon }) => {
+            const isSel = typeFilter === id;
             return (
               <button
-                key={key}
+                key={id}
                 type="button"
-                onClick={() => onFilterChange(key)}
-                className="px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer hover:scale-[1.02]"
-                style={
-                  isActive
-                    ? {
-                        backgroundColor: color,
-                        color: key === 'READY' ? '#FFFFFF' : '#070514',
-                        boxShadow: `0 0 16px ${color}55`,
-                      }
-                    : {
-                        backgroundColor: 'transparent',
-                        color: '#9A91A8',
-                      }
-                }
+                onClick={() => handleTypeChangeWithReset(id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                  isSel
+                    ? 'bg-cyan-500/20 text-[#00F0FF] border border-cyan-500/50 shadow-[0_0_12px_rgba(0,240,255,0.25)]'
+                    : 'bg-white/5 text-gray-400 border border-transparent hover:text-white hover:bg-white/10'
+                }`}
               >
-                {key === 'PENDING' && (
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{
-                      backgroundColor: isActive ? '#070514' : '#F59E0B',
-                      boxShadow: isActive ? 'none' : '0 0 8px #F59E0B',
-                    }}
-                  />
-                )}
+                {Icon && <Icon size={12} className={isSel ? 'text-[#00F0FF]' : 'text-gray-400'} />}
                 <span>{label}</span>
                 <span
-                  className="px-2 py-0.5 rounded-full text-[10.5px] font-mono font-bold"
-                  style={{
-                    backgroundColor: isActive ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.08)',
-                    color: isActive ? 'inherit' : '#9A91A8',
-                  }}
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    isSel ? 'bg-cyan-400/30 text-white font-black' : 'bg-white/10 text-gray-400'
+                  }`}
                 >
                   {count}
                 </span>
               </button>
             );
           })}
-        </div>
-
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div
-            className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl w-full md:w-72 transition-all"
-            style={{
-              backgroundColor: '#070514',
-              border: '1px solid rgba(0, 240, 255, 0.28)',
-            }}
-          >
-            <Search size={14} className="text-cyan-400 shrink-0" />
-            <input
-              type="text"
-              placeholder="Search player, game, ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none p-0 border-none"
-              style={{ fontFamily: 'Lexend, sans-serif' }}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="text-gray-400 hover:text-white shrink-0 cursor-pointer"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            className="px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shrink-0 cursor-pointer hover:scale-[1.03]"
-            style={{
-              background: 'linear-gradient(135deg, rgba(0, 240, 255, 0.15) 0%, rgba(224, 38, 216, 0.15) 100%)',
-              border: '1px solid rgba(0, 240, 255, 0.4)',
-              color: '#00F0FF',
-              boxShadow: '0 0 15px rgba(0, 240, 255, 0.2)',
-              fontFamily: 'Lexend, sans-serif',
-            }}
-          >
-            <RefreshCw size={13} strokeWidth={2.5} className={isRefreshing ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
         </div>
       </div>
 
@@ -271,8 +350,9 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filtered.map((req) => {
+                {paginatedRequests.map((req) => {
                   const isPending = (req.status || '').toUpperCase() === 'PENDING';
+                  const isCoinLoad = req.requestType === 'COIN_LOAD' || Number(req.transferAmount || 0) > 0;
                   return (
                     <tr
                       key={req.id}
@@ -282,7 +362,11 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                     >
                       <td className="p-4 whitespace-nowrap">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center font-black text-white text-xs uppercase shadow">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-black text-xs uppercase shadow ${
+                            isCoinLoad
+                              ? 'bg-gradient-to-tr from-[#00F0FF] to-emerald-400'
+                              : 'bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white'
+                          }`}>
                             {req.userName ? req.userName.charAt(0) : 'P'}
                           </div>
                           <div>
@@ -293,7 +377,14 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                       </td>
 
                       <td className="p-4 whitespace-nowrap">
-                        <span className="font-heading font-black text-amber-400 text-sm">{req.gameTitle}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-heading font-black text-amber-400 text-sm">{req.gameTitle}</span>
+                          {isCoinLoad && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-[#00F0FF] bg-cyan-500/15 border border-cyan-500/40 px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(0,240,255,0.2)]">
+                              ⚡ Coin Load
+                            </span>
+                          )}
+                        </div>
                         {Boolean(req.freeplayPending) && (
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                             <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-lg shadow-sm">
@@ -313,7 +404,7 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                         {Boolean(req.transferAmount && req.transferAmount > 0) && (
                           <div className="mt-1">
                             <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
-                              Load: ${Number(req.transferAmount).toFixed(2)} SC
+                              💰 Amount: ${Number(req.transferAmount).toFixed(2)} SC
                             </span>
                           </div>
                         )}
@@ -338,7 +429,14 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                       </td>
 
                       <td className="p-4 font-mono">
-                        {req.gameAccountUsername ? (
+                        {isCoinLoad ? (
+                          <div className="p-2 rounded-xl bg-black/40 border border-cyan-500/20 space-y-0.5">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Game Account ID:</span>
+                            <span className="text-cyan-300 font-black text-xs block font-mono">
+                              {req.gameAccountUsername || req.userName}
+                            </span>
+                          </div>
+                        ) : req.gameAccountUsername ? (
                           <div className="p-2 rounded-xl bg-black/40 border border-white/5 space-y-0.5">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-cyan-300 font-black text-xs">U: {req.gameAccountUsername}</span>
@@ -372,16 +470,27 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                       <td className="p-4 text-right whitespace-nowrap">
                         {isPending ? (
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => onOpenApproveModal(req)}
-                              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95"
-                            >
-                              <Key size={13} />
-                              <span>Issue Credentials</span>
-                            </button>
+                            {isCoinLoad ? (
+                              <button
+                                onClick={() => (onApproveCoinLoad ? onApproveCoinLoad(req) : onOpenApproveModal(req))}
+                                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#00F0FF] to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-black font-black text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/25 active:scale-95 cursor-pointer"
+                                title="Approve Coin Load & Deduct SC"
+                              >
+                                <Check size={13} strokeWidth={3} />
+                                <span>Approve Load (${Number(req.transferAmount || 0).toFixed(2)})</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => onOpenApproveModal(req)}
+                                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95"
+                              >
+                                <Key size={13} />
+                                <span>Issue Credentials</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => onCancelRequest(req.id)}
-                              className="p-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold transition active:scale-95"
+                              className="p-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold transition active:scale-95 cursor-pointer"
                               title="Reject / Cancel Request"
                             >
                               <X size={14} />
@@ -389,7 +498,7 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                             {onDismissRequest && (
                               <button
                                 onClick={() => onDismissRequest(req.id)}
-                                className="p-2 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-gray-400 hover:text-red-300 font-bold transition active:scale-95"
+                                className="p-2 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-gray-400 hover:text-red-300 font-bold transition active:scale-95 cursor-pointer"
                                 title="Permanently Delete / Dismiss Request"
                               >
                                 <Trash2 size={14} />
@@ -397,17 +506,19 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                             )}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => onOpenApproveModal(req)}
-                              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
-                            >
-                              Edit Credentials
-                            </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {!isCoinLoad && (
+                              <button
+                                onClick={() => onOpenApproveModal(req)}
+                                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
+                              >
+                                Edit Credentials
+                              </button>
+                            )}
                             {onDismissRequest && (
                               <button
                                 onClick={() => onDismissRequest(req.id)}
-                                className="p-2 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-gray-400 hover:text-red-300 font-bold transition active:scale-95"
+                                className="p-2 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-gray-400 hover:text-red-300 font-bold transition"
                                 title="Permanently Delete / Dismiss Request"
                               >
                                 <Trash2 size={14} />
@@ -425,20 +536,27 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
 
           {/* MOBILE & TABLET CARDS */}
           <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {filtered.map((req) => {
+            {paginatedRequests.map((req) => {
               const isPending = (req.status || '').toUpperCase() === 'PENDING';
+              const isCoinLoad = req.requestType === 'COIN_LOAD' || Number(req.transferAmount || 0) > 0;
               return (
                 <div
                   key={req.id}
                   className={`p-4 rounded-2xl border flex flex-col gap-3.5 transition shadow-xl ${
                     isPending
-                      ? 'bg-[#0E0A24] border-amber-500/40 shadow-amber-500/10'
+                      ? isCoinLoad
+                        ? 'bg-[#0E0A24] border-cyan-500/50 shadow-cyan-500/10'
+                        : 'bg-[#0E0A24] border-amber-500/40 shadow-amber-500/10'
                       : 'bg-[#0E0A24] border-[#00F0FF]/25'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#00F0FF] to-[#E026D8] flex items-center justify-center font-black text-black text-sm shadow">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-black text-sm shadow ${
+                        isCoinLoad
+                          ? 'bg-gradient-to-tr from-[#00F0FF] to-emerald-400'
+                          : 'bg-gradient-to-tr from-[#00F0FF] to-[#E026D8]'
+                      }`}>
                         {req.userName ? req.userName.charAt(0) : 'P'}
                       </div>
                       <div>
@@ -448,8 +566,12 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                     </div>
 
                     {isPending ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border animate-pulse ${
+                        isCoinLoad
+                          ? 'bg-cyan-500/20 text-[#00F0FF] border-cyan-500/40'
+                          : 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${isCoinLoad ? 'bg-[#00F0FF]' : 'bg-amber-400'}`} />
                         PENDING
                       </span>
                     ) : (
@@ -462,7 +584,14 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                   <div className="p-3 bg-[#140E33] rounded-xl border border-white/5 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-400 font-bold">Game Requested:</span>
-                      <span className="font-heading font-black text-amber-400 text-sm">{req.gameTitle}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-heading font-black text-amber-400 text-sm">{req.gameTitle}</span>
+                        {isCoinLoad && (
+                          <span className="text-[9.5px] font-black text-[#00F0FF] bg-cyan-500/20 border border-cyan-500/40 px-1.5 py-0.2 rounded">
+                            ⚡ Load
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {Boolean(req.freeplayPending) && (
@@ -487,7 +616,7 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
 
                     {Boolean(req.transferAmount && req.transferAmount > 0) && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400 font-bold">Initial Load SC:</span>
+                        <span className="text-xs text-gray-400 font-bold">Coin Load Amount:</span>
                         <span className="text-xs font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded">
                           ${Number(req.transferAmount).toFixed(2)} SC
                         </span>
@@ -500,7 +629,12 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                     </div>
                   </div>
 
-                  {req.gameAccountUsername && (
+                  {isCoinLoad ? (
+                    <div className="p-3 bg-cyan-500/[0.06] rounded-xl border border-cyan-500/20">
+                      <span className="text-[10px] uppercase font-bold text-gray-400 block">Game Account ID:</span>
+                      <p className="text-cyan-300 font-bold font-mono text-xs">{req.gameAccountUsername || req.userName}</p>
+                    </div>
+                  ) : req.gameAccountUsername ? (
                     <div className="p-3 bg-cyan-500/[0.06] rounded-xl border border-cyan-500/20 flex items-center justify-between">
                       <div className="font-mono text-xs">
                         <p className="text-cyan-300 font-bold">User: {req.gameAccountUsername}</p>
@@ -513,25 +647,37 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                         {copiedId === req.id ? <CheckCheck size={14} className="text-emerald-400" /> : <Copy size={14} />}
                       </button>
                     </div>
-                  )}
+                  ) : null}
 
                   {isPending ? (
                     <div className="grid grid-cols-3 gap-2 pt-1">
-                      <button
-                        onClick={() => onOpenApproveModal(req)}
-                        className="py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs flex items-center justify-center gap-1 shadow-lg shadow-amber-500/20 active:scale-95"
-                      >
-                        <Key size={13} />
-                        <span>Issue</span>
-                      </button>
+                      {isCoinLoad ? (
+                        <button
+                          onClick={() => (onApproveCoinLoad ? onApproveCoinLoad(req) : onOpenApproveModal(req))}
+                          className="col-span-2 py-2.5 rounded-xl bg-gradient-to-r from-[#00F0FF] to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 text-black font-black text-xs flex items-center justify-center gap-1 shadow-lg shadow-cyan-500/25 active:scale-95"
+                        >
+                          <Check size={13} strokeWidth={3} />
+                          <span>Approve Load (${Number(req.transferAmount || 0).toFixed(2)})</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onOpenApproveModal(req)}
+                          className="py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs flex items-center justify-center gap-1 shadow-lg shadow-amber-500/20 active:scale-95"
+                        >
+                          <Key size={13} />
+                          <span>Issue</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => onCancelRequest(req.id)}
-                        className="py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-black text-xs flex items-center justify-center gap-1 active:scale-95"
+                        className={`py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-black text-xs flex items-center justify-center gap-1 active:scale-95 ${
+                          isCoinLoad ? 'col-span-1' : ''
+                        }`}
                       >
                         <X size={13} />
                         <span>Reject</span>
                       </button>
-                      {onDismissRequest && (
+                      {onDismissRequest && !isCoinLoad && (
                         <button
                           onClick={() => onDismissRequest(req.id)}
                           className="py-2.5 rounded-xl bg-gray-500/15 hover:bg-red-600/30 border border-white/10 text-gray-400 hover:text-red-300 font-black text-xs flex items-center justify-center gap-1 active:scale-95"
@@ -544,12 +690,14 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onOpenApproveModal(req)}
-                        className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
-                      >
-                        Edit Credentials
-                      </button>
+                      {!isCoinLoad && (
+                        <button
+                          onClick={() => onOpenApproveModal(req)}
+                          className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-gray-300 text-xs font-bold transition"
+                        >
+                          Edit Credentials
+                        </button>
+                      )}
                       {onDismissRequest && (
                         <button
                           onClick={() => onDismissRequest(req.id)}
@@ -565,6 +713,21 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
               );
             })}
           </div>
+
+          {/* Responsive Cyberpunk Pagination */}
+          {filtered.length > 0 && (
+            <AdminPagination
+              currentPage={safeCurrentPage}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              className="mt-3"
+            />
+          )}
         </>
       )}
 

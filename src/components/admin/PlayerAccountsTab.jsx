@@ -14,6 +14,7 @@ import {
   Clock,
   UserCheck
 } from 'lucide-react';
+import AdminPagination from '@/components/admin/AdminPagination';
 
 export default function PlayerAccountsTab({
   usersList = [],
@@ -23,6 +24,8 @@ export default function PlayerAccountsTab({
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'BANNED'
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const filteredUsers = usersList.filter((u) => {
     if (statusFilter === 'ACTIVE' && u.isBanned) return false;
@@ -38,6 +41,10 @@ export default function PlayerAccountsTab({
 
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedUsers = filteredUsers.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const totalSC = usersList.reduce((acc, u) => acc + (Number(u.balanceSC) || 0), 0);
   const totalGC = usersList.reduce((acc, u) => acc + (Number(u.balanceGC) || 0), 0);
@@ -75,7 +82,10 @@ export default function PlayerAccountsTab({
           {['ALL', 'ACTIVE', 'BANNED'].map((st) => (
             <button
               key={st}
-              onClick={() => setStatusFilter(st)}
+              onClick={() => {
+                setStatusFilter(st);
+                setCurrentPage(1);
+              }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 statusFilter === st
                   ? 'bg-cyan-500 text-slate-950 font-black shadow-[0_0_12px_rgba(0,240,255,0.4)]'
@@ -92,7 +102,10 @@ export default function PlayerAccountsTab({
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
             placeholder="Search by username, email, phone..."
             className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-400 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white outline-none"
           />
@@ -101,7 +114,7 @@ export default function PlayerAccountsTab({
 
       {/* Players Directory List */}
       <div className="space-y-3">
-        {filteredUsers.map((u) => (
+        {paginatedUsers.map((u) => (
           <div
             key={u.id || u._id}
             className="p-4 rounded-2xl bg-[#090d22]/90 border border-slate-800 hover:border-cyan-500/40 transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
@@ -194,6 +207,20 @@ export default function PlayerAccountsTab({
           </div>
         )}
       </div>
+
+      {filteredUsers.length > 0 && (
+        <AdminPagination
+          currentPage={safePage}
+          totalItems={filteredUsers.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(sz) => {
+            setPageSize(sz);
+            setCurrentPage(1);
+          }}
+          className="mt-2"
+        />
+      )}
     </div>
   );
 }

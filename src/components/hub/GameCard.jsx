@@ -43,7 +43,8 @@ export default function GameCard({
           alt={game.title}
           loading="lazy"
           onError={(e) => {
-            if (e.currentTarget.src !== '/images/vegas-777.svg') {
+            e.currentTarget.onerror = null;
+            if (!e.currentTarget.src.endsWith('/images/vegas-777.svg')) {
               e.currentTarget.src = '/images/vegas-777.svg';
             }
           }}

@@ -17,6 +17,7 @@ import {
   Image as ImageIcon,
   ExternalLink,
 } from 'lucide-react';
+import AdminPagination from '@/components/admin/AdminPagination';
 
 const FinanceRedemptionsView = React.memo(function FinanceRedemptionsView({
   redemptions = [],
@@ -31,6 +32,8 @@ const FinanceRedemptionsView = React.memo(function FinanceRedemptionsView({
   const [rejectModal, setRejectModal] = useState({ open: false, item: null, reason: '' });
   const [previewModal, setPreviewModal] = useState(null);
   const [processingId, setProcessingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const handleCopy = (text, id) => {
     if (!text) return;
@@ -51,6 +54,10 @@ const FinanceRedemptionsView = React.memo(function FinanceRedemptionsView({
       r.amount?.toString().includes(q);
     return matchesStatus && matchesSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedRedemptions = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const pendingCount = redemptions.filter((r) => r.status === 'pending').length;
   const approvedCount = redemptions.filter((r) => r.status === 'approved').length;
@@ -192,7 +199,7 @@ const FinanceRedemptionsView = React.memo(function FinanceRedemptionsView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filtered.map((r) => {
+                {paginatedRedemptions.map((r) => {
                   const isPending = r.status === 'pending';
                   const displayTag = r.destinationTag || r.destinationAddress;
                   return (
@@ -398,7 +405,7 @@ const FinanceRedemptionsView = React.memo(function FinanceRedemptionsView({
 
           {/* MOBILE & TABLET CARDS */}
           <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {filtered.map((r) => {
+            {paginatedRedemptions.map((r) => {
               const isPending = r.status === 'pending';
               const displayTag = r.destinationTag || r.destinationAddress;
               return (
@@ -572,6 +579,20 @@ const FinanceRedemptionsView = React.memo(function FinanceRedemptionsView({
               );
             })}
           </div>
+
+          {filtered.length > 0 && (
+            <AdminPagination
+              currentPage={safePage}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(sz) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+              className="mt-4"
+            />
+          )}
         </>
       )}
 

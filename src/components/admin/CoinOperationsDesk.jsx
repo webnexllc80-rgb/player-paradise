@@ -21,20 +21,39 @@ import {
   Maximize2
 } from 'lucide-react';
 import { diffSet } from '@/lib/fastDiff';
+import AdminPagination from '@/components/admin/AdminPagination';
 
-export default function CoinOperationsDesk({ sessionUser }) {
-  const [activeSection, setActiveSection] = useState('loads'); // 'loads' | 'cashouts'
+export default function CoinOperationsDesk({
+  sessionUser,
+  initialLoads = [],
+  initialCashouts = [],
+  initialSection = 'loads',
+}) {
+  const [activeSection, setActiveSection] = useState(initialSection || 'loads');
   const [loading, setLoading] = useState(false);
 
   // Load Requests State (from /api/account-requests)
-  const [loadRequests, setLoadRequests] = useState([]);
+  const [loadRequests, setLoadRequests] = useState(initialLoads);
   const [loadSearch, setLoadSearch] = useState('');
   const [loadFilter, setLoadFilter] = useState('all');
 
   // Cashout Requests State (from /api/payments/withdraw)
-  const [cashoutRequests, setCashoutRequests] = useState([]);
+  const [cashoutRequests, setCashoutRequests] = useState(initialCashouts);
   const [cashoutSearch, setCashoutSearch] = useState('');
   const [cashoutFilter, setCashoutFilter] = useState('all');
+
+  // Pagination states
+  const [pendingLoadsPage, setPendingLoadsPage] = useState(1);
+  const [pendingLoadsPageSize, setPendingLoadsPageSize] = useState(10);
+
+  const [historyLoadsPage, setHistoryLoadsPage] = useState(1);
+  const [historyLoadsPageSize, setHistoryLoadsPageSize] = useState(10);
+
+  const [pendingCashoutsPage, setPendingCashoutsPage] = useState(1);
+  const [pendingCashoutsPageSize, setPendingCashoutsPageSize] = useState(10);
+
+  const [historyCashoutsPage, setHistoryCashoutsPage] = useState(1);
+  const [historyCashoutsPageSize, setHistoryCashoutsPageSize] = useState(10);
 
   // Modals State
   const [approveLoadModal, setApproveLoadModal] = useState({ open: false, item: null, username: '', password: '', transferAmount: 0 });
@@ -50,13 +69,32 @@ export default function CoinOperationsDesk({ sessionUser }) {
     setTimeout(() => setAlert(null), 5000);
   };
 
+  // Sync with props whenever parent updates
+  useEffect(() => {
+    if (initialLoads && initialLoads.length > 0) {
+      diffSet(setLoadRequests, initialLoads);
+    }
+  }, [initialLoads]);
+
+  useEffect(() => {
+    if (initialCashouts && initialCashouts.length > 0) {
+      diffSet(setCashoutRequests, initialCashouts);
+    }
+  }, [initialCashouts]);
+
+  useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [initialSection]);
+
   // Fetch all data (silent background updates to prevent UI flicker)
   const fetchData = async (isSilent = false) => {
-    if (!isSilent) setLoading(true);
+    if (!isSilent && loadRequests.length === 0 && cashoutRequests.length === 0) setLoading(true);
     try {
       const [loadsRes, cashoutsRes] = await Promise.all([
         fetch('/api/account-requests?type=COIN_LOAD&status=all'),
-        fetch('/api/payments/withdraw?status=all'),
+        fetch('/api/payments/withdraw?status=all&lightweight=true'),
       ]);
 
       const loadsData = await loadsRes.json();
@@ -76,7 +114,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
   };
 
   useEffect(() => {
-    fetchData(false);
+    fetchData(true);
     // Silent polling for real-time live desk operations
     const interval = setInterval(() => {
       if (!document.hidden) fetchData(true);
@@ -88,7 +126,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
       channel = new BroadcastChannel('paradise_staff_alerts');
       channel.onmessage = (event) => {
         if (event.data?.type === 'NEW_COIN_CASHOUT' || event.data?.type === 'NEW_COIN_LOAD') {
-          fetchData();
+          fetchData(true);
         }
       };
     } catch {}
@@ -98,7 +136,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
         try {
           const parsed = JSON.parse(e.newValue);
           if (parsed.type === 'NEW_COIN_CASHOUT' || parsed.type === 'NEW_COIN_LOAD') {
-            fetchData();
+            fetchData(true);
           }
         } catch {}
       }
@@ -116,7 +154,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
   const pendingLoads = useMemo(() => {
     return loadRequests.filter(
       (r) =>
-        r.status === 'PENDING' &&
+        (r.status || '').toUpperCase() === 'PENDING' &&
         (r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0) &&
         (loadSearch === '' ||
           r.userEmail?.toLowerCase().includes(loadSearch.toLowerCase()) ||
@@ -127,11 +165,12 @@ export default function CoinOperationsDesk({ sessionUser }) {
 
   const historyLoads = useMemo(() => {
     return loadRequests.filter((r) => {
-      if (r.status === 'PENDING') return false;
+      const statusUpper = (r.status || '').toUpperCase();
+      if (statusUpper === 'PENDING') return false;
       if (r.requestType !== 'COIN_LOAD' && (!r.transferAmount || Number(r.transferAmount) <= 0)) return false;
       if (loadFilter !== 'all') {
-        if (loadFilter === 'approved' && r.status !== 'READY') return false;
-        if (loadFilter === 'rejected' && r.status !== 'REJECTED' && r.status !== 'CANCELLED') return false;
+        if (loadFilter === 'approved' && statusUpper !== 'READY') return false;
+        if (loadFilter === 'rejected' && statusUpper !== 'REJECTED' && statusUpper !== 'CANCELLED') return false;
       }
       if (loadSearch) {
         return (
@@ -173,6 +212,31 @@ export default function CoinOperationsDesk({ sessionUser }) {
       return true;
     });
   }, [cashoutRequests, cashoutFilter, cashoutSearch]);
+
+  // Paginated computed slices
+  const paginatedPendingLoads = useMemo(() => {
+    const totalPages = Math.max(1, Math.ceil(pendingLoads.length / pendingLoadsPageSize));
+    const safePage = Math.min(Math.max(1, pendingLoadsPage), totalPages);
+    return pendingLoads.slice((safePage - 1) * pendingLoadsPageSize, safePage * pendingLoadsPageSize);
+  }, [pendingLoads, pendingLoadsPage, pendingLoadsPageSize]);
+
+  const paginatedHistoryLoads = useMemo(() => {
+    const totalPages = Math.max(1, Math.ceil(historyLoads.length / historyLoadsPageSize));
+    const safePage = Math.min(Math.max(1, historyLoadsPage), totalPages);
+    return historyLoads.slice((safePage - 1) * historyLoadsPageSize, safePage * historyLoadsPageSize);
+  }, [historyLoads, historyLoadsPage, historyLoadsPageSize]);
+
+  const paginatedPendingCashouts = useMemo(() => {
+    const totalPages = Math.max(1, Math.ceil(pendingCashouts.length / pendingCashoutsPageSize));
+    const safePage = Math.min(Math.max(1, pendingCashoutsPage), totalPages);
+    return pendingCashouts.slice((safePage - 1) * pendingCashoutsPageSize, safePage * pendingCashoutsPageSize);
+  }, [pendingCashouts, pendingCashoutsPage, pendingCashoutsPageSize]);
+
+  const paginatedHistoryCashouts = useMemo(() => {
+    const totalPages = Math.max(1, Math.ceil(historyCashouts.length / historyCashoutsPageSize));
+    const safePage = Math.min(Math.max(1, historyCashoutsPage), totalPages);
+    return historyCashouts.slice((safePage - 1) * historyCashoutsPageSize, safePage * historyCashoutsPageSize);
+  }, [historyCashouts, historyCashoutsPage, historyCashoutsPageSize]);
 
   // Handle Approve Game Load
   const handleApproveLoadSubmit = async (e) => {
@@ -719,7 +783,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
               <>
                 {/* Mobile Cards View (Visible on mobile screens) */}
                 <div className="block sm:hidden space-y-3">
-                  {pendingLoads.map((item) => (
+                  {paginatedPendingLoads.map((item) => (
                     <div
                       key={item.id}
                       className="rounded-xl p-3.5 space-y-3 shadow-md"
@@ -844,7 +908,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {pendingLoads.map((item) => (
+                      {paginatedPendingLoads.map((item) => (
                         <tr key={item.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', backgroundColor: 'rgba(0, 240, 255, 0.02)' }}>
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -982,6 +1046,20 @@ export default function CoinOperationsDesk({ sessionUser }) {
                     </tbody>
                   </table>
                 </div>
+
+                {pendingLoads.length > 0 && (
+                  <AdminPagination
+                    currentPage={pendingLoadsPage}
+                    totalItems={pendingLoads.length}
+                    pageSize={pendingLoadsPageSize}
+                    onPageChange={setPendingLoadsPage}
+                    onPageSizeChange={(sz) => {
+                      setPendingLoadsPageSize(sz);
+                      setPendingLoadsPage(1);
+                    }}
+                    className="mt-4"
+                  />
+                )}
               </>
             )}
           </div>
@@ -1090,7 +1168,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
               <>
                 {/* Mobile Cards for History */}
                 <div className="block sm:hidden space-y-2.5">
-                  {historyLoads.map((item) => {
+                  {paginatedHistoryLoads.map((item) => {
                     const isReady = item.status === 'READY';
                     return (
                       <div
@@ -1164,7 +1242,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {historyLoads.map((item) => {
+                      {paginatedHistoryLoads.map((item) => {
                         const isReady = item.status === 'READY';
                         return (
                           <tr key={item.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
@@ -1236,6 +1314,20 @@ export default function CoinOperationsDesk({ sessionUser }) {
                     </tbody>
                   </table>
                 </div>
+
+                {historyLoads.length > 0 && (
+                  <AdminPagination
+                    currentPage={historyLoadsPage}
+                    totalItems={historyLoads.length}
+                    pageSize={historyLoadsPageSize}
+                    onPageChange={setHistoryLoadsPage}
+                    onPageSizeChange={(sz) => {
+                      setHistoryLoadsPageSize(sz);
+                      setHistoryLoadsPage(1);
+                    }}
+                    className="mt-4"
+                  />
+                )}
               </>
             )}
           </div>
@@ -1358,7 +1450,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
               <>
                 {/* Mobile Cards View (Visible on small screens) */}
                 <div className="block sm:hidden space-y-3">
-                  {pendingCashouts.map((item) => (
+                  {paginatedPendingCashouts.map((item) => (
                     <div
                       key={item.id}
                       className="p-4 rounded-xl space-y-3 shadow-lg"
@@ -1510,7 +1602,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {pendingCashouts.map((item) => (
+                      {paginatedPendingCashouts.map((item) => (
                         <tr key={item.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', backgroundColor: 'rgba(224, 38, 216, 0.02)' }}>
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
                             <p style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: '#FFFFFF' }}>{item.username}</p>
@@ -1672,6 +1764,20 @@ export default function CoinOperationsDesk({ sessionUser }) {
                     </tbody>
                   </table>
                 </div>
+
+                {pendingCashouts.length > 0 && (
+                  <AdminPagination
+                    currentPage={pendingCashoutsPage}
+                    totalItems={pendingCashouts.length}
+                    pageSize={pendingCashoutsPageSize}
+                    onPageChange={setPendingCashoutsPage}
+                    onPageSizeChange={(sz) => {
+                      setPendingCashoutsPageSize(sz);
+                      setPendingCashoutsPage(1);
+                    }}
+                    className="mt-4"
+                  />
+                )}
               </>
             )}
           </div>
@@ -1780,7 +1886,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
               <>
                 {/* Mobile Cards View for History */}
                 <div className="block sm:hidden space-y-2.5">
-                  {historyCashouts.map((item) => {
+                  {paginatedHistoryCashouts.map((item) => {
                     const isRejected = item.status === 'rejected_by_coin' || item.status === 'rejected';
                     return (
                       <div
@@ -1903,7 +2009,7 @@ export default function CoinOperationsDesk({ sessionUser }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {historyCashouts.map((item) => {
+                      {paginatedHistoryCashouts.map((item) => {
                         const isRejected = item.status === 'rejected_by_coin' || item.status === 'rejected';
                         return (
                           <tr key={item.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
@@ -2002,6 +2108,20 @@ export default function CoinOperationsDesk({ sessionUser }) {
                     </tbody>
                   </table>
                 </div>
+
+                {historyCashouts.length > 0 && (
+                  <AdminPagination
+                    currentPage={historyCashoutsPage}
+                    totalItems={historyCashouts.length}
+                    pageSize={historyCashoutsPageSize}
+                    onPageChange={setHistoryCashoutsPage}
+                    onPageSizeChange={(sz) => {
+                      setHistoryCashoutsPageSize(sz);
+                      setHistoryCashoutsPage(1);
+                    }}
+                    className="mt-4"
+                  />
+                )}
               </>
             )}
           </div>

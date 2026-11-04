@@ -4,6 +4,7 @@ import { getDb } from '@/lib/mongodb';
 import { getSessionUser, getAdminSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
+import { cache } from '@/lib/cache';
 
 const STAFF_ROLES = [
   ROLES.SUPER_ADMIN,
@@ -28,6 +29,12 @@ export async function GET(req) {
     const status = searchParams.get('status');
     const type = searchParams.get('type'); // 'ACCOUNT_CREATION' | 'COIN_LOAD' | 'all'
 
+    const cacheKey = `account_requests:${(email || 'all').toLowerCase().trim()}:${status || 'all'}:${type || 'all'}`;
+    const cachedPayload = cache.get(cacheKey);
+    if (cachedPayload) {
+      return NextResponse.json(cachedPayload);
+    }
+
     const db = await getDb();
     const query = {};
 
@@ -35,22 +42,21 @@ export async function GET(req) {
       const cleanEmail = email.toLowerCase().trim();
       query.userEmail = cleanEmail;
 
-      // Auto-cleanup stale rejected requests for games the user already has active credentials for
-      try {
-        const activeAccounts = await db.collection('gameAccounts').find({ userEmail: cleanEmail }).toArray();
-        if (activeAccounts.length > 0) {
-          const activeTitles = activeAccounts.map(a => a.gameTitle).filter(Boolean);
+      // Non-blocking background auto-cleanup of stale rejected requests for games the user already has active credentials for
+      db.collection('gameAccounts')
+        .find({ userEmail: cleanEmail }, { projection: { gameTitle: 1 } })
+        .toArray()
+        .then((activeAccounts) => {
+          const activeTitles = (activeAccounts || []).map((a) => a.gameTitle).filter(Boolean);
           if (activeTitles.length > 0) {
-            await db.collection('accountRequests').deleteMany({
+            return db.collection('accountRequests').deleteMany({
               userEmail: cleanEmail,
               gameTitle: { $in: activeTitles },
               status: { $in: ['REJECTED', 'CANCELLED'] },
             });
           }
-        }
-      } catch (cleanErr) {
-        console.error('Error auto-cleaning stale rejected requests:', cleanErr);
-      }
+        })
+        .catch(() => {});
     }
     if (status && status !== 'all') {
       query.status = status.toUpperCase();
@@ -90,9 +96,10 @@ export async function GET(req) {
       .collection('accountRequests')
       .find(query)
       .sort({ createdAt: -1 })
+      .limit(200)
       .toArray();
 
-    return NextResponse.json({
+    const responsePayload = {
       success: true,
       accountRequests: requests.map(r => ({
         id: r._id.toString(),
@@ -113,7 +120,10 @@ export async function GET(req) {
         notes: r.notes || '',
         createdAt: r.createdAt || new Date(),
       })),
-    });
+    };
+
+    cache.set(cacheKey, responsePayload, 2);
+    return NextResponse.json(responsePayload);
   } catch (err) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
@@ -318,6 +328,7 @@ export async function POST(req) {
     };
 
     const res = await requestsCol.insertOne(newRequest);
+    cache.invalidatePrefix('account_requests');
 
     // Notify staff desk immediately (Never sent to players)
     notifyStaff({
@@ -500,6 +511,7 @@ export async function PUT(req) {
         });
       }
 
+      cache.invalidatePrefix('account_requests');
       return NextResponse.json({
         success: true,
         message: finalAmount > 0
@@ -570,6 +582,7 @@ export async function PUT(req) {
         data: { gameTitle: cleanTitle },
       });
 
+      cache.invalidatePrefix('account_requests');
       return NextResponse.json({
         success: true,
         message: 'Request rejected. Coins unfrozen and reason note logged for player.',
@@ -608,6 +621,7 @@ export async function DELETE(req) {
         { freeplayPending: true, status: 'PENDING', createdAt: { $lt: cutoff } },
         { $set: { status: 'DISMISSED', dismissalReason: 'Staff bulk dismissed', dismissedBy: session.username, dismissedAt: new Date() } }
       );
+      cache.invalidatePrefix('account_requests');
       return NextResponse.json({ success: true, count: res.modifiedCount, message: 'Historical freeplay requests dismissed.' });
     }
 
@@ -615,6 +629,7 @@ export async function DELETE(req) {
     if (Array.isArray(body.ids) && body.ids.length > 0 && isStaff) {
       const filters = body.ids.map(i => safeIdFilter(i));
       await requestsCol.deleteMany({ $or: filters });
+      cache.invalidatePrefix('account_requests');
       return NextResponse.json({ success: true, message: `${body.ids.length} requests dismissed successfully.` });
     }
 
@@ -635,6 +650,7 @@ export async function DELETE(req) {
     }
 
     await requestsCol.deleteOne(safeIdFilter(id));
+    cache.invalidatePrefix('account_requests');
     return NextResponse.json({ success: true, message: 'Request dismissed successfully.' });
   } catch (err) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

@@ -67,6 +67,7 @@ import FinanceRedemptionsView from '@/components/admin/FinanceRedemptionsView';
 import FinanceUnifiedDesk from '@/components/admin/FinanceUnifiedDesk';
 import AccountRequestsView from '@/components/admin/AccountRequestsView';
 import CoinOperationsDesk from '@/components/admin/CoinOperationsDesk';
+import AdminPagination from '@/components/admin/AdminPagination';
 import SoundSettingsModal from '@/components/admin/SoundSettingsModal';
 import IncomingRequestToast from '@/components/admin/IncomingRequestToast';
 import Player360ProfileModal from '@/components/admin/Player360ProfileModal';
@@ -566,20 +567,43 @@ export default function AdminPortal({ initialTab }) {
     }
   };
 
-  // Account Requests state (strictly ACCOUNT_CREATION)
+  // Account Requests & Coin Load Requests state
   const [accountRequests, setAccountRequests] = useState([]);
   const [accountReqFilter, setAccountReqFilter] = useState('PENDING');
   const [approvalModal, setApprovalModal] = useState({ open: false, request: null, username: '', password: '' });
   const [submittingApproval, setSubmittingApproval] = useState(false);
 
-  // Coin Load Requests state (strictly COIN_LOAD for Coins Allotment desk & badges)
+  // Coin Load Requests state (for Coins Allotment desk & badges)
   const [coinLoadRequests, setCoinLoadRequests] = useState([]);
+  const [allotmentSubTab, setAllotmentSubTab] = useState('loads');
 
+  // Pagination states for responsive administrative tables
+  const [gamePage, setGamePage] = useState(1);
+  const [gamePageSize, setGamePageSize] = useState(12);
+  const [playerPage, setPlayerPage] = useState(1);
+  const [playerPageSize, setPlayerPageSize] = useState(10);
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerPageSize, setLedgerPageSize] = useState(15);
+
+  const isFetchingReqsRef = React.useRef(false);
   const fetchAccountRequests = () => {
-    fetch('/api/account-requests?type=ACCOUNT_CREATION&status=all', { cache: 'no-store' })
+    if (isFetchingReqsRef.current) return;
+    isFetchingReqsRef.current = true;
+    fetch('/api/account-requests?status=all', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { if (d.success) diffSet(setAccountRequests, d.accountRequests || []); })
-      .catch(() => { });
+      .then(d => {
+        if (d.success && Array.isArray(d.accountRequests)) {
+          diffSet(setAccountRequests, d.accountRequests);
+          const loads = d.accountRequests.filter(
+            r => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
+          );
+          diffSet(setCoinLoadRequests, loads);
+        }
+      })
+      .catch(() => { })
+      .finally(() => {
+        isFetchingReqsRef.current = false;
+      });
   };
 
   const handleOpenApproveModal = (req) => {
@@ -592,6 +616,56 @@ export default function AdminPortal({ initialTab }) {
       username: `${cleanUser}${randSuf}`,
       password: randPass,
     });
+  };
+
+  const handleApproveCoinLoad = async (req) => {
+    if (!req || submittingApproval) return;
+    const loadAmount = Number(req.transferAmount || 0);
+    const confirmApprove = confirm(
+      `Approve coin load of $${loadAmount.toFixed(2)} SC for player @${req.userName || req.userEmail} into ${req.gameTitle}?`
+    );
+    if (!confirmApprove) return;
+
+    setSubmittingApproval(true);
+    const targetId = req.id || req._id;
+
+    // 1. Optimistic update (0ms instant UI feedback)
+    setAccountRequests((prev) =>
+      prev.map((r) =>
+        (r.id === targetId || r._id === targetId) ? { ...r, status: 'READY' } : r
+      )
+    );
+    setCoinLoadRequests((prev) =>
+      prev.map((r) =>
+        (r.id === targetId || r._id === targetId) ? { ...r, status: 'READY' } : r
+      )
+    );
+    setActiveAlertToast((curr) => (curr?.type === 'account' || curr?.type === 'coin_load' ? null : curr));
+
+    try {
+      const res = await fetch('/api/account-requests', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: targetId,
+          action: 'approve',
+          transferAmount: loadAmount,
+          username: req.gameAccountUsername || req.userName || '',
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.message || 'Failed to approve coin load');
+        fetchAccountRequests();
+      } else {
+        syncRequestsAndAlerts();
+      }
+    } catch (e) {
+      console.error(e);
+      fetchAccountRequests();
+    } finally {
+      setSubmittingApproval(false);
+    }
   };
 
   const handleConfirmApproval = async () => {
@@ -651,7 +725,10 @@ export default function AdminPortal({ initialTab }) {
     setAccountRequests((prev) =>
       prev.map((r) => (r.id === id || r._id === id ? { ...r, status: 'REJECTED', rejectionReason: resolvedReason } : r))
     );
-    setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
+    setCoinLoadRequests((prev) =>
+      prev.map((r) => (r.id === id || r._id === id ? { ...r, status: 'REJECTED', rejectionReason: resolvedReason } : r))
+    );
+    setActiveAlertToast((curr) => (curr?.type === 'account' || curr?.type === 'coin_load' ? null : curr));
 
     try {
       const res = await fetch('/api/account-requests', {
@@ -674,7 +751,8 @@ export default function AdminPortal({ initialTab }) {
     if (!confirm('Are you sure you want to permanently dismiss/delete this request?')) return;
 
     setAccountRequests((prev) => prev.filter((r) => r.id !== id && r._id !== id));
-    setActiveAlertToast((curr) => (curr?.type === 'account' ? null : curr));
+    setCoinLoadRequests((prev) => prev.filter((r) => r.id !== id && r._id !== id));
+    setActiveAlertToast((curr) => (curr?.type === 'account' || curr?.type === 'coin_load' ? null : curr));
 
     try {
       const res = await fetch(`/api/account-requests?id=${encodeURIComponent(id)}`, {
@@ -864,22 +942,22 @@ export default function AdminPortal({ initialTab }) {
   const seenCoinLoadIdsRef = React.useRef(new Set());
   const seenCoinCashoutIdsRef = React.useRef(new Set());
   const isInitialLoadRef = React.useRef(true);
+  const isSyncingRef = React.useRef(false);
 
   const syncRequestsAndAlerts = async () => {
-    if (!user) return;
+    if (!user || isSyncingRef.current) return;
+    isSyncingRef.current = true;
     try {
-      const [depRes, withRes, reqRes, loadRes, chatRes] = await Promise.allSettled([
+      const [depRes, withRes, reqRes, chatRes] = await Promise.allSettled([
         fetch('/api/payments/deposit?status=all&lightweight=true', { cache: 'no-store' }),
         fetch('/api/payments/withdraw?status=all&lightweight=true', { cache: 'no-store' }),
-        fetch('/api/account-requests?type=ACCOUNT_CREATION&status=all', { cache: 'no-store' }),
-        fetch('/api/account-requests?type=COIN_LOAD&status=all', { cache: 'no-store' }),
+        fetch('/api/account-requests?status=all', { cache: 'no-store' }),
         fetch('/api/chat?inbox=true', { cache: 'no-store' }),
       ]);
 
       const depData = depRes.status === 'fulfilled' ? await depRes.value.json().catch(() => ({})) : {};
       const withData = withRes.status === 'fulfilled' ? await withRes.value.json().catch(() => ({})) : {};
       const reqData = reqRes.status === 'fulfilled' ? await reqRes.value.json().catch(() => ({})) : {};
-      const loadData = loadRes.status === 'fulfilled' ? await loadRes.value.json().catch(() => ({})) : {};
       const chatData = chatRes.status === 'fulfilled' ? await chatRes.value.json().catch(() => ({})) : {};
 
       if (depData.success) {
@@ -888,20 +966,26 @@ export default function AdminPortal({ initialTab }) {
       if (withData.success) {
         diffSet(setRedemptions, withData.redemptions || []);
       }
-      if (reqData.success) {
-        diffSet(setAccountRequests, reqData.accountRequests || []);
-      }
-      if (loadData.success) {
-        diffSet(setCoinLoadRequests, loadData.accountRequests || []);
+      if (reqData.success && Array.isArray(reqData.accountRequests)) {
+        diffSet(setAccountRequests, reqData.accountRequests);
+        const loads = reqData.accountRequests.filter(
+          (r) => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
+        );
+        diffSet(setCoinLoadRequests, loads);
       }
       if (chatData.success && Array.isArray(chatData.conversations)) {
         diffSet(setChatConversations, chatData.conversations);
       }
 
+      const allReqs = reqData.accountRequests || [];
       const pendingDeps = (depData.deposits || []).filter((d) => d.status === 'pending');
       const pendingWith = (withData.redemptions || []).filter((r) => r.status === 'pending');
-      const pendingReqs = (reqData.accountRequests || []).filter((r) => (r.status || '').toUpperCase() === 'PENDING');
-      const pendingCoinLoads = (loadData.accountRequests || []).filter((r) => (r.status || '').toUpperCase() === 'PENDING');
+      const pendingReqs = allReqs.filter(
+        (r) => (r.status || '').toUpperCase() === 'PENDING' && r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
+      );
+      const pendingCoinLoads = allReqs.filter(
+        (r) => (r.status || '').toUpperCase() === 'PENDING' && (r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0)
+      );
       const pendingCoinCashouts = (withData.redemptions || []).filter((r) => r.status === 'pending_coin' || r.stage === 'coin_verification');
       const unreadChatConvs = (chatData.conversations || []).filter((c) => (c.unreadCount || 0) > 0);
       const unreadChatCount = unreadChatConvs.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
@@ -1107,6 +1191,8 @@ export default function AdminPortal({ initialTab }) {
       };
     } catch (err) {
       console.warn('Background sync error:', err);
+    } finally {
+      isSyncingRef.current = false;
     }
   };
 
@@ -1265,16 +1351,20 @@ export default function AdminPortal({ initialTab }) {
     };
   }, [user]);
 
-  // Run persistent poller every 1.5 seconds for lightning-fast responsiveness!
+  // Run persistent poller every 3.5 seconds for active tab (BroadcastChannel handles 0ms instant cross-tab alerts)
   useEffect(() => {
     if (!user) return;
     syncRequestsAndAlerts();
     const interval = setInterval(() => {
-      syncRequestsAndAlerts();
-    }, 1500);
+      if (!document.hidden) {
+        syncRequestsAndAlerts();
+      }
+    }, 3500);
 
     const handleFocus = () => {
-      syncRequestsAndAlerts();
+      if (!document.hidden) {
+        syncRequestsAndAlerts();
+      }
     };
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
@@ -1284,6 +1374,32 @@ export default function AdminPortal({ initialTab }) {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
     };
+  }, [user]);
+
+  // Proactive background prefetch warm-up on mount for INSTANT tab switching (0ms)
+  useEffect(() => {
+    if (!user) return;
+    const prefetchTimer = setTimeout(() => {
+      fetchAccountRequests();
+      fetch('/api/games?all=true', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => { if (d.success && d.games) diffSet(setGames, d.games); })
+        .catch(() => {});
+      fetch('/api/payments/methods?all=true', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => { if (d.success) diffSet(setPaymentMethods, d.methods || []); })
+        .catch(() => {});
+      fetch('/api/users?search=', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => { if (d.success) diffSet(setUsersList, d.users || []); })
+        .catch(() => {});
+      fetch('/api/ledger?username=&type=all', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => { if (d.success) diffSet(setLedgerRecords, d.records || []); })
+        .catch(() => {});
+    }, 150);
+
+    return () => clearTimeout(prefetchTimer);
   }, [user]);
 
   // Fetch data for specific active tabs
@@ -1421,7 +1537,9 @@ export default function AdminPortal({ initialTab }) {
         });
     };
     fetchChatMsgs();
-    const interval = setInterval(fetchChatMsgs, 1500);
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchChatMsgs();
+    }, 2500);
     return () => clearInterval(interval);
   }, [activeChatConv]);
 
@@ -2529,6 +2647,7 @@ export default function AdminPortal({ initialTab }) {
                   fetchAccountRequests();
                 }}
                 onOpenApproveModal={handleOpenApproveModal}
+                onApproveCoinLoad={handleApproveCoinLoad}
                 onCancelRequest={handleCancelRequest}
                 onDismissRequest={handleDismissRequest}
                 onRefresh={() => {
@@ -2655,7 +2774,12 @@ export default function AdminPortal({ initialTab }) {
 
           {/* TAB: COINS ALLOTMENT & OPERATIONS DESK */}
           {activeTab === 'coins_allotment' && (
-            <CoinOperationsDesk sessionUser={user} />
+            <CoinOperationsDesk
+              sessionUser={user}
+              initialLoads={coinLoadRequests}
+              initialCashouts={redemptions.filter(r => r.status === 'pending_coin' || r.stage === 'coin_verification')}
+              initialSection={allotmentSubTab || 'loads'}
+            />
           )}
 
           {/* TAB 2: GAMES CONTROL */}
@@ -2665,6 +2789,7 @@ export default function AdminPortal({ initialTab }) {
               const q = gameSearchQuery.toLowerCase();
               return (g.title && g.title.toLowerCase().includes(q)) || (g.provider && g.provider.toLowerCase().includes(q));
             });
+            const paginatedGamesList = filteredGamesList.slice((gamePage - 1) * gamePageSize, gamePage * gamePageSize);
 
             return (
               <div className="space-y-6" style={{ fontFamily: 'Lexend, -apple-system, sans-serif' }}>
@@ -2730,13 +2855,19 @@ export default function AdminPortal({ initialTab }) {
                         type="text"
                         placeholder="Search catalog games..."
                         value={gameSearchQuery}
-                        onChange={(e) => setGameSearchQuery(e.target.value)}
+                        onChange={(e) => {
+                          setGameSearchQuery(e.target.value);
+                          setGamePage(1);
+                        }}
                         className="w-full bg-[#070514] border border-white/15 focus:border-[#00F0FF] rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-gray-500 outline-none transition"
                       />
                       {gameSearchQuery && (
                         <button
                           type="button"
-                          onClick={() => setGameSearchQuery('')}
+                          onClick={() => {
+                            setGameSearchQuery('');
+                            setGamePage(1);
+                          }}
                           className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
                         >
                           <X size={12} />
@@ -3079,7 +3210,7 @@ export default function AdminPortal({ initialTab }) {
                         No games matching search.
                       </div>
                     ) : (
-                      filteredGamesList.map(g => {
+                      paginatedGamesList.map(g => {
                         const isOnline = g.isActive !== false;
                         const badgeUpper = (g.badge || (g.isHot ? 'HOT' : '')).toUpperCase();
                         return (
@@ -3284,7 +3415,7 @@ export default function AdminPortal({ initialTab }) {
                             </td>
                           </tr>
                         ) : (
-                          filteredGamesList.map(g => {
+                          paginatedGamesList.map(g => {
                             const isOnline = g.isActive !== false;
                             const badgeUpper = (g.badge || (g.isHot ? 'HOT' : '')).toUpperCase();
                             return (
@@ -3461,6 +3592,18 @@ export default function AdminPortal({ initialTab }) {
                       </tbody>
                     </table>
                   </div>
+
+                  <AdminPagination
+                    currentPage={gamePage}
+                    totalItems={filteredGamesList.length}
+                    pageSize={gamePageSize}
+                    onPageChange={setGamePage}
+                    onPageSizeChange={(newSize) => {
+                      setGamePageSize(newSize);
+                      setGamePage(1);
+                    }}
+                    itemLabel="Games"
+                  />
                 </div>
 
                 {/* Edit Game Modal */}
@@ -6219,6 +6362,7 @@ export default function AdminPortal({ initialTab }) {
               if (playerFilter === 'bound') return Boolean(u.deviceId);
               return true;
             });
+            const paginatedUsers = filteredUsers.slice((playerPage - 1) * playerPageSize, playerPage * playerPageSize);
 
             return (
               <div className="space-y-6" style={{ fontFamily: 'Lexend, -apple-system, BlinkMacSystemFont, sans-serif' }}>
@@ -6241,9 +6385,13 @@ export default function AdminPortal({ initialTab }) {
                         type="text"
                         placeholder="Search username, email, code..."
                         value={userSearchQuery}
-                        onChange={(e) => setUserSearchQuery(e.target.value)}
+                        onChange={(e) => {
+                          setUserSearchQuery(e.target.value);
+                          setPlayerPage(1);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
+                            setPlayerPage(1);
                             fetch(`/api/users?search=${encodeURIComponent(userSearchQuery)}`)
                               .then(r => r.json())
                               .then(d => { if (d.success) setUsersList(d.users || []); });
@@ -6255,6 +6403,7 @@ export default function AdminPortal({ initialTab }) {
                     </div>
                     <button
                       onClick={() => {
+                        setPlayerPage(1);
                         fetch(`/api/users?search=${encodeURIComponent(userSearchQuery)}`)
                           .then(r => r.json())
                           .then(d => { if (d.success) setUsersList(d.users || []); });
@@ -6279,7 +6428,10 @@ export default function AdminPortal({ initialTab }) {
                     ].map(f => (
                       <button
                         key={f.id}
-                        onClick={() => setPlayerFilter(f.id)}
+                        onClick={() => {
+                          setPlayerFilter(f.id);
+                          setPlayerPage(1);
+                        }}
                         className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${playerFilter === f.id
                           ? 'bg-[#00F0FF] text-black shadow-[0_0_15px_rgba(0,240,255,0.4)] font-black'
                           : 'bg-[#140E33] text-gray-400 hover:text-white border border-white/10'
@@ -6309,7 +6461,7 @@ export default function AdminPortal({ initialTab }) {
                         No player accounts matching selection.
                       </div>
                     ) : (
-                      filteredUsers.map(u => (
+                      paginatedUsers.map(u => (
                         <div
                           key={u.id}
                           className="p-3.5 space-y-3 bg-[#140E33]/70"
@@ -6471,7 +6623,7 @@ export default function AdminPortal({ initialTab }) {
                             </td>
                           </tr>
                         ) : (
-                          filteredUsers.map(u => (
+                          paginatedUsers.map(u => (
                             <tr
                               key={u.id}
                               className="hover:bg-white/[0.03] transition-colors cursor-pointer group"
@@ -6633,6 +6785,18 @@ export default function AdminPortal({ initialTab }) {
                       </tbody>
                     </table>
                   </div>
+
+                  <AdminPagination
+                    currentPage={playerPage}
+                    totalItems={filteredUsers.length}
+                    pageSize={playerPageSize}
+                    onPageChange={setPlayerPage}
+                    onPageSizeChange={(newSize) => {
+                      setPlayerPageSize(newSize);
+                      setPlayerPage(1);
+                    }}
+                    itemLabel="Players"
+                  />
                 </div>
               </div>
             );
@@ -7116,8 +7280,10 @@ export default function AdminPortal({ initialTab }) {
           )}
 
           {/* TAB 16: TRANSACTIONS LOG (Normal Deposit & Withdrawal System) */}
-          {activeTab === 'tx_search' && (
-            <div className="space-y-4 sm:space-y-6" style={{ fontFamily: 'Lexend, -apple-system, sans-serif' }}>
+          {activeTab === 'tx_search' && (() => {
+            const paginatedLedger = ledgerRecords.slice((ledgerPage - 1) * ledgerPageSize, ledgerPage * ledgerPageSize);
+            return (
+              <div className="space-y-4 sm:space-y-6" style={{ fontFamily: 'Lexend, -apple-system, sans-serif' }}>
               {/* Header & Quick Action Bar */}
               <div className="bg-[#0E0A24] border border-[#00F0FF]/25 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl shadow-xl space-y-3.5 sm:space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
@@ -7202,7 +7368,10 @@ export default function AdminPortal({ initialTab }) {
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setLedgerFilterType(tab.id)}
+                        onClick={() => {
+                          setLedgerFilterType(tab.id);
+                          setLedgerPage(1);
+                        }}
                         style={{
                           backgroundColor: isSelected ? 'rgba(0, 240, 255, 0.16)' : '#070514',
                           borderColor: isSelected ? '#00F0FF' : 'rgba(255, 255, 255, 0.1)',
@@ -7393,7 +7562,7 @@ export default function AdminPortal({ initialTab }) {
                       <p className="text-xs text-gray-400 mt-1 m-0">Select "All Transactions" or clear your player search</p>
                     </div>
                   ) : (
-                    ledgerRecords.map((rec, i) => {
+                    paginatedLedger.map((rec, i) => {
                       const isPositive = Number(rec.amount || 0) >= 0;
                       const rawT = (rec.rawType || rec.type || '').toLowerCase();
                       const isDeposit = rawT.includes('deposit');
@@ -7550,7 +7719,7 @@ export default function AdminPortal({ initialTab }) {
                           </td>
                         </tr>
                       ) : (
-                        ledgerRecords.map((rec, i) => {
+                        paginatedLedger.map((rec, i) => {
                           const isPositive = Number(rec.amount || 0) >= 0;
                           const rawT = (rec.rawType || rec.type || '').toLowerCase();
                           const isDeposit = rawT.includes('deposit');
@@ -7746,9 +7915,22 @@ export default function AdminPortal({ initialTab }) {
                     </tbody>
                   </table>
                 </div>
+
+                <AdminPagination
+                  currentPage={ledgerPage}
+                  totalItems={ledgerRecords.length}
+                  pageSize={ledgerPageSize}
+                  onPageChange={setLedgerPage}
+                  onPageSizeChange={(newSize) => {
+                    setLedgerPageSize(newSize);
+                    setLedgerPage(1);
+                  }}
+                  itemLabel="Transactions"
+                />
               </div>
             </div>
-          )}
+          );
+        })()}
 
           {/* TAB 17: AFFILIATE COMMISSIONS */}
           {activeTab === 'affiliate_commissions' && (

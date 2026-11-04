@@ -256,7 +256,7 @@ export default function CyberSidebar({
               <Link
                 key={idx}
                 href={item.path}
-                prefetch={true}
+                prefetch={false}
                 onClick={(e) => handleItemClick(e, item)}
                 className="block no-underline text-inherit focus:outline-none"
               >
@@ -272,7 +272,7 @@ export default function CyberSidebar({
             <div className="grid grid-cols-2 gap-2">
               <Link
                 href="/deposit"
-                prefetch={true}
+                prefetch={false}
                 onClick={(e) => handleItemClick(e, { id: 'deposit', path: '/deposit' })}
                 className="cyber-btn-cyan text-[11px] py-2 font-bold flex items-center justify-center gap-1 no-underline text-center active:scale-95 transition-transform"
               >
@@ -281,7 +281,7 @@ export default function CyberSidebar({
               </Link>
               <Link
                 href="/withdraw"
-                prefetch={true}
+                prefetch={false}
                 onClick={(e) => handleItemClick(e, { id: 'withdraw', path: '/withdraw' })}
                 className="rounded-xl bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-200 text-[11px] py-2 font-bold flex items-center justify-center gap-1 transition-all no-underline text-center active:scale-95"
               >
@@ -296,7 +296,7 @@ export default function CyberSidebar({
           <div className="p-2 border-t border-[var(--chrome-border)]/60 flex justify-center">
             <Link
               href="/deposit"
-              prefetch={true}
+              prefetch={false}
               onClick={(e) => handleItemClick(e, { id: 'deposit', path: '/deposit' })}
               className="w-10 h-10 rounded-xl bg-[var(--neon-cyan)] text-black flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.4)] hover:scale-105 transition-transform no-underline"
               title="Deposit Credits"

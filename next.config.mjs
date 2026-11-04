@@ -8,7 +8,26 @@ const nextConfig = {
   },
   async headers() {
     return [
-      // 1. High-performance caching for static images, audio, and font files
+      // 1. Prevent Hostinger CDN / Nginx / Cloudflare edge from hanging on stale dynamic HTML pages
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, max-age=0, must-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
+        ],
+      },
+      // 2. High-performance caching for Next.js static bundles (placed AFTER /:path* so it overrides no-store)
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      // 3. High-performance caching for static images, audio, and font files
       {
         source: '/:path*.(ico|png|jpg|jpeg|svg|webp|mp3|wav|ogg|woff|woff2|ttf)',
         headers: [
@@ -18,7 +37,7 @@ const nextConfig = {
           },
         ],
       },
-      // 2. Service worker headers
+      // 4. Service worker headers
       {
         source: '/sw.js',
         headers: [
@@ -27,7 +46,7 @@ const nextConfig = {
           { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
-      // 3. Progressive Web App manifest caching
+      // 5. Progressive Web App manifest caching
       {
         source: '/manifest.json',
         headers: [
@@ -39,15 +58,6 @@ const nextConfig = {
             key: 'Cache-Control',
             value: 'public, max-age=3600',
           },
-        ],
-      },
-      // 4. Prevent Hostinger CDN / Nginx / Cloudflare edge from hanging on stale dynamic HTML pages
-      {
-        source: '/:path*',
-        headers: [
-          { key: 'Cache-Control', value: 'no-cache, no-store, max-age=0, must-revalidate' },
-          { key: 'Pragma', value: 'no-cache' },
-          { key: 'Expires', value: '0' },
         ],
       },
     ];

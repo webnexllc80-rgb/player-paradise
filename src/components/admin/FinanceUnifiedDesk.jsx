@@ -24,6 +24,7 @@ import {
   Image as ImageIcon,
   Maximize2,
 } from 'lucide-react';
+import AdminPagination from '@/components/admin/AdminPagination';
 
 export default function FinanceUnifiedDesk({
   deposits = [],
@@ -48,6 +49,16 @@ export default function FinanceUnifiedDesk({
   const [rejectRedeemModal, setRejectRedeemModal] = useState({ open: false, item: null, reason: '' });
   const [approvingId, setApprovingId] = useState(null);
   const [previewProof, setPreviewProof] = useState(null);
+
+  // Pagination states
+  const [pendingDepPage, setPendingDepPage] = useState(1);
+  const [pendingDepPageSize, setPendingDepPageSize] = useState(10);
+  const [pendingRedPage, setPendingRedPage] = useState(1);
+  const [pendingRedPageSize, setPendingRedPageSize] = useState(10);
+  const [historyDepPage, setHistoryDepPage] = useState(1);
+  const [historyDepPageSize, setHistoryDepPageSize] = useState(10);
+  const [historyRedPage, setHistoryRedPage] = useState(1);
+  const [historyRedPageSize, setHistoryRedPageSize] = useState(10);
 
   // Instant close on ESC key
   React.useEffect(() => {
@@ -90,6 +101,18 @@ export default function FinanceUnifiedDesk({
   const filteredPendingRedemptions = filterItems(pendingRedemptions, true);
   const filteredHistoryDeposits = filterItems(historyDeposits, false);
   const filteredHistoryRedemptions = filterItems(historyRedemptions, true);
+
+  const safePendingDepPage = Math.min(Math.max(1, pendingDepPage), Math.max(1, Math.ceil(filteredPendingDeposits.length / pendingDepPageSize)));
+  const paginatedPendingDeposits = filteredPendingDeposits.slice((safePendingDepPage - 1) * pendingDepPageSize, safePendingDepPage * pendingDepPageSize);
+
+  const safePendingRedPage = Math.min(Math.max(1, pendingRedPage), Math.max(1, Math.ceil(filteredPendingRedemptions.length / pendingRedPageSize)));
+  const paginatedPendingRedemptions = filteredPendingRedemptions.slice((safePendingRedPage - 1) * pendingRedPageSize, safePendingRedPage * pendingRedPageSize);
+
+  const safeHistoryDepPage = Math.min(Math.max(1, historyDepPage), Math.max(1, Math.ceil(filteredHistoryDeposits.length / historyDepPageSize)));
+  const paginatedHistoryDeposits = filteredHistoryDeposits.slice((safeHistoryDepPage - 1) * historyDepPageSize, safeHistoryDepPage * historyDepPageSize);
+
+  const safeHistoryRedPage = Math.min(Math.max(1, historyRedPage), Math.max(1, Math.ceil(filteredHistoryRedemptions.length / historyRedPageSize)));
+  const paginatedHistoryRedemptions = filteredHistoryRedemptions.slice((safeHistoryRedPage - 1) * historyRedPageSize, safeHistoryRedPage * historyRedPageSize);
 
   const getMethodBadgeStyle = (methodName = '') => {
     const m = (methodName || '').toLowerCase();
@@ -462,7 +485,7 @@ export default function FinanceUnifiedDesk({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPendingDeposits.map((d) => {
+                    {paginatedPendingDeposits.map((d) => {
                       const depositId = d.id || d._id;
                       const calculatedSC = Number(
                         d.totalSC !== undefined ? d.totalSC : d.amount + (d.bonusSC || 0)
@@ -855,6 +878,20 @@ export default function FinanceUnifiedDesk({
                 </table>
               </div>
             )}
+            {filteredPendingDeposits.length > 0 && (
+              <AdminPagination
+                currentPage={safePendingDepPage}
+                totalItems={filteredPendingDeposits.length}
+                pageSize={pendingDepPageSize}
+                onPageChange={setPendingDepPage}
+                onPageSizeChange={(sz) => {
+                  setPendingDepPageSize(sz);
+                  setPendingDepPage(1);
+                }}
+                itemLabel="Pending Deposits"
+                className="mt-4"
+              />
+            )}
           </div>
 
           {/* ============================================================== */}
@@ -954,7 +991,7 @@ export default function FinanceUnifiedDesk({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPendingRedemptions.map((r) => {
+                    {paginatedPendingRedemptions.map((r) => {
                       const redeemId = r.id || r._id;
                       return (
                         <tr
@@ -1211,6 +1248,20 @@ export default function FinanceUnifiedDesk({
                 </table>
               </div>
             )}
+            {filteredPendingRedemptions.length > 0 && (
+              <AdminPagination
+                currentPage={safePendingRedPage}
+                totalItems={filteredPendingRedemptions.length}
+                pageSize={pendingRedPageSize}
+                onPageChange={setPendingRedPage}
+                onPageSizeChange={(sz) => {
+                  setPendingRedPageSize(sz);
+                  setPendingRedPage(1);
+                }}
+                itemLabel="Pending Cashouts"
+                className="mt-4"
+              />
+            )}
           </div>
         </div>
       )}
@@ -1247,7 +1298,7 @@ export default function FinanceUnifiedDesk({
                 </tr>
               </thead>
               <tbody>
-                {filteredHistoryDeposits.map((d) => {
+                {paginatedHistoryDeposits.map((d) => {
                   const depositId = d.id || d._id;
                   const note = d.senderNote || d.txHash;
                   return (
@@ -1330,6 +1381,21 @@ export default function FinanceUnifiedDesk({
               </tbody>
             </table>
           </div>
+          {filteredHistoryDeposits.length > 0 && (
+            <div style={{ padding: '14px 16px' }}>
+              <AdminPagination
+                currentPage={safeHistoryDepPage}
+                totalItems={filteredHistoryDeposits.length}
+                pageSize={historyDepPageSize}
+                onPageChange={setHistoryDepPage}
+                onPageSizeChange={(sz) => {
+                  setHistoryDepPageSize(sz);
+                  setHistoryDepPage(1);
+                }}
+                itemLabel="Deposits"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1363,7 +1429,7 @@ export default function FinanceUnifiedDesk({
                 </tr>
               </thead>
               <tbody>
-                {filteredHistoryRedemptions.map((r) => {
+                {paginatedHistoryRedemptions.map((r) => {
                   const redeemId = r.id || r._id;
                   return (
                     <tr key={redeemId} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
@@ -1404,6 +1470,21 @@ export default function FinanceUnifiedDesk({
               </tbody>
             </table>
           </div>
+          {filteredHistoryRedemptions.length > 0 && (
+            <div style={{ padding: '14px 16px' }}>
+              <AdminPagination
+                currentPage={safeHistoryRedPage}
+                totalItems={filteredHistoryRedemptions.length}
+                pageSize={historyRedPageSize}
+                onPageChange={setHistoryRedPage}
+                onPageSizeChange={(sz) => {
+                  setHistoryRedPageSize(sz);
+                  setHistoryRedPage(1);
+                }}
+                itemLabel="Cashouts"
+              />
+            </div>
+          )}
         </div>
       )}
 

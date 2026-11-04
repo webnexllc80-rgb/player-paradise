@@ -227,7 +227,9 @@ export default function HomePage({ initialTab = 'lobby' }) {
     };
 
     const handleFocus = () => {
-      loadUser();
+      if (!document.hidden) {
+        loadUser();
+      }
     };
 
     window.addEventListener('paradise-user-sync', handleUserSync);

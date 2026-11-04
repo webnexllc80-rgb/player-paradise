@@ -19,6 +19,7 @@ import {
   ArrowRight,
   Filter,
 } from 'lucide-react';
+import AdminPagination from '@/components/admin/AdminPagination';
 
 const FinanceDepositsView = React.memo(function FinanceDepositsView({
   deposits = [],
@@ -35,6 +36,8 @@ const FinanceDepositsView = React.memo(function FinanceDepositsView({
   const [rejectModal, setRejectModal] = useState({ open: false, deposit: null, reason: '' });
   const [previewImage, setPreviewImage] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const handleCopy = (text, id) => {
     if (!text) return;
@@ -55,6 +58,10 @@ const FinanceDepositsView = React.memo(function FinanceDepositsView({
       d.amount?.toString().includes(q);
     return matchesStatus && matchesSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDeposits.length / pageSize));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedDeposits = filteredDeposits.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const pendingCount = deposits.filter((d) => d.status === 'pending').length;
   const approvedCount = deposits.filter((d) => d.status === 'approved').length;
@@ -222,7 +229,7 @@ const FinanceDepositsView = React.memo(function FinanceDepositsView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filteredDeposits.map((d) => {
+                {paginatedDeposits.map((d) => {
                   const calculatedSC = Number(
                     d.totalSC !== undefined ? d.totalSC : d.amount + (d.bonusSC || 0)
                   ).toFixed(2);
@@ -470,7 +477,7 @@ const FinanceDepositsView = React.memo(function FinanceDepositsView({
 
           {/* RESPONSIVE MOBILE & TABLET CARDS VIEW (< 1024px) */}
           <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {filteredDeposits.map((d) => {
+            {paginatedDeposits.map((d) => {
               const calculatedSC = Number(
                 d.totalSC !== undefined ? d.totalSC : d.amount + (d.bonusSC || 0)
               ).toFixed(2);
@@ -638,6 +645,20 @@ const FinanceDepositsView = React.memo(function FinanceDepositsView({
               );
             })}
           </div>
+
+          {filteredDeposits.length > 0 && (
+            <AdminPagination
+              currentPage={safePage}
+              totalItems={filteredDeposits.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(sz) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+              className="mt-4"
+            />
+          )}
         </>
       )}
 

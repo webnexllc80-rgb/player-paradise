@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Coins,
 } from 'lucide-react';
+import AdminPagination from '@/components/admin/AdminPagination';
 
 export default function AffiliateManagementHub({
   activeTab = 'affiliates',
@@ -34,6 +35,8 @@ export default function AffiliateManagementHub({
   const [copiedCode, setCopiedCode] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Compute live aggregates if summary is null
   const totalPartners = summary?.totalPartners ?? affiliates.length;
@@ -55,6 +58,10 @@ export default function AffiliateManagementHub({
     if (filterType === 'active_network') return Number(a.totalReferrals || 0) > 0;
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredAffiliates.length / pageSize));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedAffiliates = filteredAffiliates.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const handleCopyCode = (code) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -469,7 +476,7 @@ export default function AffiliateManagementHub({
                   </td>
                 </tr>
               ) : (
-                filteredAffiliates.map((partner) => {
+                paginatedAffiliates.map((partner) => {
                   const hasUnpaid = Number(partner.commissionsUnpaid || 0) > 0;
                   const hasNetwork = Number(partner.totalReferrals || 0) > 0;
 
@@ -686,6 +693,21 @@ export default function AffiliateManagementHub({
             </tbody>
           </table>
         </div>
+        {filteredAffiliates.length > 0 && (
+          <div style={{ padding: '14px 16px' }}>
+            <AdminPagination
+              currentPage={safePage}
+              totalItems={filteredAffiliates.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(sz) => {
+                setPageSize(sz);
+                setCurrentPage(1);
+              }}
+              itemLabel="Partners"
+            />
+          </div>
+        )}
       </div>
 
       {/* 5. Recruited Network Inspection Modal */}
