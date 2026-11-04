@@ -18,6 +18,7 @@ import {
   ArrowRight,
   ExternalLink,
 } from 'lucide-react';
+import { compressImageFile } from '@/lib/imageCompress';
 
 export default function FreeplayTaskModal({
   isOpen,
@@ -137,7 +138,7 @@ export default function FreeplayTaskModal({
   };
 
   // Compress uploaded screenshot
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -147,46 +148,17 @@ export default function FreeplayTaskModal({
     }
 
     setUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const maxDim = 1200;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const compressed = canvas.toDataURL('image/jpeg', 0.8);
-        setScreenshot(compressed);
-        setUploading(false);
-        setStatusMsg({ type: 'success', text: 'Inbox screenshot attached and ready!' });
-      };
-      img.onerror = () => {
-        setScreenshot(event.target.result);
-        setUploading(false);
-      };
-      img.src = event.target.result;
-    };
-    reader.onerror = () => {
+    try {
+      const compressed = await compressImageFile(file, { maxSize: 1200, quality: 0.65 });
+      setScreenshot(compressed || null);
+      setStatusMsg({ type: 'success', text: 'Inbox screenshot attached and ready!' });
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (event) => setScreenshot(event.target.result);
+      reader.readAsDataURL(file);
+    } finally {
       setUploading(false);
-      setStatusMsg({ type: 'error', text: 'Error reading file.' });
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = async (e) => {

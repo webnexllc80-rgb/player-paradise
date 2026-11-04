@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { ensureDbInitialized } from '@/lib/initDb';
+import { cache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,9 +11,22 @@ export const revalidate = 0;
 // GET payment methods
 export async function GET(req) {
   try {
-    await ensureDbInitialized();
     const { searchParams } = new URL(req.url);
     const all = searchParams.get('all') === 'true';
+
+    const cacheKey = `payment_methods_${all ? 'all' : 'active'}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json(
+        { success: true, methods: cached },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+            'X-Cache': 'HIT',
+          },
+        }
+      );
+    }
 
     const db = await getDb();
     const methodsCol = db.collection('payment_methods');
@@ -20,30 +34,35 @@ export async function GET(req) {
     const query = all ? {} : { isActive: true };
     const methods = await methodsCol.find(query).toArray();
 
+    const mappedMethods = methods.map(m => ({
+      id: m._id.toString(),
+      methodId: m.methodId,
+      name: m.name,
+      type: m.type || 'custom',
+      tag: m.tag || 'Instant',
+      tagName: m.tagName || m.accountDetails || m.cashtag || m.address || '',
+      accountDetails: m.accountDetails || m.tagName || m.cashtag || m.address || '',
+      cashtag: m.accountDetails || m.tagName || m.cashtag || '',
+      details: m.accountDetails || m.tagName || m.details || '',
+      instructions: m.instructions || '',
+      paymentUrl: m.paymentUrl || '',
+      qrCode: m.qrCode || '',
+      minDeposit: m.minDeposit || 10,
+      maxDeposit: m.maxDeposit || 5000,
+      isActive: m.isActive ?? true,
+    }));
+
+    cache.set(cacheKey, mappedMethods, 60);
+
     return NextResponse.json(
       {
         success: true,
-        methods: methods.map(m => ({
-          id: m._id.toString(),
-          methodId: m.methodId,
-          name: m.name,
-          type: m.type || 'custom',
-          tag: m.tag || 'Instant',
-          tagName: m.tagName || m.accountDetails || m.cashtag || m.address || '',
-          accountDetails: m.accountDetails || m.tagName || m.cashtag || m.address || '',
-          cashtag: m.accountDetails || m.tagName || m.cashtag || '',
-          details: m.accountDetails || m.tagName || m.details || '',
-          instructions: m.instructions || '',
-          paymentUrl: m.paymentUrl || '',
-          qrCode: m.qrCode || '',
-          minDeposit: m.minDeposit || 10,
-          maxDeposit: m.maxDeposit || 5000,
-          isActive: m.isActive ?? true,
-        })),
+        methods: mappedMethods,
       },
       {
         headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+          'X-Cache': 'MISS',
         },
       }
     );
@@ -104,6 +123,7 @@ export async function POST(req) {
     };
 
     const res = await methodsCol.insertOne(newMethod);
+    cache.del('payment_methods');
     return NextResponse.json({
       success: true,
       id: res.insertedId.toString(),
@@ -179,6 +199,7 @@ export async function PUT(req) {
 
     const filter = getMethodFilter(id);
     await methodsCol.updateOne(filter, { $set: updateFields });
+    cache.del('payment_methods');
 
     return NextResponse.json({ success: true, message: 'Payment method updated successfully.' });
   } catch (error) {
@@ -214,6 +235,7 @@ export async function DELETE(req) {
     }
 
     await methodsCol.deleteOne(getMethodFilter(id));
+    cache.del('payment_methods');
     return NextResponse.json({ success: true, message: 'Payment method deleted.' });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

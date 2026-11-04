@@ -28,6 +28,8 @@ import CyberFooter from '@/components/common/CyberFooter';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
 import { diffSet } from '@/lib/fastDiff';
 import { getAvailableGamePlatforms, ALL_PLATFORM_GAMES } from '@/lib/gameAssets';
+import { compressImageFile } from '@/lib/imageCompress';
+import { getCachedUser } from '@/lib/authClient';
 
 export default function WithdrawView({ isEmbedded = false, onSelectTab }) {
   const router = useRouter();
@@ -66,13 +68,24 @@ export default function WithdrawView({ isEmbedded = false, onSelectTab }) {
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // History State
-  const [withdrawHistory, setWithdrawHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+  // History State (Hydrated from cache for 0ms instant display)
+  const [withdrawHistory, setWithdrawHistory] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem('pp_withdraw_history');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // 1. Fetch current user
   const fetchUser = async (isSilent = false) => {
-    if (!isSilent) setLoadingUser(true);
+    if (!isSilent && !user) setLoadingUser(true);
     try {
       const res = await fetch('/api/auth/me', { cache: 'no-store' });
       const data = await res.json();
@@ -88,14 +101,17 @@ export default function WithdrawView({ isEmbedded = false, onSelectTab }) {
     }
   };
 
-  // 2. Fetch withdrawal history
+  // 2. Fetch withdrawal history (lightweight query)
   const fetchHistory = async (isSilent = false) => {
-    if (!isSilent) setLoadingHistory(true);
+    if (!isSilent && withdrawHistory.length === 0) setLoadingHistory(true);
     try {
-      const res = await fetch('/api/payments/withdraw', { cache: 'no-store' });
+      const res = await fetch('/api/payments/withdraw?lightweight=true', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.redemptions) {
         diffSet(setWithdrawHistory, data.redemptions);
+        try {
+          sessionStorage.setItem('pp_withdraw_history', JSON.stringify(data.redemptions));
+        } catch {}
       }
     } catch (err) {
       console.error(err);
@@ -137,8 +153,14 @@ export default function WithdrawView({ isEmbedded = false, onSelectTab }) {
   };
 
   useEffect(() => {
-    fetchUser();
-    fetchHistory();
+    const cached = getCachedUser();
+    if (cached) {
+      setUser(cached);
+      setLoadingUser(false);
+    }
+
+    fetchUser(true);
+    fetchHistory(true);
     fetchGameAccounts();
     fetchGames();
 
@@ -191,47 +213,13 @@ export default function WithdrawView({ isEmbedded = false, onSelectTab }) {
     };
   }, []);
 
-  const compressImage = (file, maxDim = 1200, quality = 0.82) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          if (width > height) {
-            if (width > maxDim) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            }
-          } else {
-            if (height > maxDim) {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/webp', quality));
-        };
-        img.onerror = () => resolve(e.target.result);
-        img.src = e.target.result;
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleGameScreenshotUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) return alert('Screenshot file must be under 15MB');
+    if (file.size > 25 * 1024 * 1024) return alert('Screenshot file must be under 25MB');
     setGameScreenshotName(file.name);
     try {
-      const compressed = await compressImage(file, 1200, 0.82);
+      const compressed = await compressImageFile(file, { maxSize: 900, quality: 0.55 });
       setGameScreenshot(compressed || null);
     } catch {
       const reader = new FileReader();
@@ -243,15 +231,14 @@ export default function WithdrawView({ isEmbedded = false, onSelectTab }) {
   const handleQrUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) return alert('QR Code file must be under 15MB');
+    if (file.size > 25 * 1024 * 1024) return alert('QR Code file must be under 25MB');
     setQrCodeImageName(file.name);
     try {
-      const compressed = await compressImage(file, 800, 0.85);
+      const compressed = await compressImageFile(file, { maxSize: 800, quality: 0.65 });
       setQrCodeImage(compressed || null);
     } catch {
       const reader = new FileReader();
       reader.onload = () => setQrCodeImage(reader.result);
-      reader.readAsDataURL(file);
     }
   };
 

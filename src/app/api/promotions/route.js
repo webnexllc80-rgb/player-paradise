@@ -2,12 +2,22 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
+import { cache } from '@/lib/cache';
 
 // GET: Returns list of promotions
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const isAdminQuery = searchParams.get('admin') === 'true';
+
+    const cacheKey = `promos_${isAdminQuery ? 'admin' : 'public'}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        promotions: cached,
+      });
+    }
 
     const db = await getDb();
     const promosCol = db.collection('promotions');
@@ -22,12 +32,16 @@ export async function GET(req) {
       .sort({ priority: 1, createdAt: -1 })
       .toArray();
 
+    const mappedPromos = promotions.map((p) => ({
+      ...p,
+      _id: p._id.toString(),
+    }));
+
+    cache.set(cacheKey, mappedPromos, 120);
+
     return NextResponse.json({
       success: true,
-      promotions: promotions.map((p) => ({
-        ...p,
-        _id: p._id.toString(),
-      })),
+      promotions: mappedPromos,
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -66,6 +80,7 @@ export async function POST(req) {
     };
 
     const result = await promosCol.insertOne(newPromo);
+    cache.del('promos_');
 
     return NextResponse.json({
       success: true,
@@ -117,6 +132,7 @@ export async function PUT(req) {
     if (priority !== undefined) updateFields.priority = Number(priority);
 
     await promosCol.updateOne(filter, { $set: updateFields });
+    cache.del('promos_');
 
     return NextResponse.json({ success: true, message: 'Promotion updated successfully.' });
   } catch (error) {
@@ -157,6 +173,7 @@ export async function DELETE(req) {
     }
 
     const result = await promosCol.deleteOne(filter);
+    cache.del('promos_');
 
     if (result.deletedCount === 0) {
       return NextResponse.json({ success: false, error: 'Promotion not found or already deleted.' }, { status: 404 });

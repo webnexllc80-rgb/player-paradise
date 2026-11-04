@@ -23,6 +23,7 @@ import CyberHeroBanner from '@/components/hub/CyberHeroBanner';
 import CyberLatestWinsTicker from '@/components/hub/CyberLatestWinsTicker';
 import PlayerGameCredentialsHub from '@/components/hub/PlayerGameCredentialsHub';
 import GameCard from '@/components/hub/GameCard';
+import { DEFAULT_FALLBACK_GAMES } from '@/lib/gameAssets';
 
 // Modals
 import AuthModal from '@/components/modals/AuthModal';
@@ -36,6 +37,7 @@ import { diffSet, areEqual } from '@/lib/fastDiff';
 import BonusAlertToast from '@/components/common/BonusAlertToast';
 import PushNotificationManager from '@/components/common/PushNotificationManager';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
+import { fetchCurrentUser, getCachedUser, setCachedUser } from '@/lib/authClient';
 
 // Games
 import Panda777SlotsModal from '@/components/games/Panda777SlotsModal';
@@ -102,7 +104,7 @@ export default function HomePage({ initialTab = 'lobby' }) {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // User & UI States
+  // User & UI States (SSR-safe initial states to prevent hydration mismatch)
   const [user, setUser] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -122,33 +124,11 @@ export default function HomePage({ initialTab = 'lobby' }) {
   const [slotsOpen, setSlotsOpen] = useState(false);
   const [crashOpen, setCrashOpen] = useState(false);
 
-  // Games & Filter state with instant 0ms cached initialization
-  const [games, setGames] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('pp_games_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
-    }
-    return [];
-  });
+  // Games & Filter state with curated fallback (0ms SSR matching)
+  const [games, setGames] = useState(DEFAULT_FALLBACK_GAMES);
   const [category, setCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [loadingGames, setLoadingGames] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('pp_games_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return false;
-        }
-      } catch {}
-    }
-    return true;
-  });
+  const [loadingGames, setLoadingGames] = useState(false);
   const [userGameAccounts, setUserGameAccounts] = useState([]);
   const [pendingAccountRequests, setPendingAccountRequests] = useState([]);
 
@@ -168,12 +148,11 @@ export default function HomePage({ initialTab = 'lobby' }) {
     } catch {}
   };
 
-  // Load User Session
+  // Load User Session (Deduplicated via authClient)
   const loadUser = async () => {
     try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.authenticated && data.user) {
+      const data = await fetchCurrentUser();
+      if (data?.authenticated && data?.user) {
         diffSet(setUser, data.user);
         loadUserGameAccounts(data.user.email);
       } else {
@@ -203,7 +182,7 @@ export default function HomePage({ initialTab = 'lobby' }) {
         diffSet(setGames, data.games);
         try {
           if (category === 'all' && !searchTerm) {
-            sessionStorage.setItem('pp_games_cache', JSON.stringify(data.games));
+            localStorage.setItem('pp_games_cache', JSON.stringify(data.games));
           }
         } catch {}
       }
@@ -215,6 +194,22 @@ export default function HomePage({ initialTab = 'lobby' }) {
   };
 
   useEffect(() => {
+    // 0ms instant hydration from client cache
+    const cachedUser = getCachedUser();
+    if (cachedUser) {
+      setUser(cachedUser);
+      loadUserGameAccounts(cachedUser.email);
+    }
+    try {
+      const rawGames = localStorage.getItem('pp_games_cache') || sessionStorage.getItem('pp_games_cache');
+      if (rawGames) {
+        const parsed = JSON.parse(rawGames);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setGames(parsed);
+        }
+      }
+    } catch {}
+
     loadUser();
 
     const handleUserSync = (e) => {
@@ -266,6 +261,7 @@ export default function HomePage({ initialTab = 'lobby' }) {
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
+    setCachedUser(null);
     setUser(null);
     setUserGameAccounts([]);
     setPendingAccountRequests([]);
@@ -348,10 +344,12 @@ export default function HomePage({ initialTab = 'lobby' }) {
       { gameTitle, status: 'PENDING', createdAt: new Date() },
     ]);
 
+    // 0ms Optimistic UI update: Instantly show success toast and play audio
+    playTune('bell', 0.6);
     setRequestToast({
-      type: 'loading',
-      title: 'Submitting ID Request...',
-      message: `Sending credentials request for ${gameTitle} to Admin...`,
+      type: 'success',
+      title: 'ID Request Sent! 🎯',
+      message: `Your request for ${gameTitle} credentials has been sent to Admin. Staff will issue your ID shortly!`,
     });
 
     try {
@@ -371,12 +369,6 @@ export default function HomePage({ initialTab = 'lobby' }) {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        playTune('bell', 0.6);
-        setRequestToast({
-          type: 'success',
-          title: 'ID Request Sent! 🎯',
-          message: `Your request for ${gameTitle} credentials has been sent to Admin. Staff will issue your ID shortly!`,
-        });
 
         // Instant cross-tab broadcast so admin tab receives alert in 0ms!
         try {

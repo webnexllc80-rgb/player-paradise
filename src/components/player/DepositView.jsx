@@ -32,6 +32,33 @@ import { diffSet } from '@/lib/fastDiff';
 import { getAvailableGamePlatforms, ALL_PLATFORM_GAMES } from '@/lib/gameAssets';
 import CyberFooter from '@/components/common/CyberFooter';
 import DailySpinWheelModal from '@/components/common/DailySpinWheelModal';
+import { compressImageFile } from '@/lib/imageCompress';
+import { getCachedUser } from '@/lib/authClient';
+
+const DEFAULT_GATEWAYS = [
+  {
+    id: 'cashapp',
+    name: 'Cash App',
+    type: 'cashapp',
+    tagName: '$PlayersParadiseCash',
+    accountDetails: '$PlayersParadiseCash',
+    paymentUrl: 'https://cash.app/$PlayersParadiseCash',
+    qrCode: '',
+    minDeposit: 10,
+    instructions: 'Send exact amount via Cash App. Upload your payment receipt below.',
+  },
+  {
+    id: 'crypto-btc',
+    name: 'Bitcoin (BTC)',
+    type: 'crypto',
+    tagName: 'bc1qplayersparadisehubdeposit777address',
+    accountDetails: 'bc1qplayersparadisehubdeposit777address',
+    paymentUrl: '',
+    qrCode: '',
+    minDeposit: 20,
+    instructions: 'Send exact BTC equivalent. Paste TxHash or tag below.',
+  },
+];
 
 export default function DepositView({ isEmbedded = false, onSelectTab }) {
   const router = useRouter();
@@ -50,8 +77,8 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
   });
 
   // Deposit Form State
-  const [gateways, setGateways] = useState([]);
-  const [selectedGateway, setSelectedGateway] = useState(null);
+  const [gateways, setGateways] = useState(DEFAULT_GATEWAYS);
+  const [selectedGateway, setSelectedGateway] = useState(DEFAULT_GATEWAYS[0]);
   const [amount, setAmount] = useState(50);
   const [customAmount, setCustomAmount] = useState('');
   const [senderAccount, setSenderAccount] = useState('');
@@ -80,9 +107,20 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
   // QR Preview Modal
   const [qrModalOpen, setQrModalOpen] = useState(false);
 
-  // History State
-  const [depositHistory, setDepositHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+  // History State (Hydrated from cache for 0ms instant display)
+  const [depositHistory, setDepositHistory] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem('pp_deposit_history');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // 1. Fetch current user & settings
   const fetchUserAndSettings = async (isSilent = false) => {
@@ -159,14 +197,17 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
     }
   };
 
-  // 3. Fetch deposit history (with silent background update support)
+  // 3. Fetch deposit history (with silent background update support and lightweight query)
   const fetchHistory = async (isSilent = false) => {
-    if (!isSilent) setLoadingHistory(true);
+    if (!isSilent && depositHistory.length === 0) setLoadingHistory(true);
     try {
-      const res = await fetch('/api/payments/deposit', { cache: 'no-store' });
+      const res = await fetch('/api/payments/deposit?lightweight=true', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.deposits) {
         diffSet(setDepositHistory, data.deposits);
+        try {
+          sessionStorage.setItem('pp_deposit_history', JSON.stringify(data.deposits));
+        } catch {}
       }
     } catch (err) {
       console.error(err);
@@ -217,9 +258,17 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
   };
 
   useEffect(() => {
-    fetchUserAndSettings();
+    // 0ms instant hydrate user from client cache
+    const cached = getCachedUser();
+    if (cached) {
+      setUser(cached);
+      setLoadingUser(false);
+      if (cached.email) setPlayerPaymentEmail((prev) => prev || cached.email);
+    }
+
+    fetchUserAndSettings(true);
     fetchGateways();
-    fetchHistory();
+    fetchHistory(true);
     fetchGameAccounts();
     fetchGames();
 
@@ -231,7 +280,7 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
         fetchGameAccounts();
         fetchGames();
       }
-    }, 4000);
+    }, 5000);
 
     const handleUserSync = (e) => {
       if (e.detail) diffSet(setUser, e.detail);
@@ -272,52 +321,18 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
     document.body.removeChild(a);
   };
 
-  const compressImage = (file, maxDim = 1200, quality = 0.82) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          if (width > height) {
-            if (width > maxDim) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            }
-          } else {
-            if (height > maxDim) {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/webp', quality));
-        };
-        img.onerror = () => resolve(e.target.result);
-        img.src = e.target.result;
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 15 * 1024 * 1024) {
-      alert('File size exceeds 15MB limit.');
+    if (file.size > 25 * 1024 * 1024) {
+      alert('File size exceeds 25MB limit.');
       return;
     }
 
     setProofFileName(file.name);
     try {
-      const compressed = await compressImage(file, 1200, 0.82);
+      const compressed = await compressImageFile(file, { maxSize: 900, quality: 0.55 });
       setProofImage(compressed || null);
     } catch {
       const reader = new FileReader();

@@ -2,52 +2,51 @@ import bcrypt from 'bcryptjs';
 import { getDb } from './mongodb';
 import { ROLES } from './auth';
 
-let isDbInitialized = false;
-let initPromise = null;
+// Precomputed bcrypt hashes for cost factor 10 to prevent blocking Node.js event loop on cold starts
+const ADMIN_HASH = '$2b$10$kMTOYvdLQMycp/qtXOYGOOYdiR1JYASKQyD9ipinJFhxO7OewZ.YO';
+const STAFF_HASH = '$2b$10$PB5CCkqf6H/dsU/2vt2JveXRCoPyNSevGOku4YYXpdiarLNtFHtRK';
+const PLAYER_HASH = '$2b$10$jhn/Xs3esCHQqehL0D4ygusJ9I51Rk5PlzYYYZUiV0lLXe2kCLY4i';
 
 export async function ensureDbInitialized() {
-  if (isDbInitialized) return true;
-  if (initPromise) return initPromise;
+  if (global._ppDbInitialized) return true;
+  if (global._ppInitPromise) return global._ppInitPromise;
 
-  initPromise = (async () => {
+  global._ppInitPromise = (async () => {
     try {
       const db = await getDb();
 
-      // Ensure MongoDB Indexes for Ultra-Fast Queries
-      try {
-        if (db && typeof db.collection === 'function') {
-          await Promise.allSettled([
-            db.collection('users').createIndex({ email: 1 }),
-            db.collection('users').createIndex({ username: 1 }),
-            db.collection('deposits').createIndex({ status: 1, createdAt: -1 }),
-            db.collection('deposits').createIndex({ userId: 1, createdAt: -1 }),
-            db.collection('redemptions').createIndex({ status: 1, createdAt: -1 }),
-            db.collection('redemptions').createIndex({ userId: 1, createdAt: -1 }),
-            db.collection('accountRequests').createIndex({ status: 1, createdAt: -1 }),
-            db.collection('accountRequests').createIndex({ userEmail: 1, status: 1 }),
-            db.collection('gameAccounts').createIndex({ userEmail: 1, gameTitle: 1 }),
-            db.collection('chat_messages').createIndex({ conversationId: 1, createdAt: 1 }),
-            db.collection('chat_messages').createIndex({ createdAt: -1 }),
-            db.collection('subscriptions').createIndex({ email: 1 }),
-            db.collection('subscriptions').createIndex({ userId: 1 }),
-            db.collection('notifications').createIndex({ target: 1, createdAt: -1 }),
-            db.collection('notifications').createIndex({ email: 1, createdAt: -1 }),
-            db.collection('games').createIndex({ isActive: 1, isFeatured: -1 }),
-            db.collection('payment_methods').createIndex({ isActive: 1 }),
-            db.collection('ledger').createIndex({ userId: 1, createdAt: -1 }),
-            db.collection('kyc_requests').createIndex({ status: 1, createdAt: -1 }),
-            db.collection('game_activity').createIndex({ createdAt: -1 }),
-          ]);
-        }
-      } catch (idxErr) {
-        console.warn('Index initialization note:', idxErr.message);
+      // Ensure MongoDB Indexes in background (run once per Node process)
+      if (!global._ppIndexesEnsured) {
+        global._ppIndexesEnsured = true;
+        Promise.allSettled([
+          db.collection('users').createIndex({ email: 1 }),
+          db.collection('users').createIndex({ username: 1 }),
+          db.collection('deposits').createIndex({ status: 1, createdAt: -1 }),
+          db.collection('deposits').createIndex({ userId: 1, createdAt: -1 }),
+          db.collection('redemptions').createIndex({ status: 1, createdAt: -1 }),
+          db.collection('redemptions').createIndex({ userId: 1, createdAt: -1 }),
+          db.collection('accountRequests').createIndex({ status: 1, createdAt: -1 }),
+          db.collection('accountRequests').createIndex({ userEmail: 1, status: 1 }),
+          db.collection('gameAccounts').createIndex({ userEmail: 1, gameTitle: 1 }),
+          db.collection('chat_messages').createIndex({ conversationId: 1, createdAt: 1 }),
+          db.collection('chat_messages').createIndex({ createdAt: -1 }),
+          db.collection('subscriptions').createIndex({ email: 1 }),
+          db.collection('subscriptions').createIndex({ userId: 1 }),
+          db.collection('notifications').createIndex({ target: 1, createdAt: -1 }),
+          db.collection('notifications').createIndex({ email: 1, createdAt: -1 }),
+          db.collection('games').createIndex({ isActive: 1, isFeatured: -1 }),
+          db.collection('payment_methods').createIndex({ isActive: 1 }),
+          db.collection('ledger').createIndex({ userId: 1, createdAt: -1 }),
+          db.collection('kyc_requests').createIndex({ status: 1, createdAt: -1 }),
+          db.collection('game_activity').createIndex({ createdAt: -1 }),
+        ]).catch((err) => console.warn('Background index note:', err?.message));
       }
 
       // 1. Ensure Super Admin and Staff accounts
       const usersCol = db.collection('users');
-      const adminPasswordHash = await bcrypt.hash('Paradise@2026!', 10);
-      const staffPasswordHash = await bcrypt.hash('Staff@2026!', 10);
-      const playerPasswordHash = await bcrypt.hash('Player@2026!', 10);
+      const adminPasswordHash = ADMIN_HASH;
+      const staffPasswordHash = STAFF_HASH;
+      const playerPasswordHash = PLAYER_HASH;
 
     // 1. Always ensure 'superadmin' exists and has active credentials
     await usersCol.updateOne(
@@ -440,12 +439,13 @@ export async function ensureDbInitialized() {
     }
 
     console.log('Database initialization check completed successfully.');
-    isDbInitialized = true;
+    global._ppDbInitialized = true;
     return true;
   } catch (err) {
     console.error('Error during database initialization:', err);
+    global._ppInitPromise = null;
     return false;
   }
   })();
-  return initPromise;
+  return global._ppInitPromise;
 }

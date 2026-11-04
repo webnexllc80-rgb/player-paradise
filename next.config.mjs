@@ -8,13 +8,46 @@ const nextConfig = {
   },
   async headers() {
     return [
+      // 1. High-performance caching for static images, audio, and font files
       {
-        source: '/:all*(svg|jpg|png|webp|ico|woff|woff2)',
+        source: '/:path*.(ico|png|jpg|jpeg|svg|webp|mp3|wav|ogg|woff|woff2|ttf)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: 'public, max-age=31536000, immutable, stale-while-revalidate=604800',
           },
+        ],
+      },
+      // 2. Service worker headers
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      // 3. Progressive Web App manifest caching
+      {
+        source: '/manifest.json',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/manifest+json',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=3600',
+          },
+        ],
+      },
+      // 4. Prevent Hostinger CDN / Nginx / Cloudflare edge from hanging on stale dynamic HTML pages
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, max-age=0, must-revalidate' },
+          { key: 'Pragma', value: 'no-cache' },
+          { key: 'Expires', value: '0' },
         ],
       },
     ];

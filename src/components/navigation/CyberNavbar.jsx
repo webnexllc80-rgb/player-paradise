@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import NotificationsModal from '@/components/modals/NotificationsModal';
 import { areEqual } from '@/lib/fastDiff';
+import { fetchCurrentUser, getCachedUser } from '@/lib/authClient';
 
 export default function CyberNavbar({
   onToggleSidebar,
@@ -111,13 +112,20 @@ export default function CyberNavbar({
     return () => window.removeEventListener('paradise-open-notifications', handleOpenNotifsEvent);
   }, []);
 
-  // Keep liveUser aligned when prop changes
+  // Keep liveUser aligned when prop changes or hydrate from cache on mount
   useEffect(() => {
-    setLiveUser(user || null);
     if (user) {
+      setLiveUser(user);
       lastBalanceRef.current = Number(user.balance ?? user.balanceSC ?? 0);
     } else {
-      lastBalanceRef.current = null;
+      const cached = getCachedUser();
+      if (cached) {
+        setLiveUser(cached);
+        lastBalanceRef.current = Number(cached.balance ?? cached.balanceSC ?? 0);
+      } else {
+        setLiveUser(null);
+        lastBalanceRef.current = null;
+      }
     }
   }, [user]);
 
@@ -148,8 +156,7 @@ export default function CyberNavbar({
     const syncUserData = async () => {
       if (document.hidden) return; // Save VPS CPU when tab is hidden
       try {
-        const res = await fetch('/api/auth/me', { cache: 'no-store' });
-        const data = await res.json();
+        const data = await fetchCurrentUser();
         if (isCancelled) return;
 
         if (data.authenticated && data.user) {

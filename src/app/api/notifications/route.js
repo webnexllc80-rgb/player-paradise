@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser, ROLES, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { sendPushNotification, getFirebaseMessaging } from '@/lib/fcm';
+import { memoryCache } from '@/lib/cache';
 
 // GET: Fetch in-app notifications for player OR broadcast history for admin
 export async function GET(req) {
@@ -44,6 +45,12 @@ export async function GET(req) {
     // Player view: notifications broadcast to all, or targeted to user by id, username, or email
     const emailParam = searchParams.get('email');
     const guestIdParam = searchParams.get('guestId');
+    const cacheKey = `notifs:${session?.userId || guestIdParam || emailParam || 'anon'}`;
+    const cachedNotifs = memoryCache.get(cacheKey);
+    if (cachedNotifs) {
+      return NextResponse.json(cachedNotifs);
+    }
+
     const targetConditions = [{ target: 'all' }];
     const userKeys = [];
 
@@ -97,7 +104,7 @@ export async function GET(req) {
       .limit(30)
       .toArray();
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       notifications: items.map(n => {
         let isRead = Boolean(n.read);
@@ -114,7 +121,9 @@ export async function GET(req) {
           createdAt: n.createdAt,
         };
       }),
-    });
+    };
+    memoryCache.set(cacheKey, payload, 4);
+    return NextResponse.json(payload);
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -216,6 +225,7 @@ export async function POST(req) {
       }
     });
 
+    memoryCache.invalidatePrefix('notifs:');
     return NextResponse.json(responsePayload);
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -373,6 +383,8 @@ export async function PATCH(req) {
       { $or: filterConditions },
       updateDoc
     );
+
+    memoryCache.invalidatePrefix('notifs:');
 
     return NextResponse.json({ success: true, message: 'Notifications marked as read.' });
   } catch (error) {

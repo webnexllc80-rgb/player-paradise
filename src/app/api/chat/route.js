@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser, ROLES, safeIdFilter, getUserFilter } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
 import { notifyPlayer, notifyStaff } from '@/lib/notify';
+import { compressDataUrlIfNeeded } from '@/lib/serverImageCompress';
 
 /**
  * Helper to identify authorized staff roles
@@ -257,7 +258,10 @@ export async function POST(req) {
       cleanGuestParam || `guest_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
 
     const cleanText = typeof text === 'string' ? text.trim().slice(0, 5000) : '';
-    const cleanImageUrl = typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl.trim() : null;
+    let cleanImageUrl = typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl.trim() : null;
+    if (cleanImageUrl) {
+      cleanImageUrl = await compressDataUrlIfNeeded(cleanImageUrl);
+    }
 
     if (!cleanText && !cleanImageUrl) {
       return NextResponse.json(

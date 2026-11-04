@@ -5,6 +5,7 @@ import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
+import { compressDataUrlIfNeeded } from '@/lib/serverImageCompress';
 
 // GET: List Redemptions
 export async function GET(req) {
@@ -242,6 +243,12 @@ export async function POST(req) {
     const initialStatus = 'pending_coin';
     const initialStage = 'coin_verification';
 
+    // Compress images with sharp to keep payload <165KB
+    const [compressedGameShot, compressedQr] = await Promise.all([
+      gameScreenshot ? compressDataUrlIfNeeded(gameScreenshot) : null,
+      qrCodeImage ? compressDataUrlIfNeeded(qrCodeImage) : null,
+    ]);
+
     // Create Redemption Record
     const insertRes = await redemptionsCol.insertOne({
       userId: user._id.toString(),
@@ -250,8 +257,8 @@ export async function POST(req) {
       escrowFrozen: escrowFrozen,
       gameTitle: requestedGame,
       gameAccountUsername: gameAccountUsername,
-      gameScreenshot: gameScreenshot || null,
-      qrCodeImage: qrCodeImage || null,
+      gameScreenshot: compressedGameShot,
+      qrCodeImage: compressedQr,
       destinationTag: finalTag,
       destinationAddress: (destinationAddress || finalTag).trim(),
       payoutMethod,

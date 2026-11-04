@@ -129,20 +129,27 @@ export default function GameRequestModal({
       return;
     }
 
-    // 0ms Optimistic UI update: Instantly register as pending in UI
-    setPendingRequests((prev) => [...prev, { gameTitle: selectedGame, status: 'PENDING' }]);
-    setStatus({
-      error: '',
-      success: `Request for ${selectedGame} credentials submitted! Desk is reviewing.`,
-    });
-    setLoading(true);
+    // WinningHeaven optimistic style: Modal closes instantly (0ms), alerts user immediately!
+    const targetGameToRequest = selectedGame;
+    onClose();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('paradise-show-notification', {
+          detail: {
+            title: 'ID Request Sent! 🎯',
+            message: `Your credentials request for ${targetGameToRequest} has been sent to Admin.`,
+            type: 'success',
+          },
+        })
+      );
+    }
 
     try {
       const res = await fetch('/api/account-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          gameTitle: selectedGame,
+          gameTitle: targetGameToRequest,
           requestType: 'ACCOUNT_CREATION',
           transferAmount: 0,
           userEmail: user.email,
@@ -153,8 +160,19 @@ export default function GameRequestModal({
 
       if (!res.ok || !data.success) {
         // Rollback on failure
-        setPendingRequests((prev) => prev.filter((p) => (p.gameTitle || '').toLowerCase() !== selectedGame.toLowerCase()));
-        throw new Error(data.message || 'Failed to submit account request.');
+        setPendingRequests((prev) => prev.filter((p) => (p.gameTitle || '').toLowerCase() !== targetGameToRequest.toLowerCase()));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('paradise-show-notification', {
+              detail: {
+                title: 'Request Failed',
+                message: data.message || 'Failed to submit account request.',
+                type: 'error',
+              },
+            })
+          );
+        }
+        return;
       }
 
       if (onRequestCreated) onRequestCreated();
@@ -165,7 +183,7 @@ export default function GameRequestModal({
         ch.postMessage({
           type: 'NEW_REQUEST',
           category: 'ACCOUNT_CREATION',
-          gameTitle: selectedGame,
+          gameTitle: targetGameToRequest,
           userName: user.username,
           userEmail: user.email,
           timestamp: Date.now(),
@@ -176,7 +194,7 @@ export default function GameRequestModal({
         localStorage.setItem('paradise_staff_event', JSON.stringify({
           type: 'NEW_REQUEST',
           category: 'ACCOUNT_CREATION',
-          gameTitle: selectedGame,
+          gameTitle: targetGameToRequest,
           userName: user.username,
           time: Date.now(),
         }));
@@ -185,12 +203,18 @@ export default function GameRequestModal({
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('accountRequestUpdated'));
       }
-      onClose();
-      router.push(`/game-accounts/provisioning?requestId=${data.requestId || ''}&game=${encodeURIComponent(selectedGame)}`);
     } catch (err) {
-      setStatus({ error: err.message, success: '' });
-    } finally {
-      setLoading(false);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('paradise-show-notification', {
+            detail: {
+              title: 'Connection Issue',
+              message: err.message || 'Network error occurred.',
+              type: 'error',
+            },
+          })
+        );
+      }
     }
   };
 

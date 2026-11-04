@@ -66,7 +66,20 @@ export default function LoadCoinsModal({
       return;
     }
 
-    setLoading(true);
+    // WinningHeaven optimistic style: Modal closes instantly (0ms), alerts user immediately!
+    onClose();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('paradise-show-notification', {
+          detail: {
+            title: 'Coin Load Dispatched! 🚀',
+            message: `$${amt.toFixed(2)} SC submitted to coin operations desk for ${gameTitle}.`,
+            type: 'success',
+          },
+        })
+      );
+    }
+
     try {
       const res = await fetch('/api/account-requests', {
         method: 'POST',
@@ -83,10 +96,8 @@ export default function LoadCoinsModal({
       });
 
       const data = await res.json();
-      setLoading(false);
 
       if (data.success) {
-        setSuccessMsg(`🎉 $${amt.toFixed(2)} SC frozen in escrow and submitted to coin desk for ${gameTitle}!`);
         window.dispatchEvent(new CustomEvent('balanceUpdated'));
         if (onSuccess) onSuccess(data);
 
@@ -114,16 +125,31 @@ export default function LoadCoinsModal({
             })
           );
         } catch {}
-
-        setTimeout(() => {
-          onClose();
-        }, 1800);
       } else {
-        setErrorMsg(data.message || 'Failed to submit load request.');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('paradise-show-notification', {
+              detail: {
+                title: 'Coin Load Notice',
+                message: data.message || 'Failed to submit load request.',
+                type: 'error',
+              },
+            })
+          );
+        }
       }
     } catch {
-      setLoading(false);
-      setErrorMsg('Network error. Could not submit load request.');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('paradise-show-notification', {
+            detail: {
+              title: 'Connection Issue',
+              message: 'Network error. Could not submit load request.',
+              type: 'error',
+            },
+          })
+        );
+      }
     }
   };
 

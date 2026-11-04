@@ -1,9 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
+import { memoryCache } from '@/lib/cache';
+
+const CACHE_KEY = 'admin:settings:general';
+const CACHE_TTL_SECONDS = 120;
 
 export async function GET() {
   try {
+    const cached = memoryCache.get(CACHE_KEY);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
     const db = await getDb();
     const settings = await db.collection('system_settings').findOne({ key: 'general' });
     const defaultSettings = {
@@ -31,7 +40,9 @@ export async function GET() {
       maintenanceMode: false,
     };
     const merged = { ...defaultSettings, ...(settings || {}), restrictedStates: [] };
-    return NextResponse.json({ success: true, settings: merged });
+    const responsePayload = { success: true, settings: merged };
+    memoryCache.set(CACHE_KEY, responsePayload, CACHE_TTL_SECONDS);
+    return NextResponse.json(responsePayload);
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -121,6 +132,7 @@ export async function PUT(req) {
       ).catch(() => {});
     }
 
+    memoryCache.delete(CACHE_KEY);
     const updatedSettings = await settingsCol.findOne({ key: 'general' });
     return NextResponse.json({ success: true, message: 'Settings saved successfully.', settings: updatedSettings });
   } catch (error) {

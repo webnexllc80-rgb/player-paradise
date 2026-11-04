@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { getDb } from '@/lib/mongodb';
+import { cache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,6 +16,13 @@ export async function GET(req) {
     const session = await getSessionUser(isAdminQuery ? 'admin' : 'player');
     if (!session || !session.userId) {
       return NextResponse.json({ authenticated: false, user: null });
+    }
+
+    // 3-second in-memory burst cache to protect Atlas from rapid client refreshes
+    const cacheKey = `auth_me_${session.userId}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json({ authenticated: true, user: cached });
     }
 
     const db = await getDb();
@@ -68,6 +76,8 @@ export async function GET(req) {
       affiliateCommissionsUnpaid: user?.affiliateCommissionsUnpaid || 0,
       affiliateCommissionsEarned: user?.affiliateCommissionsEarned || 0,
     };
+
+    cache.set(cacheKey, userData, 3);
 
     return NextResponse.json({
       authenticated: true,

@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { playTune } from '@/lib/soundAlerts';
 import { areEqual } from '@/lib/fastDiff';
+import { fetchCurrentUser, getCachedUser } from '@/lib/authClient';
+import { compressImageFile } from '@/lib/imageCompress';
 
 export default function LiveChatWidget({ user: initialUser, soundEnabled = true }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -58,8 +60,10 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
     if (initialUser) {
       setCurrentUser(initialUser);
     } else {
-      fetch('/api/auth/me')
-        .then((r) => (r.ok ? r.json() : null))
+      const cached = getCachedUser();
+      if (cached) setCurrentUser(cached);
+
+      fetchCurrentUser()
         .then((d) => {
           if (d?.user) setCurrentUser(d.user);
         })
@@ -268,7 +272,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
   }, [messages, keyboardOffset, attachedImage, isOpen]);
 
   // Compress & read image to lightweight base64
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -278,41 +282,17 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
     }
 
     setUploadingImage(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 1200;
-        let width = img.width;
-        let height = img.height;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-        setAttachedImage(compressedDataUrl);
-        setUploadingImage(false);
-      };
-      img.onerror = () => {
-        setAttachedImage(event.target.result);
-        setUploadingImage(false);
-      };
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    try {
+      const compressed = await compressImageFile(file, { maxSize: 900, quality: 0.55 });
+      setAttachedImage(compressed || null);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (event) => setAttachedImage(event.target.result);
+      reader.readAsDataURL(file);
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
   };
 
   // Send message handler with optimistic UI update and error rollback

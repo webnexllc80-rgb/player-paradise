@@ -4,12 +4,27 @@ import { getDb } from '@/lib/mongodb';
 import { getSessionUser, ROLES } from '@/lib/auth';
 import { ensureDbInitialized } from '@/lib/initDb';
 import { getGameThumbnail } from '@/lib/gameAssets';
+import { cache } from '@/lib/cache';
 
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get('category');
     const all = searchParams.get('all') === 'true';
+
+    const cacheKey = `games_${all ? 'all' : 'active'}_${category || 'all'}`;
+    const cachedGames = cache.get(cacheKey);
+    if (cachedGames) {
+      return NextResponse.json(
+        { success: true, games: cachedGames },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+            'X-Cache': 'HIT',
+          },
+        }
+      );
+    }
 
     const db = await getDb();
     const gamesCol = db.collection('games');
@@ -24,45 +39,51 @@ export async function GET(req) {
 
     const games = await gamesCol.find(query).sort({ isFeatured: -1, playsCount: -1 }).toArray();
 
+    const mappedGames = games.map(g => {
+      const sid = g._id ? g._id.toString() : (g.id || g.gameId);
+      const rawThumb = g.thumbnail || g.image || g.imageUrl;
+      const resolvedImage = (rawThumb && !rawThumb.startsWith('data:image'))
+        ? rawThumb
+        : getGameThumbnail(g.title, '/images/vegas-777.webp');
+      return {
+        id: sid,
+        _id: sid,
+        gameId: g.gameId || sid,
+        title: g.title,
+        category: g.category || 'sweepstakes',
+        provider: g.provider || 'Players Paradise Studio',
+        thumbnail: resolvedImage,
+        image: resolvedImage,
+        imageUrl: resolvedImage,
+        fallbackImage: resolvedImage,
+        type: g.type || 'internal',
+        url: g.url || null,
+        playUrl: g.playUrl || g.url || null,
+        badge: g.badge || (g.isHot ? 'HOT' : (g.isFeatured ? 'EXCLUSIVE' : '')),
+        isActive: g.isActive !== false,
+        isHot: g.isHot ?? false,
+        isFeatured: g.isFeatured ?? false,
+        playsCount: g.playsCount || 0,
+        description: g.description || '',
+        platform: g.platform || g.provider || 'Players Paradise',
+        isInternal: g.isInternal ?? (g.type === 'internal'),
+        rtp: g.rtp || 98.2,
+        rating: g.rating || 4.9,
+      };
+    });
+
+    // Cache in RAM for 120 seconds
+    cache.set(cacheKey, mappedGames, 120);
+
     return NextResponse.json(
       {
         success: true,
-        games: games.map(g => {
-          const sid = g._id ? g._id.toString() : (g.id || g.gameId);
-          const rawThumb = g.thumbnail || g.image || g.imageUrl;
-          const resolvedImage = (rawThumb && !rawThumb.startsWith('data:image'))
-            ? rawThumb
-            : getGameThumbnail(g.title, '/images/vegas-777.webp');
-          return {
-            id: sid,
-            _id: sid,
-            gameId: g.gameId || sid,
-            title: g.title,
-            category: g.category || 'sweepstakes',
-            provider: g.provider || 'Players Paradise Studio',
-            thumbnail: resolvedImage,
-            image: resolvedImage,
-            imageUrl: resolvedImage,
-            fallbackImage: resolvedImage,
-            type: g.type || 'internal',
-            url: g.url || null,
-            playUrl: g.playUrl || g.url || null,
-            badge: g.badge || (g.isHot ? 'HOT' : (g.isFeatured ? 'EXCLUSIVE' : '')),
-            isActive: g.isActive !== false,
-            isHot: g.isHot ?? false,
-            isFeatured: g.isFeatured ?? false,
-            playsCount: g.playsCount || 0,
-            description: g.description || '',
-            platform: g.platform || g.provider || 'Players Paradise',
-            isInternal: g.isInternal ?? (g.type === 'internal'),
-            rtp: g.rtp || 98.2,
-            rating: g.rating || 4.9,
-          };
-        }),
+        games: mappedGames,
       },
       {
         headers: {
           'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          'X-Cache': 'MISS',
         },
       }
     );
@@ -131,6 +152,7 @@ export async function POST(req) {
 
     const res = await gamesCol.insertOne(newGame);
     const idStr = res.insertedId ? res.insertedId.toString() : gameId;
+    cache.del('games_');
     return NextResponse.json({
       success: true,
       gameId: idStr,
@@ -183,6 +205,7 @@ export async function PUT(req) {
     }
 
     await gamesCol.updateOne(getGameFilter(id), { $set: updateFields });
+    cache.del('games_');
 
     return NextResponse.json({ success: true, message: 'Game updated successfully' });
   } catch (error) {
@@ -209,6 +232,7 @@ export async function DELETE(req) {
     const gamesCol = db.collection('games');
 
     await gamesCol.deleteOne(getGameFilter(id));
+    cache.del('games_');
     return NextResponse.json({ success: true, message: 'Game deleted successfully' });
   } catch (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

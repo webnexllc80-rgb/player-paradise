@@ -5,6 +5,7 @@ import { getDb } from '@/lib/mongodb';
 import { sendEmail } from '@/lib/email';
 import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
+import { compressDataUrlIfNeeded } from '@/lib/serverImageCompress';
 
 // GET: List Deposits (Admin / Financial Manager) or Player's own
 export async function GET(req) {
@@ -227,6 +228,8 @@ export async function POST(req) {
       }
     }
 
+    const compressedProof = proofImage ? await compressDataUrlIfNeeded(proofImage) : null;
+
     const newDeposit = {
       userId: resolvedUserId,
       username: user?.username || session.username,
@@ -237,7 +240,7 @@ export async function POST(req) {
       playerTagName: tagName,
       playerPaymentEmail: (playerPaymentEmail || user?.email || '').trim(),
       senderNote: tagName,
-      proofImage: proofImage || null,
+      proofImage: compressedProof,
       txHash: resolvedTxHash,
       gameTitle: requestedGame || null,
       gameId: gameId || (requestedGame ? requestedGame.toLowerCase().replace(/\s+/g, '-') : null),
