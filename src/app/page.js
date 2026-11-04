@@ -216,9 +216,11 @@ export default function HomePage({ initialTab = 'lobby' }) {
       if (e.detail) {
         setUser((prev) => {
           if (areEqual(prev, e.detail)) return prev;
-          loadUserGameAccounts(e.detail.email);
           return e.detail;
         });
+        if (e.detail.email) {
+          loadUserGameAccounts(e.detail.email);
+        }
       }
     };
 

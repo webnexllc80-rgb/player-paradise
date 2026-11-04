@@ -46,6 +46,7 @@ export default function CyberNavbar({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [balancePulse, setBalancePulse] = useState(false);
   const lastBalanceRef = useRef(user ? (user.balance ?? user.balanceSC ?? 0) : null);
+  const lastSyncedUserRef = useRef(user || null);
   const profileRef = useRef(null);
   const notificationsOpenRef = useRef(false);
 
@@ -166,17 +167,20 @@ export default function CyberNavbar({
             setTimeout(() => setBalancePulse(false), 2200);
           }
           lastBalanceRef.current = currentBal;
-          setLiveUser((prev) => {
-            if (areEqual(prev, data.user)) return prev;
-            // Only dispatch event to sync parent page states if user data actually changed
+
+          if (!areEqual(lastSyncedUserRef.current, data.user)) {
+            lastSyncedUserRef.current = data.user;
+            setLiveUser(data.user);
             if (typeof window !== 'undefined') {
               if (data.user.email) {
                 localStorage.setItem('pp_user_email', data.user.email);
               }
-              window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
+              // Defer event via queueMicrotask so it runs after render finishes (prevents "Cannot update a component while rendering a different component")
+              queueMicrotask(() => {
+                window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
+              });
             }
-            return data.user;
-          });
+          }
 
           // Fetch live unread notification count
           if (data.user.email) {

@@ -576,6 +576,7 @@ export default function AdminPortal({ initialTab }) {
   // Coin Load Requests state (for Coins Allotment desk & badges)
   const [coinLoadRequests, setCoinLoadRequests] = useState([]);
   const [allotmentSubTab, setAllotmentSubTab] = useState('loads');
+  const [deskQueueCount, setDeskQueueCount] = useState(null);
 
   // Pagination states for responsive administrative tables
   const [gamePage, setGamePage] = useState(1);
@@ -1924,24 +1925,29 @@ export default function AdminPortal({ initialTab }) {
       id: 'account_requests',
       label: 'Account Requests',
       icon: Key,
-      badge: (accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING').length,
+      badge: applyAdminMutations(accountRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING' && !r.__deleted).length,
       category: 'Operations',
     },
     {
       id: 'coins_allotment',
       label: 'Coins Allotment',
       icon: Coins,
-      badge: (
-        (redemptions || []).filter(r => r.status === 'pending_coin' || r.stage === 'coin_verification').length +
-        (coinLoadRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING').length
-      ),
+      badge: (deskQueueCount !== null && activeTab === 'coins_allotment')
+        ? deskQueueCount
+        : (
+          applyAdminMutations(redemptions || []).filter(r => (r.status === 'pending_coin' || r.stage === 'coin_verification') && !r.__deleted).length +
+          applyAdminMutations(coinLoadRequests || []).filter(r => (r.status || '').toUpperCase() === 'PENDING' && !r.__deleted).length
+        ),
       category: 'Operations',
     },
     {
       id: 'finance',
       label: 'Finance & Cashier',
       icon: CreditCard,
-      badge: (deposits.filter(d => d.status === 'pending').length + redemptions.filter(r => r.status === 'pending').length),
+      badge: (
+        applyAdminMutations(deposits || []).filter(d => d.status === 'pending' && !d.__deleted).length +
+        applyAdminMutations(redemptions || []).filter(r => r.status === 'pending' && r.stage !== 'coin_verification' && !r.__deleted).length
+      ),
       category: 'Operations',
     },
     {
@@ -2994,7 +3000,44 @@ export default function AdminPortal({ initialTab }) {
               initialLoads={coinLoadRequests}
               initialCashouts={redemptions}
               initialSection={allotmentSubTab || 'loads'}
-              onMutateSuccess={syncRequestsAndAlerts}
+              onQueueChange={setDeskQueueCount}
+              onMutate={(mutation) => {
+                if (!mutation) return;
+                const { id, patch, type, item } = mutation;
+                const strId = String(id || '');
+                markAdminMutated(id, patch);
+                if (type === 'load') {
+                  setCoinLoadRequests((prev) =>
+                    (Array.isArray(prev) ? prev : []).map((r) => {
+                      const rId = String(r.id || r._id || '');
+                      if (
+                        (rId && rId === strId) ||
+                        (item && (r.status || '').toUpperCase() === 'PENDING' && r.userName === item.userName && r.gameTitle === item.gameTitle)
+                      ) {
+                        return { ...r, ...patch };
+                      }
+                      return r;
+                    })
+                  );
+                } else if (type === 'cashout') {
+                  setRedemptions((prev) =>
+                    (Array.isArray(prev) ? prev : []).map((c) => {
+                      const cId = String(c.id || c._id || '');
+                      if (
+                        (cId && cId === strId) ||
+                        (item && (c.status === 'pending_coin' || c.stage === 'coin_verification') && c.username === item.username)
+                      ) {
+                        return { ...c, ...patch };
+                      }
+                      return c;
+                    })
+                  );
+                }
+              }}
+              onMutateSuccess={() => {
+                fetchAccountRequests(true);
+                syncRequestsAndAlerts(true);
+              }}
             />
           )}
 

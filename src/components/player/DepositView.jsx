@@ -87,18 +87,7 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
   const [proofImage, setProofImage] = useState('');
   const [proofFileName, setProofFileName] = useState('');
   const [selectedGame, setSelectedGame] = useState('Panda Master');
-  const [adminGames, setAdminGames] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('cached_games_list');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
-    }
-    return ALL_PLATFORM_GAMES.map((title) => ({ title }));
-  });
+  const [adminGames, setAdminGames] = useState(() => ALL_PLATFORM_GAMES.map((title) => ({ title })));
   const [userGameAccounts, setUserGameAccounts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -107,19 +96,8 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
   // QR Preview Modal
   const [qrModalOpen, setQrModalOpen] = useState(false);
 
-  // History State (Hydrated from cache for 0ms instant display)
-  const [depositHistory, setDepositHistory] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = sessionStorage.getItem('pp_deposit_history');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
-    }
-    return [];
-  });
+  // History State
+  const [depositHistory, setDepositHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   // 1. Fetch current user & settings
@@ -258,7 +236,20 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
   };
 
   useEffect(() => {
-    // 0ms instant hydrate user from client cache
+    // 0ms instant hydrate client cache
+    try {
+      const cachedGames = sessionStorage.getItem('cached_games_list');
+      if (cachedGames) {
+        const parsed = JSON.parse(cachedGames);
+        if (Array.isArray(parsed) && parsed.length > 0) setAdminGames(parsed);
+      }
+      const rawHist = sessionStorage.getItem('pp_deposit_history');
+      if (rawHist) {
+        const parsed = JSON.parse(rawHist);
+        if (Array.isArray(parsed) && parsed.length > 0) setDepositHistory(parsed);
+      }
+    } catch {}
+
     const cached = getCachedUser();
     if (cached) {
       setUser(cached);
@@ -602,7 +593,7 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
                     </span>
                     Select Amount ($ USD)
                   </h3>
-                  <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 font-mono">
+                  <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 font-mono" suppressHydrationWarning>
                     <Sparkles size={13} className="text-amber-400" />
                     +{bonusPercent}% {isWelcome ? 'First Deposit Match' : 'Reload Bonus'}
                   </span>
@@ -654,11 +645,11 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
                 {/* Real-time Dynamic Bonus Breakdown Card */}
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-purple-950/30 to-[#0e122b] border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider flex items-center gap-1.5" suppressHydrationWarning>
                       <Sparkles size={12} className="text-amber-400" />
                       Active Promo Breakdown ({isWelcome ? 'First Deposit Pack' : 'Reload Boost'})
                     </span>
-                    <p className="text-xs text-slate-300 mt-0.5">
+                    <p className="text-xs text-slate-300 mt-0.5" suppressHydrationWarning>
                       Deposit: <strong>${finalAmount.toFixed(2)}</strong> + Bonus (+{bonusPercent}%):{' '}
                       <span className="text-emerald-400 font-bold font-mono">+${bonusSC.toFixed(2)} SC</span>
                     </p>
@@ -667,7 +658,7 @@ export default function DepositView({ isEmbedded = false, onSelectTab }) {
                     <span className="text-[10px] text-slate-400 uppercase font-mono block">
                       Total To Receive:
                     </span>
-                    <span className="text-xl font-mono font-black text-emerald-400">
+                    <span className="text-xl font-mono font-black text-emerald-400" suppressHydrationWarning>
                       ${totalSC.toFixed(2)} SC
                     </span>
                   </div>

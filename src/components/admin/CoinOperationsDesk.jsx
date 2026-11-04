@@ -28,7 +28,9 @@ export default function CoinOperationsDesk({
   initialLoads = [],
   initialCashouts = [],
   initialSection = 'loads',
+  onMutate,
   onMutateSuccess,
+  onQueueChange,
 }) {
   const [activeSection, setActiveSection] = useState(initialSection || 'loads');
   const [loading, setLoading] = useState(false);
@@ -328,21 +330,48 @@ export default function CoinOperationsDesk({
     return historyCashouts.slice((safePage - 1) * historyCashoutsPageSize, safePage * historyCashoutsPageSize);
   }, [historyCashouts, historyCashoutsPage, historyCashoutsPageSize]);
 
+  // Total Desk Queue count (unfiltered by search) for 0ms instant sidebar badge sync
+  const totalPendingLoadsCount = useMemo(() => {
+    return (Array.isArray(loadRequests) ? loadRequests : []).filter(
+      (r) => (r.status || '').toUpperCase() === 'PENDING'
+    ).length;
+  }, [loadRequests]);
+
+  const totalPendingCashoutsCount = useMemo(() => {
+    return (Array.isArray(cashoutRequests) ? cashoutRequests : []).filter(
+      (c) => c.status === 'pending_coin' || c.stage === 'coin_verification'
+    ).length;
+  }, [cashoutRequests]);
+
+  const totalDeskQueue = totalPendingLoadsCount + totalPendingCashoutsCount;
+
+  useEffect(() => {
+    if (onQueueChange) {
+      onQueueChange(totalDeskQueue);
+    }
+  }, [totalDeskQueue, onQueueChange]);
+
   // Handle Approve Game Load
   const handleApproveLoadSubmit = async (e) => {
     e.preventDefault();
     if (!approveLoadModal.item) return;
 
     const targetItem = approveLoadModal.item;
+    const targetId = targetItem.id || targetItem._id;
     const u = approveLoadModal.username.trim() || targetItem.userName;
     const p = approveLoadModal.password.trim() || 'VegasWin777!';
     const amt = Number(approveLoadModal.transferAmount);
 
+    const patch = { status: 'READY', gameAccountUsername: u, transferAmount: amt };
+
     // 1. Lock mutation & optimistic state update (0ms)
-    markMutated(targetItem.id, { status: 'READY', gameAccountUsername: u, transferAmount: amt });
+    markMutated(targetId, patch);
     setLoadRequests((prev) =>
-      prev.map((r) => (r.id === targetItem.id ? { ...r, status: 'READY', gameAccountUsername: u, transferAmount: amt } : r))
+      (Array.isArray(prev) ? prev : []).map((r) => ((r.id || r._id) === targetId ? { ...r, ...patch } : r))
     );
+    if (onMutate) {
+      onMutate({ id: targetId, patch, type: 'load', item: targetItem });
+    }
     // 2. Dismiss modal immediately (0ms)
     setApproveLoadModal({ open: false, item: null, username: '', password: '', transferAmount: 0 });
     showAlert('success', 'Game load approved!');
@@ -352,7 +381,7 @@ export default function CoinOperationsDesk({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: targetItem.id,
+          id: targetId,
           action: 'approve',
           username: u,
           password: p,
@@ -362,7 +391,7 @@ export default function CoinOperationsDesk({
 
       const data = await res.json();
       if (!data.success) {
-        unmarkMutated(targetItem.id);
+        unmarkMutated(targetId);
         showAlert('error', data.message || 'Failed to approve load.');
         fetchData(true, true);
       } else {
@@ -370,7 +399,7 @@ export default function CoinOperationsDesk({
         fetchData(true, true);
       }
     } catch {
-      unmarkMutated(targetItem.id);
+      unmarkMutated(targetId);
       showAlert('error', 'Network error approving game load.');
       fetchData(true, true);
     }
@@ -386,13 +415,18 @@ export default function CoinOperationsDesk({
     }
 
     const targetItem = rejectLoadModal.item;
+    const targetId = targetItem.id || targetItem._id;
     const reason = rejectLoadModal.reason.trim();
+    const patch = { status: 'REJECTED', rejectionReason: reason };
 
     // 1. Lock mutation & optimistic state update (0ms)
-    markMutated(targetItem.id, { status: 'REJECTED', rejectionReason: reason });
+    markMutated(targetId, patch);
     setLoadRequests((prev) =>
-      prev.map((r) => (r.id === targetItem.id ? { ...r, status: 'REJECTED', rejectionReason: reason } : r))
+      (Array.isArray(prev) ? prev : []).map((r) => ((r.id || r._id) === targetId ? { ...r, ...patch } : r))
     );
+    if (onMutate) {
+      onMutate({ id: targetId, patch, type: 'load', item: targetItem });
+    }
     // 2. Dismiss modal immediately (0ms)
     setRejectLoadModal({ open: false, item: null, reason: '' });
     showAlert('success', 'Game load request rejected.');
@@ -402,7 +436,7 @@ export default function CoinOperationsDesk({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: targetItem.id,
+          id: targetId,
           action: 'reject',
           rejectionReason: reason,
         }),
@@ -410,7 +444,7 @@ export default function CoinOperationsDesk({
 
       const data = await res.json();
       if (!data.success) {
-        unmarkMutated(targetItem.id);
+        unmarkMutated(targetId);
         showAlert('error', data.message || 'Failed to reject request.');
         fetchData(true, true);
       } else {
@@ -418,7 +452,7 @@ export default function CoinOperationsDesk({
         fetchData(true, true);
       }
     } catch {
-      unmarkMutated(targetItem.id);
+      unmarkMutated(targetId);
       showAlert('error', 'Network error rejecting request.');
       fetchData(true, true);
     }
@@ -426,17 +460,22 @@ export default function CoinOperationsDesk({
 
   // Handle Cashout Coin Approval (Pass to Finance)
   const handleApproveCashout = async (redemptionId) => {
-    const targetItem = cashoutRequests.find((c) => c.id === redemptionId);
+    const targetItem = cashoutRequests.find((c) => (c.id || c._id) === redemptionId);
+    const targetId = redemptionId || targetItem?.id || targetItem?._id;
+    if (!targetId) return;
+
+    const patch = { status: 'pending', stage: 'finance_payout', coinApprovedBy: 'Coin Desk' };
 
     // 1. Lock mutation & optimistic state update (0ms) - MUST update both status ('pending') and stage ('finance_payout')!
-    markMutated(redemptionId, { status: 'pending', stage: 'finance_payout', coinApprovedBy: 'Coin Desk' });
+    markMutated(targetId, patch);
     setCashoutRequests((prev) =>
-      prev.map((c) =>
-        c.id === redemptionId
-          ? { ...c, status: 'pending', stage: 'finance_payout', coinApprovedBy: 'Coin Desk' }
-          : c
+      (Array.isArray(prev) ? prev : []).map((c) =>
+        (c.id || c._id) === targetId ? { ...c, ...patch } : c
       )
     );
+    if (onMutate) {
+      onMutate({ id: targetId, patch, type: 'cashout', item: targetItem });
+    }
     showAlert('success', '🏆 Game screenshot verified! Request forwarded to Finance Ledger for payout.');
 
     try {
@@ -444,14 +483,14 @@ export default function CoinOperationsDesk({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          redemptionId,
+          redemptionId: targetId,
           action: 'coin_approve',
         }),
       });
 
       const data = await res.json();
       if (!data.success) {
-        unmarkMutated(redemptionId);
+        unmarkMutated(targetId);
         showAlert('error', data.error || 'Failed to verify cashout.');
         fetchData(true, true);
       } else {
@@ -462,7 +501,7 @@ export default function CoinOperationsDesk({
           const staffChannel = new BroadcastChannel('paradise_staff_alerts');
           staffChannel.postMessage({
             type: 'NEW_FINANCE_REDEMPTION',
-            redemptionId,
+            redemptionId: targetId,
             amount: targetItem?.amount || 0,
             username: targetItem?.username || '',
             gameTitle: targetItem?.gameTitle || '',
@@ -474,7 +513,7 @@ export default function CoinOperationsDesk({
           'paradise_staff_event',
           JSON.stringify({
             type: 'NEW_FINANCE_REDEMPTION',
-            redemptionId,
+            redemptionId: targetId,
             amount: targetItem?.amount || 0,
             username: targetItem?.username || '',
             gameTitle: targetItem?.gameTitle || '',
@@ -483,7 +522,7 @@ export default function CoinOperationsDesk({
         );
       }
     } catch {
-      unmarkMutated(redemptionId);
+      unmarkMutated(targetId);
       showAlert('error', 'Network error verifying cashout.');
       fetchData(true, true);
     }
@@ -499,17 +538,20 @@ export default function CoinOperationsDesk({
     }
 
     const targetItem = rejectCashoutModal.item;
+    const targetId = targetItem.id || targetItem._id;
     const reason = rejectCashoutModal.reason.trim();
+    const patch = { status: 'rejected_by_coin', stage: 'rejected_coin', rejectReason: reason };
 
     // 1. Lock mutation & optimistic state update (0ms)
-    markMutated(targetItem.id, { status: 'rejected_by_coin', stage: 'rejected_coin', rejectReason: reason });
+    markMutated(targetId, patch);
     setCashoutRequests((prev) =>
-      prev.map((c) =>
-        c.id === targetItem.id
-          ? { ...c, status: 'rejected_by_coin', stage: 'rejected_coin', rejectReason: reason }
-          : c
+      (Array.isArray(prev) ? prev : []).map((c) =>
+        (c.id || c._id) === targetId ? { ...c, ...patch } : c
       )
     );
+    if (onMutate) {
+      onMutate({ id: targetId, patch, type: 'cashout', item: targetItem });
+    }
     // 2. Dismiss modal immediately (0ms)
     setRejectCashoutModal({ open: false, item: null, reason: '' });
     showAlert('success', 'Cashout rejected. Note sent to user.');
@@ -519,7 +561,7 @@ export default function CoinOperationsDesk({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          redemptionId: targetItem.id,
+          redemptionId: targetId,
           action: 'coin_reject',
           rejectReason: reason,
         }),
@@ -527,7 +569,7 @@ export default function CoinOperationsDesk({
 
       const data = await res.json();
       if (!data.success) {
-        unmarkMutated(targetItem.id);
+        unmarkMutated(targetId);
         showAlert('error', data.message || 'Failed to reject cashout.');
         fetchData(true, true);
       } else {
@@ -542,7 +584,7 @@ export default function CoinOperationsDesk({
         localStorage.setItem('paradise_user_balance_sync', String(Date.now()));
       }
     } catch {
-      unmarkMutated(targetItem.id);
+      unmarkMutated(targetId);
       showAlert('error', 'Network error rejecting cashout.');
       fetchData(true, true);
     }
@@ -1700,7 +1742,7 @@ export default function CoinOperationsDesk({
                       <div className="grid grid-cols-2 gap-2 pt-1">
                         <button
                           type="button"
-                          onClick={() => handleApproveCashout(item.id)}
+                          onClick={() => handleApproveCashout(item.id || item._id)}
                           className="py-2.5 px-3 rounded-xl text-white font-black text-xs flex items-center justify-center gap-1 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
                           style={{
                             background: 'linear-gradient(135deg, #10B981 0%, #00F0FF 100%)',
@@ -1871,7 +1913,7 @@ export default function CoinOperationsDesk({
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
                               <button
                                 type="button"
-                                onClick={() => handleApproveCashout(item.id)}
+                                onClick={() => handleApproveCashout(item.id || item._id)}
                                 style={{
                                   padding: '8px 14px',
                                   borderRadius: '10px',

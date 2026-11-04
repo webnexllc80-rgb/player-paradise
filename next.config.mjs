@@ -3,6 +3,9 @@ const nextConfig = {
   reactStrictMode: false,
   compress: true,
   poweredByHeader: false,
+  experimental: {
+    agentUpgrade: 'security',
+  },
   images: {
     unoptimized: true,
   },
@@ -17,17 +20,7 @@ const nextConfig = {
           { key: 'Expires', value: '0' },
         ],
       },
-      // 2. High-performance caching for Next.js static bundles (placed AFTER /:path* so it overrides no-store)
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      // 3. High-performance caching for static images, audio, and font files
+      // 2. High-performance caching for static images, audio, and font files
       {
         source: '/:path*.(ico|png|jpg|jpeg|svg|webp|mp3|wav|ogg|woff|woff2|ttf)',
         headers: [
