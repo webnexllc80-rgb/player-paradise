@@ -340,9 +340,15 @@ export async function POST(req) {
       },
     });
 
+    const insertedIdStr = res.insertedId.toString();
     return NextResponse.json({
       success: true,
-      requestId: res.insertedId.toString(),
+      requestId: insertedIdStr,
+      request: {
+        id: insertedIdStr,
+        _id: insertedIdStr,
+        ...newRequest,
+      },
       message: requestType === 'COIN_LOAD'
         ? `Load request for ${gameTitle} submitted! $${transferAmount.toFixed(2)} SC is frozen in escrow until staff approves or rejects.`
         : `Account request for ${gameTitle} submitted! Staff will issue your credentials shortly.`,
@@ -474,6 +480,7 @@ export async function PUT(req) {
       // 3b. STAGE 2 -> STAGE 3 HANDOFF:
       // If this was an ACCOUNT_CREATION request backed by an approved Deposit (pendingCoinLoadAmount > 0),
       // automatically queue a PENDING COIN_LOAD request in Coins Allotment Desk with the player's deposit + bonus!
+      let autoCreatedCoinLoad = null;
       if (!isCoinLoadRequest && pendingDepositLoad > 0) {
         autoCoinLoadCreated = true;
         queuedLoadAmount = pendingDepositLoad;
@@ -485,7 +492,7 @@ export async function PUT(req) {
           ? `Deposit $${depAmt.toFixed(2)} + Bonus $${bonAmt.toFixed(2)} (${bonPct}%) = $${pendingDepositLoad.toFixed(2)} SC • Newly Created ID: @${issuedUsername}`
           : `Approved Deposit = $${pendingDepositLoad.toFixed(2)} SC • Newly Created ID: @${issuedUsername}`;
 
-        await requestsCol.insertOne({
+        const coinLoadDoc = {
           userEmail: cleanEmail,
           userName: targetRequest.userName || cleanEmail.split('@')[0],
           gameTitle: cleanTitle,
@@ -502,7 +509,13 @@ export async function PUT(req) {
           status: 'PENDING',
           notes: breakdownNote,
           createdAt: new Date(),
-        });
+        };
+        const loadInsert = await requestsCol.insertOne(coinLoadDoc);
+        autoCreatedCoinLoad = {
+          id: loadInsert.insertedId.toString(),
+          _id: loadInsert.insertedId.toString(),
+          ...coinLoadDoc,
+        };
 
         notifyStaff({
           title: '⚡ Stage 3/3: Coin Load Ready (ID Created)',
@@ -580,6 +593,7 @@ export async function PUT(req) {
       return NextResponse.json({
         success: true,
         autoCoinLoadCreated,
+        autoCreatedCoinLoad,
         queuedLoadAmount,
         gameTitle: cleanTitle,
         username: issuedUsername,

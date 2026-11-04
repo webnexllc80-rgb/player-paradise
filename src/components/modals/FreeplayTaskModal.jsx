@@ -189,6 +189,35 @@ export default function FreeplayTaskModal({
 
       if (res.ok && data.success) {
         try {
+          const ch = new BroadcastChannel('paradise_staff_alerts');
+          ch.postMessage({
+            type: 'NEW_REQUEST',
+            category: 'ACCOUNT_CREATION',
+            requestId: data.requestId,
+            request: data.request,
+            gameTitle: selectedGame,
+            userName: user?.username || targetEmail.split('@')[0],
+            userEmail: targetEmail,
+            freeplayPending: true,
+            freeplayAmount: data.amount || freeplayAmount,
+            timestamp: Date.now(),
+          });
+          ch.close();
+        } catch {}
+        try {
+          localStorage.setItem('paradise_staff_event', JSON.stringify({
+            type: 'NEW_REQUEST',
+            category: 'ACCOUNT_CREATION',
+            requestId: data.requestId,
+            request: data.request,
+            gameTitle: selectedGame,
+            userName: user?.username || targetEmail.split('@')[0],
+            userEmail: targetEmail,
+            time: Date.now(),
+          }));
+        } catch {}
+
+        try {
           confetti({
             particleCount: 100,
             spread: 70,

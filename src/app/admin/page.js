@@ -622,8 +622,12 @@ export default function AdminPortal({ initialTab }) {
   };
 
   const isFetchingReqsRef = React.useRef(false);
-  const fetchAccountRequests = () => {
-    if (isFetchingReqsRef.current) return;
+  const pendingReqsRefetchRef = React.useRef(false);
+  const fetchAccountRequests = (force = false) => {
+    if (isFetchingReqsRef.current) {
+      if (force) pendingReqsRefetchRef.current = true;
+      return;
+    }
     isFetchingReqsRef.current = true;
     fetch('/api/account-requests?status=all', { cache: 'no-store' })
       .then(r => r.json())
@@ -643,6 +647,10 @@ export default function AdminPortal({ initialTab }) {
       .catch(() => { })
       .finally(() => {
         isFetchingReqsRef.current = false;
+        if (pendingReqsRefetchRef.current) {
+          pendingReqsRefetchRef.current = false;
+          fetchAccountRequests(false);
+        }
       });
   };
 
@@ -758,12 +766,33 @@ export default function AdminPortal({ initialTab }) {
         // If this Account Creation had an approved Deposit + Bonus waiting, broadcast & alert Coins Allotment Desk!
         if (data.autoCoinLoadCreated) {
           const loadAmt = Number(data.queuedLoadAmount || targetReq.pendingCoinLoadAmount || 0);
+          const createdLoadItem = data.autoCreatedCoinLoad || {
+            id: 'temp-load-' + Date.now(),
+            userEmail: targetReq.userEmail || '',
+            userName: data.userName || targetReq.userName || 'Player',
+            gameTitle: data.gameTitle || targetReq.gameTitle || 'Game',
+            gameAccountUsername: u,
+            requestType: 'COIN_LOAD',
+            transferAmount: loadAmt,
+            depositAmount: Number(targetReq.depositAmount || 0),
+            bonusSC: Number(targetReq.bonusSC || 0),
+            bonusPercent: Number(targetReq.bonusPercent || 0),
+            status: 'PENDING',
+            createdAt: new Date().toISOString(),
+          };
+          setCoinLoadRequests((prev) => {
+            const exists = prev.some((r) => (r.id || r._id) === (createdLoadItem.id || createdLoadItem._id));
+            return exists ? prev : [createdLoadItem, ...prev];
+          });
           try {
             const staffChannel = new BroadcastChannel('paradise_staff_alerts');
             staffChannel.postMessage({
               type: 'NEW_COIN_LOAD',
+              requestId: createdLoadItem.id || createdLoadItem._id,
+              request: createdLoadItem,
               transferAmount: loadAmt,
               userName: data.userName || targetReq.userName || 'Player',
+              gameAccountUsername: u,
               gameTitle: data.gameTitle || targetReq.gameTitle || 'Game',
             });
             staffChannel.close();
@@ -773,8 +802,11 @@ export default function AdminPortal({ initialTab }) {
               'paradise_staff_event',
               JSON.stringify({
                 type: 'NEW_COIN_LOAD',
+                requestId: createdLoadItem.id || createdLoadItem._id,
+                request: createdLoadItem,
                 transferAmount: loadAmt,
                 userName: data.userName || targetReq.userName || 'Player',
+                gameAccountUsername: u,
                 gameTitle: data.gameTitle || targetReq.gameTitle || 'Game',
                 time: Date.now(),
               })
@@ -789,6 +821,7 @@ export default function AdminPortal({ initialTab }) {
             targetSubTab: 'loads',
           });
         }
+        fetchAccountRequests(true);
         syncRequestsAndAlerts(true);
       }
     } catch (e) {
@@ -1315,8 +1348,44 @@ export default function AdminPortal({ initialTab }) {
       if (payload.type === 'NEW_REQUEST') {
         unlockAudioContext();
         playAdminChime();
-        const gTitle = payload.gameTitle || 'Game';
-        const uName = payload.userName || 'Player';
+        const gTitle = payload.gameTitle || payload.request?.gameTitle || 'Game';
+        const uName = payload.userName || payload.request?.userName || 'Player';
+        const uEmail = payload.userEmail || payload.request?.userEmail || '';
+        const reqId = payload.requestId || payload.request?.id || payload.request?._id || `live-req-${Date.now()}`;
+
+        seenRequestIdsRef.current.add(reqId);
+        const optimisticReq = payload.request
+          ? { ...payload.request, id: reqId, _id: reqId, status: 'PENDING', requestType: 'ACCOUNT_CREATION', transferAmount: 0 }
+          : {
+              id: reqId,
+              _id: reqId,
+              userName: uName,
+              userEmail: uEmail,
+              gameTitle: gTitle,
+              requestType: 'ACCOUNT_CREATION',
+              transferAmount: 0,
+              status: 'PENDING',
+              freeplayPending: Boolean(payload.freeplayPending),
+              freeplayAmount: Number(payload.freeplayAmount || 0),
+              createdAt: new Date().toISOString(),
+            };
+
+        // 0ms Instant Prepend so the row appears in Account Requests at the exact same millisecond as the toast!
+        setAccountRequests((prev) => {
+          const safePrev = Array.isArray(prev) ? prev : [];
+          const filteredPrev = safePrev.filter(
+            (r) =>
+              (r.id || r._id) !== reqId &&
+              !(
+                (r.status || '').toUpperCase() === 'PENDING' &&
+                (r.userName || '').toLowerCase() === uName.toLowerCase() &&
+                (r.gameTitle || '').toLowerCase() === gTitle.toLowerCase()
+              )
+          );
+          return [optimisticReq, ...filteredPrev];
+        });
+        setAccountReqFilter('PENDING');
+
         setActiveAlertToast({
           type: 'account',
           title: '🎯 New Game ID Request!',
@@ -1324,6 +1393,7 @@ export default function AdminPortal({ initialTab }) {
           subtext: 'Tap to review & issue credentials',
           targetTab: 'account_requests',
         });
+        fetchAccountRequests(true);
         syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_DEPOSIT') {
         unlockAudioContext();
@@ -1346,9 +1416,44 @@ export default function AdminPortal({ initialTab }) {
       } else if (payload.type === 'NEW_COIN_LOAD') {
         unlockAudioContext();
         playAdminChime();
-        const amt = Number(payload.transferAmount || payload.amount || 0).toFixed(2);
-        const uName = payload.userName || payload.username || 'Player';
-        const gTitle = payload.gameTitle || 'Game';
+        const numAmt = Number(payload.transferAmount || payload.amount || payload.request?.transferAmount || 0);
+        const amt = numAmt.toFixed(2);
+        const uName = payload.userName || payload.username || payload.request?.userName || 'Player';
+        const uEmail = payload.userEmail || payload.request?.userEmail || '';
+        const gTitle = payload.gameTitle || payload.request?.gameTitle || 'Game';
+        const loadId = payload.requestId || payload.request?.id || payload.request?._id || `live-load-${Date.now()}`;
+
+        seenCoinLoadIdsRef.current.add(loadId);
+        const optimisticLoad = payload.request
+          ? { ...payload.request, id: loadId, _id: loadId, status: 'PENDING', requestType: 'COIN_LOAD', transferAmount: numAmt }
+          : {
+              id: loadId,
+              _id: loadId,
+              userName: uName,
+              userEmail: uEmail,
+              gameTitle: gTitle,
+              gameAccountUsername: payload.gameAccountUsername || '',
+              requestType: 'COIN_LOAD',
+              transferAmount: numAmt,
+              status: 'PENDING',
+              createdAt: new Date().toISOString(),
+            };
+
+        // 0ms Instant Prepend so the row appears in Coins Allotment at the exact same millisecond as the toast!
+        setCoinLoadRequests((prev) => {
+          const safePrev = Array.isArray(prev) ? prev : [];
+          const filteredPrev = safePrev.filter(
+            (r) =>
+              (r.id || r._id) !== loadId &&
+              !(
+                (r.status || '').toUpperCase() === 'PENDING' &&
+                (r.userName || '').toLowerCase() === uName.toLowerCase() &&
+                (r.gameTitle || '').toLowerCase() === gTitle.toLowerCase()
+              )
+          );
+          return [optimisticLoad, ...filteredPrev];
+        });
+
         const alertTitle = '⚡ New Coin Load Request!';
         const alertBody = `$${amt} SC load for ${gTitle} from ${uName}`;
         sendDesktopNotification(alertTitle, alertBody, '/admin/coins_allotment');
@@ -1360,6 +1465,7 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'coins_allotment',
           targetSubTab: 'loads',
         });
+        fetchAccountRequests(true);
         syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_FINANCE_REDEMPTION') {
         unlockAudioContext();
@@ -4062,10 +4168,28 @@ export default function AdminPortal({ initialTab }) {
                   } else {
                     // Stage 1 -> Stage 2 (No Account Yet -> Account Creation) OR Stage 1 -> Stage 3 (Account Exists -> Coin Allotment)
                     if (data.autoAccountRequestCreated) {
+                      const autoReq = data.autoCreatedRequest || {
+                        id: 'temp-acc-' + Date.now(),
+                        userName: data.username || 'Player',
+                        gameTitle: data.gameTitle || 'Game',
+                        requestType: 'ACCOUNT_CREATION',
+                        transferAmount: 0,
+                        pendingCoinLoadAmount: Number(data.creditedSC || scToCredit),
+                        status: 'PENDING',
+                        createdAt: new Date().toISOString(),
+                      };
+                      setAccountRequests((prev) => {
+                        const safePrev = Array.isArray(prev) ? prev : [];
+                        const filteredPrev = safePrev.filter((r) => (r.id || r._id) !== (autoReq.id || autoReq._id));
+                        return [autoReq, ...filteredPrev];
+                      });
+                      setAccountReqFilter('PENDING');
                       try {
                         const staffChannel = new BroadcastChannel('paradise_staff_alerts');
                         staffChannel.postMessage({
                           type: 'NEW_REQUEST',
+                          requestId: autoReq.id || autoReq._id,
+                          request: autoReq,
                           gameTitle: data.gameTitle || 'Game',
                           userName: data.username || 'Player',
                         });
@@ -4079,12 +4203,30 @@ export default function AdminPortal({ initialTab }) {
                         targetTab: 'account_requests',
                       });
                     } else if (data.autoCoinLoadCreated) {
+                      const autoLoad = data.autoCreatedRequest || {
+                        id: 'temp-load-' + Date.now(),
+                        userName: data.username || 'Player',
+                        gameTitle: data.gameTitle || 'Game',
+                        gameAccountUsername: data.gameAccountUsername || data.username || '',
+                        requestType: 'COIN_LOAD',
+                        transferAmount: Number(data.creditedSC || scToCredit),
+                        status: 'PENDING',
+                        createdAt: new Date().toISOString(),
+                      };
+                      setCoinLoadRequests((prev) => {
+                        const safePrev = Array.isArray(prev) ? prev : [];
+                        const filteredPrev = safePrev.filter((r) => (r.id || r._id) !== (autoLoad.id || autoLoad._id));
+                        return [autoLoad, ...filteredPrev];
+                      });
                       try {
                         const staffChannel = new BroadcastChannel('paradise_staff_alerts');
                         staffChannel.postMessage({
                           type: 'NEW_COIN_LOAD',
+                          requestId: autoLoad.id || autoLoad._id,
+                          request: autoLoad,
                           transferAmount: Number(data.creditedSC || scToCredit),
                           userName: data.username || 'Player',
+                          gameAccountUsername: data.gameAccountUsername || data.username || '',
                           gameTitle: data.gameTitle || 'Game',
                         });
                         staffChannel.close();
@@ -4098,6 +4240,7 @@ export default function AdminPortal({ initialTab }) {
                         targetSubTab: 'loads',
                       });
                     }
+                    fetchAccountRequests(true);
                     syncRequestsAndAlerts(true);
                   }
                 } catch (e) {

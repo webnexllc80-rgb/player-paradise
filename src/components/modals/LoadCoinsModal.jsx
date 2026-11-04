@@ -106,8 +106,12 @@ export default function LoadCoinsModal({
           const staffChannel = new BroadcastChannel('paradise_staff_alerts');
           staffChannel.postMessage({
             type: 'NEW_COIN_LOAD',
+            requestId: data.requestId,
+            request: data.request,
             transferAmount: amt,
             userName: user?.username || 'Player',
+            userEmail: user?.email || '',
+            gameAccountUsername: game?.username || game?.gameAccountUsername || '',
             gameTitle,
           });
           staffChannel.close();
@@ -118,8 +122,12 @@ export default function LoadCoinsModal({
             'paradise_staff_event',
             JSON.stringify({
               type: 'NEW_COIN_LOAD',
+              requestId: data.requestId,
+              request: data.request,
               transferAmount: amt,
               userName: user?.username || 'Player',
+              userEmail: user?.email || '',
+              gameAccountUsername: game?.username || game?.gameAccountUsername || '',
               gameTitle,
               time: Date.now(),
             })

@@ -634,6 +634,7 @@ export async function PUT(req) {
       // - If player ALREADY HAS an account for deposit.gameTitle -> Skip Account Creation completely and queue directly into Coin Allotment (with transferAmount = creditedSC)!
       let autoAccountRequestCreated = false;
       let autoCoinLoadCreated = false;
+      let autoCreatedRequest = null;
       let resolvedTargetGame = null;
       let resolvedGameUsername = null;
 
@@ -693,8 +694,20 @@ export async function PUT(req) {
                 },
               }
             );
+            const exIdStr = existingPending._id.toString();
+            autoCreatedRequest = {
+              ...existingPending,
+              id: exIdStr,
+              _id: exIdStr,
+              pendingCoinLoadAmount: Number(existingPending.pendingCoinLoadAmount || 0) + creditedSC,
+              depositAmount: Number(existingPending.depositAmount || 0) + baseDepositAmount,
+              bonusSC: Number(existingPending.bonusSC || 0) + bonusAmount,
+              bonusPercent: bonusPct,
+              sourceDepositId: deposit._id.toString(),
+              notes: `${breakdownNote} • Auto-queues to Coin Allotment after ID creation`,
+            };
           } else {
-            await db.collection('accountRequests').insertOne({
+            const newAccReqDoc = {
               userEmail: cleanEmail,
               userName: user.username,
               gameTitle: cleanGameTitle,
@@ -709,7 +722,10 @@ export async function PUT(req) {
               sourceDepositId: deposit._id.toString(),
               notes: `${breakdownNote} • Auto-queues to Coin Allotment after ID creation`,
               createdAt: new Date(),
-            });
+            };
+            const accIns = await db.collection('accountRequests').insertOne(newAccReqDoc);
+            const accIdStr = accIns.insertedId.toString();
+            autoCreatedRequest = { id: accIdStr, _id: accIdStr, ...newAccReqDoc };
           }
 
           cache.invalidatePrefix('account_requests');
@@ -737,7 +753,7 @@ export async function PUT(req) {
           autoCoinLoadCreated = true;
           resolvedGameUsername = accCheck.username || deposit.gameAccountUsername || user.username;
 
-          await db.collection('accountRequests').insertOne({
+          const newCoinLoadDoc = {
             userEmail: cleanEmail,
             userName: user.username,
             gameTitle: cleanGameTitle,
@@ -752,7 +768,10 @@ export async function PUT(req) {
             sourceDepositId: deposit._id.toString(),
             notes: `${breakdownNote} • Account: @${resolvedGameUsername}`,
             createdAt: new Date(),
-          });
+          };
+          const coinIns = await db.collection('accountRequests').insertOne(newCoinLoadDoc);
+          const coinIdStr = coinIns.insertedId.toString();
+          autoCreatedRequest = { id: coinIdStr, _id: coinIdStr, ...newCoinLoadDoc };
 
           cache.invalidatePrefix('account_requests');
 
@@ -781,6 +800,7 @@ export async function PUT(req) {
         success: true,
         autoAccountRequestCreated,
         autoCoinLoadCreated,
+        autoCreatedRequest,
         gameTitle: resolvedTargetGame,
         gameAccountUsername: resolvedGameUsername,
         username: user.username,

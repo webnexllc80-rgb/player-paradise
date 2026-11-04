@@ -400,6 +400,8 @@ export default function HomePage({ initialTab = 'lobby' }) {
           ch.postMessage({
             type: 'NEW_REQUEST',
             category: 'ACCOUNT_CREATION',
+            requestId: data.requestId,
+            request: data.request,
             gameTitle,
             userName: user.username,
             userEmail: user.email,
@@ -411,8 +413,11 @@ export default function HomePage({ initialTab = 'lobby' }) {
           localStorage.setItem('paradise_staff_event', JSON.stringify({
             type: 'NEW_REQUEST',
             category: 'ACCOUNT_CREATION',
+            requestId: data.requestId,
+            request: data.request,
             gameTitle,
             userName: user.username,
+            userEmail: user.email,
             time: Date.now(),
           }));
         } catch {}

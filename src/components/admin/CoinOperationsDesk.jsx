@@ -170,14 +170,52 @@ export default function CoinOperationsDesk({
       if (!document.hidden) fetchData(true);
     }, 4000);
 
+    const handleLiveEvent = (payload) => {
+      if (!payload || !payload.type) return;
+      if (payload.type === 'NEW_COIN_LOAD') {
+        const numAmt = Number(payload.transferAmount || payload.amount || payload.request?.transferAmount || 0);
+        const uName = payload.userName || payload.username || payload.request?.userName || 'Player';
+        const gTitle = payload.gameTitle || payload.request?.gameTitle || 'Game';
+        const loadId = payload.requestId || payload.request?.id || payload.request?._id || `live-load-${Date.now()}`;
+        const optimisticLoad = payload.request
+          ? { ...payload.request, id: loadId, _id: loadId, status: 'PENDING', requestType: 'COIN_LOAD', transferAmount: numAmt }
+          : {
+              id: loadId,
+              _id: loadId,
+              userName: uName,
+              userEmail: payload.userEmail || '',
+              gameTitle: gTitle,
+              gameAccountUsername: payload.gameAccountUsername || '',
+              requestType: 'COIN_LOAD',
+              transferAmount: numAmt,
+              status: 'PENDING',
+              createdAt: new Date().toISOString(),
+            };
+        setLoadRequests((prev) => {
+          const safePrev = Array.isArray(prev) ? prev : [];
+          const filteredPrev = safePrev.filter(
+            (r) =>
+              (r.id || r._id) !== loadId &&
+              !(
+                (r.status || '').toUpperCase() === 'PENDING' &&
+                (r.userName || '').toLowerCase() === uName.toLowerCase() &&
+                (r.gameTitle || '').toLowerCase() === gTitle.toLowerCase()
+              )
+          );
+          return [optimisticLoad, ...filteredPrev];
+        });
+        fetchData(true, true);
+      } else if (payload.type === 'NEW_COIN_CASHOUT') {
+        fetchData(true, true);
+      }
+    };
+
     // Cross-tab broadcast listener for instant (0ms) load & cashout detection
     let channel = null;
     try {
       channel = new BroadcastChannel('paradise_staff_alerts');
       channel.onmessage = (event) => {
-        if (event.data?.type === 'NEW_COIN_CASHOUT' || event.data?.type === 'NEW_COIN_LOAD') {
-          fetchData(true, true);
-        }
+        handleLiveEvent(event.data);
       };
     } catch {}
 
@@ -185,9 +223,7 @@ export default function CoinOperationsDesk({
       if (e.key === 'paradise_staff_event' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          if (parsed.type === 'NEW_COIN_CASHOUT' || parsed.type === 'NEW_COIN_LOAD') {
-            fetchData(true, true);
-          }
+          handleLiveEvent(parsed);
         } catch {}
       }
     };

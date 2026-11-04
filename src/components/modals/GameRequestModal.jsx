@@ -183,6 +183,8 @@ export default function GameRequestModal({
         ch.postMessage({
           type: 'NEW_REQUEST',
           category: 'ACCOUNT_CREATION',
+          requestId: data.requestId,
+          request: data.request,
           gameTitle: targetGameToRequest,
           userName: user.username,
           userEmail: user.email,
@@ -194,8 +196,11 @@ export default function GameRequestModal({
         localStorage.setItem('paradise_staff_event', JSON.stringify({
           type: 'NEW_REQUEST',
           category: 'ACCOUNT_CREATION',
+          requestId: data.requestId,
+          request: data.request,
           gameTitle: targetGameToRequest,
           userName: user.username,
+          userEmail: user.email,
           time: Date.now(),
         }));
       } catch {}

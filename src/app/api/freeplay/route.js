@@ -197,12 +197,13 @@ export async function POST(req) {
     );
 
     // Create an account request in accountRequests (camelCase) so Coin Desk / Staff can approve
-    await db.collection('accountRequests').insertOne({
+    const reqDoc = {
       userId: user._id.toString(),
       userName: user.username,
       userEmail: user.email.toLowerCase().trim(),
       gameTitle: String(gameTitle).trim(),
       requestType: 'ACCOUNT_CREATION',
+      transferAmount: 0,
       status: 'PENDING',
       freeplayPending: true,
       freeplayAmount: configuredAmount,
@@ -210,7 +211,9 @@ export async function POST(req) {
       freeplayTaskId: resolvedTaskId,
       notes: `🎁 Freeplay Welcome Bonus ($${configuredAmount.toFixed(2)} SC) • Task #${resolvedTaskId}`,
       createdAt: new Date(),
-    });
+    };
+    const reqInsert = await db.collection('accountRequests').insertOne(reqDoc);
+    const reqIdStr = reqInsert.insertedId.toString();
 
     // Notify staff
     notifyStaff({
@@ -223,6 +226,7 @@ export async function POST(req) {
         gameTitle,
         amount: String(configuredAmount),
         taskId: resolvedTaskId,
+        requestId: reqIdStr,
         url: '/admin?tab=account_requests',
       },
     });
@@ -231,6 +235,8 @@ export async function POST(req) {
       success: true,
       message: `🎉 Freeplay task submitted! Our 24/7 staff will verify your Inbox screenshot and load your $${configuredAmount.toFixed(2)} Freeplay credentials shortly.`,
       taskId: resolvedTaskId,
+      requestId: reqIdStr,
+      request: { id: reqIdStr, _id: reqIdStr, ...reqDoc },
       amount: configuredAmount,
     });
   } catch (err) {
