@@ -30,6 +30,7 @@ import { getGameThumbnail } from '@/lib/gameAssets';
 export default function PlayerGameAccountsHub({
   user,
   games = [],
+  onRequestNewGame,
   onOpenAuth,
   onPlayGame,
   onDeposit,
@@ -38,6 +39,7 @@ export default function PlayerGameAccountsHub({
   const [activeAccounts, setActiveAccounts] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [rejectedRequests, setRejectedRequests] = useState([]);
+  const [loadedGames, setLoadedGames] = useState(games);
   const [loadCoinsModal, setLoadCoinsModal] = useState({ open: false, game: null });
   const [loading, setLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState(null);
@@ -45,6 +47,37 @@ export default function PlayerGameAccountsHub({
   const [requestingGameId, setRequestingGameId] = useState(null);
   const [requestSuccessMsg, setRequestSuccessMsg] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  useEffect(() => {
+    if (games && games.length > 0) {
+      setLoadedGames(games);
+    }
+  }, [games]);
+
+  useEffect(() => {
+    // If games prop was empty, load from cache and /api/games so dynamic admin images always display!
+    try {
+      const cached = localStorage.getItem('pp_games_cache') || sessionStorage.getItem('cached_games_list');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setLoadedGames((prev) => (prev && prev.length > 0 ? prev : parsed));
+        }
+      }
+    } catch {}
+
+    fetch('/api/games?all=true', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && Array.isArray(d.games) && d.games.length > 0) {
+          diffSet(setLoadedGames, d.games);
+          try {
+            localStorage.setItem('pp_games_cache', JSON.stringify(d.games));
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const isFetchingCredsRef = useRef(false);
 
@@ -429,13 +462,18 @@ export default function PlayerGameAccountsHub({
             }}
           >
             {activeAccounts.map((acc, index) => {
-              const matchedGame = games.find(
-                (g) => (g.title || g.name || '').toLowerCase().trim() === (acc.gameTitle || '').toLowerCase().trim()
-              );
-              const thumb = getGameThumbnail(
-                acc.gameTitle,
-                matchedGame?.thumbnail || matchedGame?.image || matchedGame?.imageUrl
-              );
+              const allGamesList = (loadedGames && loadedGames.length > 0) ? loadedGames : (games || []);
+              const matchedGame = allGamesList.find((g) => {
+                const gTitle = (g.title || g.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                const accTitle = (acc.gameTitle || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return (
+                  (g.id && acc.gameId && String(g.id) === String(acc.gameId)) ||
+                  (g._id && acc.gameId && String(g._id) === String(acc.gameId)) ||
+                  (gTitle && accTitle && (gTitle === accTitle || gTitle.includes(accTitle) || accTitle.includes(gTitle)))
+                );
+              });
+              const customImg = matchedGame?.thumbnail || matchedGame?.image || matchedGame?.imageUrl;
+              const thumb = getGameThumbnail(acc.gameTitle, customImg);
               const isPasswordVisible = showPasswordMap[`acc_${index}`];
 
               return (

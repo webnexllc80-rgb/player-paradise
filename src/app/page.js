@@ -547,6 +547,7 @@ export default function HomePage({ initialTab = 'lobby' }) {
               </div>
               <PlayerGameCredentialsHub
                 user={user}
+                games={games}
                 onRequestNewGame={() => handleRequestGame()}
                 onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
               />
@@ -668,6 +669,7 @@ export default function HomePage({ initialTab = 'lobby' }) {
               {/* Player Game Credentials & Request Station */}
               <PlayerGameCredentialsHub
                 user={user}
+                games={games}
                 onRequestNewGame={() => handleRequestGame()}
                 onOpenAuth={(tab) => setAuthModal({ open: true, tab })}
               />
