@@ -29,12 +29,6 @@ export async function GET(req) {
     const status = searchParams.get('status');
     const type = searchParams.get('type'); // 'ACCOUNT_CREATION' | 'COIN_LOAD' | 'all'
 
-    const cacheKey = `account_requests:${(email || 'all').toLowerCase().trim()}:${status || 'all'}:${type || 'all'}`;
-    const cachedPayload = cache.get(cacheKey);
-    if (cachedPayload) {
-      return NextResponse.json(cachedPayload);
-    }
-
     const db = await getDb();
     const query = {};
 
@@ -112,6 +106,12 @@ export async function GET(req) {
         gameAccountUsername: r.gameAccountUsername || '',
         gameAccountPassword: r.gameAccountPassword || '',
         transferAmount: Number(r.transferAmount || 0),
+        pendingCoinLoadAmount: Number(r.pendingCoinLoadAmount || 0),
+        depositAmount: Number(r.depositAmount || 0),
+        bonusSC: Number(r.bonusSC || 0),
+        bonusPercent: Number(r.bonusPercent || 0),
+        sourceDepositId: r.sourceDepositId || '',
+        coinLoadQueued: Boolean(r.coinLoadQueued),
         rejectionReason: r.rejectionReason || r.rejectReason || '',
         freeplayPending: Boolean(r.freeplayPending),
         freeplayAmount: Number(r.freeplayAmount || 0),
@@ -122,7 +122,6 @@ export async function GET(req) {
       })),
     };
 
-    cache.set(cacheKey, responsePayload, 2);
     return NextResponse.json(responsePayload);
   } catch (err) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
@@ -334,10 +333,10 @@ export async function POST(req) {
     notifyStaff({
       title: requestType === 'COIN_LOAD' ? '⚡ New Coin Load Request' : '🎮 New Game ID Request',
       message: `@${userName} requested ${requestType === 'COIN_LOAD' ? `$${transferAmount.toFixed(2)} SC loaded into ${gameTitle}` : `credentials for ${gameTitle}`}.`,
-      type: 'account_request',
+      type: requestType === 'COIN_LOAD' ? 'coin_load' : 'account_request',
       data: {
         requestId: res.insertedId.toString(),
-        url: '/admin?tab=account_requests',
+        url: requestType === 'COIN_LOAD' ? '/admin?tab=coins_allotment' : '/admin?tab=account_requests',
       },
     });
 
@@ -380,27 +379,38 @@ export async function PUT(req) {
     const ledgerCol = db.collection('ledger');
     const cleanEmail = targetRequest.userEmail.toLowerCase().trim();
     const cleanTitle = targetRequest.gameTitle;
+    const isCoinLoadRequest =
+      targetRequest.requestType === 'COIN_LOAD' || Number(targetRequest.transferAmount || 0) > 0;
     const originalFrozen = Number(targetRequest.transferAmount || 0);
+    const pendingDepositLoad = !isCoinLoadRequest && !targetRequest.coinLoadQueued
+      ? Number(targetRequest.pendingCoinLoadAmount || 0)
+      : 0;
 
-    // Allow staff to adjust load amount if specified
-    const finalAmount = body.transferAmount !== undefined ? Math.max(0, Number(body.transferAmount)) : originalFrozen;
+    // Allow staff to adjust load amount if specified (for COIN_LOAD requests)
+    const finalAmount = isCoinLoadRequest
+      ? (body.transferAmount !== undefined ? Math.max(0, Number(body.transferAmount)) : originalFrozen)
+      : 0;
 
     if (action === 'approve') {
       const gameAccountsCol = db.collection('gameAccounts');
+      let autoCoinLoadCreated = false;
+      let queuedLoadAmount = 0;
 
-      // 1. Permanently deduct balance and clear frozen escrow
-      if (originalFrozen > 0 || finalAmount > 0) {
+      // 1. If this is a COIN_LOAD approval, permanently deduct balance and clear frozen escrow
+      if (isCoinLoadRequest && (originalFrozen > 0 || finalAmount > 0)) {
         const user = await usersCol.findOne({ email: cleanEmail });
         if (user) {
           const oldSC = Number(user.balanceSC || 0);
           const newSC = Number(Math.max(0, oldSC - finalAmount).toFixed(2));
+          const oldFrozen = Math.max(0, Number(user.frozenBalance || 0));
+          const newFrozen = Number(Math.max(0, oldFrozen - originalFrozen).toFixed(2));
 
           await usersCol.updateOne(
             { _id: user._id },
             {
-              $inc: {
-                balanceSC: -finalAmount,
-                frozenBalance: -originalFrozen,
+              $set: {
+                balanceSC: newSC,
+                frozenBalance: newFrozen,
               },
             }
           );
@@ -417,7 +427,7 @@ export async function PUT(req) {
               performedBy: session.username,
               staffRole: session.role,
               referenceId: targetRequest._id.toString(),
-              notes: `Game account coin load into ${cleanTitle} (Account ID: ${username || targetRequest.userName})${finalAmount !== originalFrozen ? ` [Amount adjusted by admin from $${originalFrozen} to $${finalAmount}]` : ''}`,
+              notes: `Game account coin load into ${cleanTitle} (Account ID: ${username || targetRequest.gameAccountUsername || targetRequest.userName})${finalAmount !== originalFrozen ? ` [Amount adjusted by admin from $${originalFrozen} to $${finalAmount}]` : ''}`,
               createdAt: new Date(),
             });
           }
@@ -425,6 +435,9 @@ export async function PUT(req) {
       }
 
       // 2. Update request status to READY and save final transferAmount
+      const issuedUsername = username || targetRequest.gameAccountUsername || cleanEmail.split('@')[0];
+      const issuedPassword = password || targetRequest.gameAccountPassword || 'VegasWin777!';
+
       await requestsCol.updateOne(
         { _id: targetRequest._id },
         {
@@ -432,8 +445,9 @@ export async function PUT(req) {
             status: 'READY',
             transferAmount: finalAmount,
             originalTransferAmount: originalFrozen,
-            gameAccountUsername: username,
-            gameAccountPassword: password,
+            gameAccountUsername: issuedUsername,
+            gameAccountPassword: issuedPassword,
+            coinLoadQueued: pendingDepositLoad > 0 ? true : Boolean(targetRequest.coinLoadQueued),
             approvedBy: session.username,
             approvedAt: new Date(),
           },
@@ -447,8 +461,8 @@ export async function PUT(req) {
           $set: {
             userEmail: cleanEmail,
             gameTitle: cleanTitle,
-            username: username || cleanEmail.split('@')[0],
-            password: password || 'VegasWin777!',
+            username: issuedUsername,
+            password: issuedPassword,
             status: 'READY',
             updatedAt: new Date(),
           },
@@ -456,6 +470,49 @@ export async function PUT(req) {
         },
         { upsert: true }
       );
+
+      // 3b. STAGE 2 -> STAGE 3 HANDOFF:
+      // If this was an ACCOUNT_CREATION request backed by an approved Deposit (pendingCoinLoadAmount > 0),
+      // automatically queue a PENDING COIN_LOAD request in Coins Allotment Desk with the player's deposit + bonus!
+      if (!isCoinLoadRequest && pendingDepositLoad > 0) {
+        autoCoinLoadCreated = true;
+        queuedLoadAmount = pendingDepositLoad;
+
+        const depAmt = Number(targetRequest.depositAmount || 0);
+        const bonAmt = Number(targetRequest.bonusSC || 0);
+        const bonPct = Number(targetRequest.bonusPercent || 0);
+        const breakdownNote = bonAmt > 0
+          ? `Deposit $${depAmt.toFixed(2)} + Bonus $${bonAmt.toFixed(2)} (${bonPct}%) = $${pendingDepositLoad.toFixed(2)} SC • Newly Created ID: @${issuedUsername}`
+          : `Approved Deposit = $${pendingDepositLoad.toFixed(2)} SC • Newly Created ID: @${issuedUsername}`;
+
+        await requestsCol.insertOne({
+          userEmail: cleanEmail,
+          userName: targetRequest.userName || cleanEmail.split('@')[0],
+          gameTitle: cleanTitle,
+          gameId: targetRequest.gameId || cleanTitle.toLowerCase().replace(/\s+/g, '-'),
+          gameAccountUsername: issuedUsername,
+          gameAccountPassword: issuedPassword,
+          requestType: 'COIN_LOAD',
+          transferAmount: pendingDepositLoad,
+          depositAmount: depAmt,
+          bonusSC: bonAmt,
+          bonusPercent: bonPct,
+          sourceDepositId: targetRequest.sourceDepositId || '',
+          sourceAccountRequestId: targetRequest._id.toString(),
+          status: 'PENDING',
+          notes: breakdownNote,
+          createdAt: new Date(),
+        });
+
+        notifyStaff({
+          title: '⚡ Stage 3/3: Coin Load Ready (ID Created)',
+          message: `Credentials (@${issuedUsername}) created for @${targetRequest.userName || cleanEmail.split('@')[0]} on ${cleanTitle}. Allot $${pendingDepositLoad.toFixed(2)} SC (Deposit + Bonus) now!`,
+          type: 'coin_load',
+          data: {
+            url: '/admin?tab=coins_allotment',
+          },
+        });
+      }
 
       // 4. If this is a Freeplay Task request, mark 1-time Freeplay as claimed for user
       if (targetRequest.freeplayPending) {
@@ -493,19 +550,27 @@ export async function PUT(req) {
       }
 
       // Instant in-app & push notification
-      if (finalAmount > 0) {
+      if (isCoinLoadRequest && finalAmount > 0) {
         notifyPlayer({
           userEmail: cleanEmail,
           title: `Game Loaded: ${cleanTitle}! ⚡`,
-          message: `$${finalAmount.toFixed(2)} SC loaded into your ${cleanTitle} account! Good luck!`,
+          message: `$${finalAmount.toFixed(2)} SC loaded into your ${cleanTitle} account (@${issuedUsername})! Good luck!`,
           type: 'coin_load_approved',
           data: { gameTitle: cleanTitle, amount: String(finalAmount) },
+        });
+      } else if (autoCoinLoadCreated) {
+        notifyPlayer({
+          userEmail: cleanEmail,
+          title: `Step 3/3: ${cleanTitle} ID Ready & Coins Loading! 🎮⚡`,
+          message: `Your ${cleanTitle} ID (@${issuedUsername}) has been created! Your $${queuedLoadAmount.toFixed(2)} SC (Deposit + Bonus) has been forwarded to the Coins Allotment Desk for instant loading.`,
+          type: 'account_ready',
+          data: { gameTitle: cleanTitle },
         });
       } else {
         notifyPlayer({
           userEmail: cleanEmail,
           title: `Game ID Ready: ${cleanTitle}! 🎮`,
-          message: `Your ${cleanTitle} credentials have been issued! Username: ${username}`,
+          message: `Your ${cleanTitle} credentials have been issued! Username: ${issuedUsername}`,
           type: 'account_ready',
           data: { gameTitle: cleanTitle },
         });
@@ -514,20 +579,30 @@ export async function PUT(req) {
       cache.invalidatePrefix('account_requests');
       return NextResponse.json({
         success: true,
-        message: finalAmount > 0
+        autoCoinLoadCreated,
+        queuedLoadAmount,
+        gameTitle: cleanTitle,
+        username: issuedUsername,
+        userName: targetRequest.userName || cleanEmail.split('@')[0],
+        message: isCoinLoadRequest
           ? `Coin load for ${cleanTitle} approved! $${finalAmount.toFixed(2)} SC deducted from player balance.`
+          : autoCoinLoadCreated
+          ? `Credentials (@${issuedUsername}) for ${cleanTitle} issued! Automatically queued $${queuedLoadAmount.toFixed(2)} SC (Deposit + Bonus) in Coins Allotment Desk.`
           : `Credentials for ${cleanTitle} issued successfully!`,
       });
     } else if (action === 'cancel' || action === 'reject') {
       const reason = body.reason || body.rejectionReason || 'Staff desk rejected request or platform currently unavailable.';
+      const amountToUnfreeze = isCoinLoadRequest ? originalFrozen : pendingDepositLoad;
 
       // Unfreeze player's coins so they return to available balance
-      if (originalFrozen > 0) {
+      if (amountToUnfreeze > 0 && (targetRequest.status || '').toUpperCase() === 'PENDING') {
         const user = await usersCol.findOne({ email: cleanEmail });
         if (user) {
+          const oldFrozen = Math.max(0, Number(user.frozenBalance || 0));
+          const newFrozen = Number(Math.max(0, oldFrozen - amountToUnfreeze).toFixed(2));
           await usersCol.updateOne(
             { _id: user._id },
-            { $inc: { frozenBalance: -originalFrozen } }
+            { $set: { frozenBalance: newFrozen } }
           );
 
           await ledgerCol.insertOne({
@@ -535,13 +610,13 @@ export async function PUT(req) {
             username: user.username,
             type: 'game_load_unfreeze',
             currency: 'SC',
-            amount: originalFrozen,
+            amount: amountToUnfreeze,
             balanceBefore: user.balanceSC,
             balanceAfter: user.balanceSC,
             performedBy: session.username,
             staffRole: session.role,
             referenceId: targetRequest._id.toString(),
-            notes: `Game coin load rejected ($${originalFrozen} SC unfrozen & returned): ${reason}`,
+            notes: `Game request rejected ($${amountToUnfreeze.toFixed(2)} SC unfrozen & returned to wallet): ${reason}`,
             createdAt: new Date(),
           });
         }
@@ -647,6 +722,24 @@ export async function DELETE(req) {
 
     if (!isOwner && !isStaff) {
       return NextResponse.json({ success: false, message: 'Unauthorized.' }, { status: 403 });
+    }
+
+    // If dismissing a PENDING request that had frozen escrow coins, unfreeze them safely
+    if ((target.status || '').toUpperCase() === 'PENDING') {
+      const frozenToRelease =
+        target.requestType === 'COIN_LOAD' || Number(target.transferAmount || 0) > 0
+          ? Number(target.transferAmount || 0)
+          : !target.coinLoadQueued
+          ? Number(target.pendingCoinLoadAmount || 0)
+          : 0;
+      if (frozenToRelease > 0 && target.userEmail) {
+        const cleanTargetEmail = target.userEmail.toLowerCase().trim();
+        const u = await db.collection('users').findOne({ email: cleanTargetEmail });
+        if (u) {
+          const nextFrozen = Number(Math.max(0, Number(u.frozenBalance || 0) - frozenToRelease).toFixed(2));
+          await db.collection('users').updateOne({ _id: u._id }, { $set: { frozenBalance: nextFrozen } });
+        }
+      }
     }
 
     await requestsCol.deleteOne(safeIdFilter(id));

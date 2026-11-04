@@ -64,34 +64,44 @@ export const GAME_THUMBNAIL_MAP = {
 };
 
 /**
- * Returns an instant WebP thumbnail path for any game title/name.
- * If fallback or database thumbnail is provided, it prioritizes the static high-speed WebP asset.
+ * Returns an instant thumbnail path or data URL for any game.
+ * Always prioritizes a custom admin-uploaded image (data:image/... or custom URL/webp)
+ * before falling back to the static built-in catalog lookup table.
  */
 export function getGameThumbnail(titleOrName, fallback) {
-  if (!titleOrName) return fallback || '/images/vegas-777.webp';
+  const isPlaceholder =
+    !fallback ||
+    typeof fallback !== 'string' ||
+    fallback === '/images/vegas-777.webp' ||
+    fallback === '/images/vegas-777.svg' ||
+    fallback.endsWith('.svg');
+
+  // 1. If the game has a custom uploaded image (base64 data:image or custom URL/webp), always show it!
+  if (!isPlaceholder) {
+    return fallback;
+  }
+
+  if (!titleOrName) return '/images/vegas-777.webp';
   const clean = String(titleOrName).toLowerCase().trim();
 
-  // 1. Direct match
+  // 2. Direct match in static catalog
   if (GAME_THUMBNAIL_MAP[clean]) {
     return GAME_THUMBNAIL_MAP[clean];
   }
 
-  // 2. Normalized match (remove special chars)
+  // 3. Normalized match (remove special chars)
   const normalized = clean.replace(/[^a-z0-9]+/g, ' ').trim();
   if (GAME_THUMBNAIL_MAP[normalized]) {
     return GAME_THUMBNAIL_MAP[normalized];
   }
 
-  // 3. Partial substring match
-  for (const [key, path] of Object.entries(GAME_THUMBNAIL_MAP)) {
-    if (clean.includes(key) || key.includes(clean)) {
-      return path;
+  // 4. Partial substring match for built-in titles
+  if (clean.length >= 4) {
+    for (const [key, path] of Object.entries(GAME_THUMBNAIL_MAP)) {
+      if (clean.includes(key) || key.includes(clean)) {
+        return path;
+      }
     }
-  }
-
-  // 4. Return fallback if provided and valid URL (not base64)
-  if (fallback && !fallback.startsWith('data:image')) {
-    return fallback;
   }
 
   return '/images/vegas-777.webp';

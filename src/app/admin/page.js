@@ -585,6 +585,42 @@ export default function AdminPortal({ initialTab }) {
   const [ledgerPage, setLedgerPage] = useState(1);
   const [ledgerPageSize, setLedgerPageSize] = useState(15);
 
+  // Optimistic mutation guard to prevent in-flight polls from reverting approved/rejected/deleted items
+  const recentlyMutatedRef = React.useRef(new Map());
+
+  const markAdminMutated = (id, patch) => {
+    if (!id) return;
+    recentlyMutatedRef.current.set(String(id), {
+      patch,
+      expiresAt: Date.now() + 12000,
+    });
+  };
+
+  const unmarkAdminMutated = (id) => {
+    if (!id) return;
+    recentlyMutatedRef.current.delete(String(id));
+  };
+
+  const applyAdminMutations = (list = []) => {
+    const now = Date.now();
+    for (const [k, v] of recentlyMutatedRef.current.entries()) {
+      if (now > v.expiresAt) recentlyMutatedRef.current.delete(k);
+    }
+    if (recentlyMutatedRef.current.size === 0) return list;
+    const result = [];
+    for (const item of list) {
+      const key = String(item.id || item._id || '');
+      const mut = recentlyMutatedRef.current.get(key);
+      if (mut) {
+        if (mut.patch?.__deleted) continue;
+        result.push({ ...item, ...mut.patch });
+      } else {
+        result.push(item);
+      }
+    }
+    return result;
+  };
+
   const isFetchingReqsRef = React.useRef(false);
   const fetchAccountRequests = () => {
     if (isFetchingReqsRef.current) return;
@@ -593,10 +629,14 @@ export default function AdminPortal({ initialTab }) {
       .then(r => r.json())
       .then(d => {
         if (d.success && Array.isArray(d.accountRequests)) {
-          diffSet(setAccountRequests, d.accountRequests);
-          const loads = d.accountRequests.filter(
+          const allMutated = applyAdminMutations(d.accountRequests);
+          const creationReqs = allMutated.filter(
+            r => r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
+          );
+          const loads = allMutated.filter(
             r => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
           );
+          diffSet(setAccountRequests, creationReqs);
           diffSet(setCoinLoadRequests, loads);
         }
       })
@@ -629,7 +669,8 @@ export default function AdminPortal({ initialTab }) {
     setSubmittingApproval(true);
     const targetId = req.id || req._id;
 
-    // 1. Optimistic update (0ms instant UI feedback)
+    // 1. Optimistic update + mutation lock (0ms instant UI feedback, zero flicker)
+    markAdminMutated(targetId, { status: 'READY' });
     setAccountRequests((prev) =>
       prev.map((r) =>
         (r.id === targetId || r._id === targetId) ? { ...r, status: 'READY' } : r
@@ -655,12 +696,14 @@ export default function AdminPortal({ initialTab }) {
       });
       const data = await res.json();
       if (!data.success) {
+        unmarkAdminMutated(targetId);
         alert(data.message || 'Failed to approve coin load');
         fetchAccountRequests();
       } else {
-        syncRequestsAndAlerts();
+        syncRequestsAndAlerts(true);
       }
     } catch (e) {
+      unmarkAdminMutated(targetId);
       console.error(e);
       fetchAccountRequests();
     } finally {
@@ -676,11 +719,17 @@ export default function AdminPortal({ initialTab }) {
     const u = approvalModal.username.trim();
     const p = approvalModal.password.trim();
 
-    // 1. Optimistically update account requests state (0ms)
+    // 1. Optimistically update account requests state + lock mutation (0ms, zero flicker)
+    markAdminMutated(targetReq.id, {
+      status: 'READY',
+      gameAccountUsername: u,
+      gameAccountPassword: p,
+      coinLoadQueued: true,
+    });
     setAccountRequests((prev) =>
       prev.map((r) =>
         r.id === targetReq.id
-          ? { ...r, status: 'READY', gameAccountUsername: u, gameAccountPassword: p }
+          ? { ...r, status: 'READY', gameAccountUsername: u, gameAccountPassword: p, coinLoadQueued: true }
           : r
       )
     );
@@ -702,12 +751,48 @@ export default function AdminPortal({ initialTab }) {
       });
       const data = await res.json();
       if (!data.success) {
+        unmarkAdminMutated(targetReq.id);
         alert(data.message || 'Failed to issue credentials');
         fetchAccountRequests();
       } else {
-        syncRequestsAndAlerts();
+        // If this Account Creation had an approved Deposit + Bonus waiting, broadcast & alert Coins Allotment Desk!
+        if (data.autoCoinLoadCreated) {
+          const loadAmt = Number(data.queuedLoadAmount || targetReq.pendingCoinLoadAmount || 0);
+          try {
+            const staffChannel = new BroadcastChannel('paradise_staff_alerts');
+            staffChannel.postMessage({
+              type: 'NEW_COIN_LOAD',
+              transferAmount: loadAmt,
+              userName: data.userName || targetReq.userName || 'Player',
+              gameTitle: data.gameTitle || targetReq.gameTitle || 'Game',
+            });
+            staffChannel.close();
+          } catch {}
+          try {
+            localStorage.setItem(
+              'paradise_staff_event',
+              JSON.stringify({
+                type: 'NEW_COIN_LOAD',
+                transferAmount: loadAmt,
+                userName: data.userName || targetReq.userName || 'Player',
+                gameTitle: data.gameTitle || targetReq.gameTitle || 'Game',
+                time: Date.now(),
+              })
+            );
+          } catch {}
+          setActiveAlertToast({
+            type: 'coin_load',
+            title: '⚡ Step 3/3: Ready for Coin Allotment!',
+            message: `$${loadAmt.toFixed(2)} SC (Deposit + Bonus) queued for ${data.gameTitle || targetReq.gameTitle} (@${u})`,
+            subtext: 'Tap to open Coins Allotment & load player balance',
+            targetTab: 'coins_allotment',
+            targetSubTab: 'loads',
+          });
+        }
+        syncRequestsAndAlerts(true);
       }
     } catch (e) {
+      unmarkAdminMutated(targetReq.id);
       console.error(e);
       fetchAccountRequests();
     } finally {
@@ -721,7 +806,8 @@ export default function AdminPortal({ initialTab }) {
 
     const resolvedReason = reason.trim() || 'Temporary platform maintenance. Please contact 24/7 Concierge.';
 
-    // Optimistically mark as rejected (0ms)
+    // Optimistically mark as rejected + lock mutation (0ms, zero flicker)
+    markAdminMutated(id, { status: 'REJECTED', rejectionReason: resolvedReason });
     setAccountRequests((prev) =>
       prev.map((r) => (r.id === id || r._id === id ? { ...r, status: 'REJECTED', rejectionReason: resolvedReason } : r))
     );
@@ -738,10 +824,12 @@ export default function AdminPortal({ initialTab }) {
       });
       const data = await res.json();
       if (!data.success) {
+        unmarkAdminMutated(id);
         console.error('Failed to cancel request:', data.message);
       }
-      syncRequestsAndAlerts();
+      syncRequestsAndAlerts(true);
     } catch (e) {
+      unmarkAdminMutated(id);
       console.error(e);
       fetchAccountRequests();
     }
@@ -750,6 +838,7 @@ export default function AdminPortal({ initialTab }) {
   const handleDismissRequest = async (id) => {
     if (!confirm('Are you sure you want to permanently dismiss/delete this request?')) return;
 
+    markAdminMutated(id, { __deleted: true });
     setAccountRequests((prev) => prev.filter((r) => r.id !== id && r._id !== id));
     setCoinLoadRequests((prev) => prev.filter((r) => r.id !== id && r._id !== id));
     setActiveAlertToast((curr) => (curr?.type === 'account' || curr?.type === 'coin_load' ? null : curr));
@@ -760,10 +849,12 @@ export default function AdminPortal({ initialTab }) {
       });
       const data = await res.json();
       if (!data.success) {
+        unmarkAdminMutated(id);
         console.error('Failed to dismiss request:', data.message);
       }
-      syncRequestsAndAlerts();
+      syncRequestsAndAlerts(true);
     } catch (e) {
+      unmarkAdminMutated(id);
       console.error(e);
       fetchAccountRequests();
     }
@@ -943,9 +1034,14 @@ export default function AdminPortal({ initialTab }) {
   const seenCoinCashoutIdsRef = React.useRef(new Set());
   const isInitialLoadRef = React.useRef(true);
   const isSyncingRef = React.useRef(false);
+  const pendingForceSyncRef = React.useRef(false);
 
-  const syncRequestsAndAlerts = async () => {
-    if (!user || isSyncingRef.current) return;
+  const syncRequestsAndAlerts = async (force = false) => {
+    if (!user) return;
+    if (isSyncingRef.current) {
+      if (force) pendingForceSyncRef.current = true;
+      return;
+    }
     isSyncingRef.current = true;
     try {
       const [depRes, withRes, reqRes, chatRes] = await Promise.allSettled([
@@ -960,33 +1056,42 @@ export default function AdminPortal({ initialTab }) {
       const reqData = reqRes.status === 'fulfilled' ? await reqRes.value.json().catch(() => ({})) : {};
       const chatData = chatRes.status === 'fulfilled' ? await chatRes.value.json().catch(() => ({})) : {};
 
+      const resolvedDeposits = depData.success ? applyAdminMutations(depData.deposits || []) : [];
+      const resolvedRedemptions = withData.success ? applyAdminMutations(withData.redemptions || []) : [];
+      const allReqs = reqData.success && Array.isArray(reqData.accountRequests)
+        ? applyAdminMutations(reqData.accountRequests)
+        : [];
+
       if (depData.success) {
-        diffSet(setDeposits, depData.deposits || []);
+        diffSet(setDeposits, resolvedDeposits);
       }
       if (withData.success) {
-        diffSet(setRedemptions, withData.redemptions || []);
+        diffSet(setRedemptions, resolvedRedemptions);
       }
       if (reqData.success && Array.isArray(reqData.accountRequests)) {
-        diffSet(setAccountRequests, reqData.accountRequests);
-        const loads = reqData.accountRequests.filter(
+        // Strictly separate Game ID creation requests from Coin Load requests!
+        const creationReqs = allReqs.filter(
+          (r) => r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
+        );
+        const loads = allReqs.filter(
           (r) => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
         );
+        diffSet(setAccountRequests, creationReqs);
         diffSet(setCoinLoadRequests, loads);
       }
       if (chatData.success && Array.isArray(chatData.conversations)) {
         diffSet(setChatConversations, chatData.conversations);
       }
 
-      const allReqs = reqData.accountRequests || [];
-      const pendingDeps = (depData.deposits || []).filter((d) => d.status === 'pending');
-      const pendingWith = (withData.redemptions || []).filter((r) => r.status === 'pending');
+      const pendingDeps = resolvedDeposits.filter((d) => d.status === 'pending');
+      const pendingWith = resolvedRedemptions.filter((r) => r.status === 'pending');
       const pendingReqs = allReqs.filter(
         (r) => (r.status || '').toUpperCase() === 'PENDING' && r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
       );
       const pendingCoinLoads = allReqs.filter(
         (r) => (r.status || '').toUpperCase() === 'PENDING' && (r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0)
       );
-      const pendingCoinCashouts = (withData.redemptions || []).filter((r) => r.status === 'pending_coin' || r.stage === 'coin_verification');
+      const pendingCoinCashouts = resolvedRedemptions.filter((r) => r.status === 'pending_coin' || r.stage === 'coin_verification');
       const unreadChatConvs = (chatData.conversations || []).filter((c) => (c.unreadCount || 0) > 0);
       const unreadChatCount = unreadChatConvs.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
@@ -1193,6 +1298,10 @@ export default function AdminPortal({ initialTab }) {
       console.warn('Background sync error:', err);
     } finally {
       isSyncingRef.current = false;
+      if (pendingForceSyncRef.current) {
+        pendingForceSyncRef.current = false;
+        syncRequestsAndAlerts(false);
+      }
     }
   };
 
@@ -1215,7 +1324,7 @@ export default function AdminPortal({ initialTab }) {
           subtext: 'Tap to review & issue credentials',
           targetTab: 'account_requests',
         });
-        syncRequestsAndAlerts();
+        syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_DEPOSIT') {
         unlockAudioContext();
         playAdminChime();
@@ -1233,7 +1342,7 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'finance',
           targetSubTab: 'deposits',
         });
-        syncRequestsAndAlerts();
+        syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_COIN_LOAD') {
         unlockAudioContext();
         playAdminChime();
@@ -1251,7 +1360,7 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'coins_allotment',
           targetSubTab: 'loads',
         });
-        syncRequestsAndAlerts();
+        syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_FINANCE_REDEMPTION') {
         unlockAudioContext();
         playAdminChime();
@@ -1269,7 +1378,7 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'finance',
           targetSubTab: 'redemptions',
         });
-        syncRequestsAndAlerts();
+        syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_COIN_CASHOUT') {
         unlockAudioContext();
         playAdminChime();
@@ -1287,7 +1396,7 @@ export default function AdminPortal({ initialTab }) {
           targetTab: 'coins_allotment',
           targetSubTab: 'cashouts',
         });
-        syncRequestsAndAlerts();
+        syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_CHAT_MESSAGE') {
         unlockAudioContext();
         playAdminChime();
@@ -1508,7 +1617,7 @@ export default function AdminPortal({ initialTab }) {
           try { sessionStorage.setItem('pp_admin_stats', JSON.stringify(d.stats)); } catch {}
         }
       }).catch(() => {});
-      fetch('/api/games?all=true').then(r => r.json()).then(d => {
+      fetch('/api/games?all=true', { cache: 'no-store' }).then(r => r.json()).then(d => {
         if (d.success && d.games) {
           diffSet(setGames, d.games);
           try { sessionStorage.setItem('pp_admin_games', JSON.stringify(d.games)); } catch {}
@@ -2777,8 +2886,9 @@ export default function AdminPortal({ initialTab }) {
             <CoinOperationsDesk
               sessionUser={user}
               initialLoads={coinLoadRequests}
-              initialCashouts={redemptions.filter(r => r.status === 'pending_coin' || r.stage === 'coin_verification')}
+              initialCashouts={redemptions}
               initialSection={allotmentSubTab || 'loads'}
+              onMutateSuccess={syncRequestsAndAlerts}
             />
           )}
 
@@ -2944,8 +3054,9 @@ export default function AdminPortal({ initialTab }) {
 
                           // 1. Optimistic game item (0ms)
                           const tempId = 'temp-' + Date.now();
-                          const optimisticGame = { ...newGame, id: tempId, isActive: true };
+                          const optimisticGame = { ...newGame, id: tempId, isActive: newGame.isActive !== false };
                           setGames(prev => [optimisticGame, ...prev]);
+                          setGamePage(1);
 
                           // 2. Dismiss modal immediately in 0ms!
                           setIsAddGameModalOpen(false);
@@ -2968,7 +3079,21 @@ export default function AdminPortal({ initialTab }) {
                             });
                             const d = await res.json();
                             if (d.success && d.game) {
-                              setGames(prev => prev.map(g => g.id === tempId ? (d.game || { ...gameToSubmit, id: d.gameId }) : g));
+                              setGames(prev => {
+                                const next = prev.map(g => g.id === tempId ? (d.game || { ...gameToSubmit, id: d.gameId }) : g);
+                                try {
+                                  sessionStorage.setItem('pp_admin_games', JSON.stringify(next));
+                                  localStorage.removeItem('pp_games_cache');
+                                  sessionStorage.removeItem('pp_games_cache');
+                                  localStorage.setItem('pp_games_updated_at', String(Date.now()));
+                                } catch {}
+                                return next;
+                              });
+                              try {
+                                const bc = new BroadcastChannel('admin_alerts_channel');
+                                bc.postMessage({ type: 'GAMES_UPDATED', time: Date.now() });
+                                bc.close();
+                              } catch {}
                             } else if (!d.success) {
                               alert(d.error || 'Failed to add game');
                               setGames(prev => prev.filter(g => g.id !== tempId));
@@ -3229,8 +3354,12 @@ export default function AdminPortal({ initialTab }) {
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={getGameThumbnail(g.title, g.thumbnail)}
+                                  src={getGameThumbnail(g.title, g.thumbnail || g.image || g.imageUrl)}
                                   alt={g.title}
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = '/images/vegas-777.webp';
+                                  }}
                                   className="w-full h-full object-cover"
                                 />
                               </div>
@@ -3433,8 +3562,12 @@ export default function AdminPortal({ initialTab }) {
                                   >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
-                                      src={getGameThumbnail(g.title, g.thumbnail)}
+                                      src={getGameThumbnail(g.title, g.thumbnail || g.image || g.imageUrl)}
                                       alt={g.title}
+                                      onError={(e) => {
+                                        e.currentTarget.onerror = null;
+                                        e.currentTarget.src = '/images/vegas-777.webp';
+                                      }}
                                       className="w-full h-full object-cover"
                                     />
                                   </div>
@@ -3669,9 +3802,22 @@ export default function AdminPortal({ initialTab }) {
                           e.preventDefault();
                           if (!editingGame.title.trim()) return alert('Game title is required');
 
-                          const updatedGame = { ...editingGame };
+                          const updatedGame = {
+                            ...editingGame,
+                            image: editingGame.thumbnail,
+                            imageUrl: editingGame.thumbnail,
+                          };
                           // 1. Optimistic update (0ms)
-                          setGames(prev => prev.map(item => item.id === updatedGame.id ? { ...item, ...updatedGame } : item));
+                          setGames(prev => {
+                            const next = prev.map(item => item.id === updatedGame.id ? { ...item, ...updatedGame } : item);
+                            try {
+                              sessionStorage.setItem('pp_admin_games', JSON.stringify(next));
+                              localStorage.removeItem('pp_games_cache');
+                              sessionStorage.removeItem('pp_games_cache');
+                              localStorage.setItem('pp_games_updated_at', String(Date.now()));
+                            } catch {}
+                            return next;
+                          });
                           // 2. Dismiss modal immediately in 0ms!
                           setEditingGame(null);
 
@@ -3685,6 +3831,12 @@ export default function AdminPortal({ initialTab }) {
                             const d = await res.json();
                             if (!d.success) {
                               alert(d.error || 'Failed to update game');
+                            } else {
+                              try {
+                                const bc = new BroadcastChannel('admin_alerts_channel');
+                                bc.postMessage({ type: 'GAMES_UPDATED', time: Date.now() });
+                                bc.close();
+                              } catch {}
                             }
                           } catch (err) {
                             console.error('Failed to update game', err);
@@ -3886,7 +4038,8 @@ export default function AdminPortal({ initialTab }) {
               }}
               onApproveDeposit={async (depositId, scToCredit) => {
                 setActiveAlertToast((curr) => (curr?.type === 'deposit' ? null : curr));
-                // Optimistic UI update: immediately mark deposit as approved (0ms)
+                // Optimistic UI update + mutation lock: immediately mark deposit as approved (0ms, zero flicker)
+                markAdminMutated(depositId, { status: 'approved', creditedSC: Number(scToCredit) });
                 setDeposits((prev) =>
                   prev.map((item) =>
                     item.id === depositId
@@ -3903,21 +4056,62 @@ export default function AdminPortal({ initialTab }) {
                   });
                   const data = await res.json();
                   if (!data.success) {
+                    unmarkAdminMutated(depositId);
                     alert(data.error || 'Failed to approve deposit');
-                    syncRequestsAndAlerts();
+                    syncRequestsAndAlerts(true);
                   } else {
-                    syncRequestsAndAlerts();
+                    // Stage 1 -> Stage 2 (No Account Yet -> Account Creation) OR Stage 1 -> Stage 3 (Account Exists -> Coin Allotment)
+                    if (data.autoAccountRequestCreated) {
+                      try {
+                        const staffChannel = new BroadcastChannel('paradise_staff_alerts');
+                        staffChannel.postMessage({
+                          type: 'NEW_REQUEST',
+                          gameTitle: data.gameTitle || 'Game',
+                          userName: data.username || 'Player',
+                        });
+                        staffChannel.close();
+                      } catch {}
+                      setActiveAlertToast({
+                        type: 'account',
+                        title: '🎯 Step 2/3: Create Player Game ID!',
+                        message: `${data.gameTitle || 'Game'} ID needed for @${data.username || 'Player'} ($${Number(data.creditedSC || scToCredit).toFixed(2)} SC with bonus)`,
+                        subtext: 'Tap to create Game ID → will then auto-queue into Coin Allotment',
+                        targetTab: 'account_requests',
+                      });
+                    } else if (data.autoCoinLoadCreated) {
+                      try {
+                        const staffChannel = new BroadcastChannel('paradise_staff_alerts');
+                        staffChannel.postMessage({
+                          type: 'NEW_COIN_LOAD',
+                          transferAmount: Number(data.creditedSC || scToCredit),
+                          userName: data.username || 'Player',
+                          gameTitle: data.gameTitle || 'Game',
+                        });
+                        staffChannel.close();
+                      } catch {}
+                      setActiveAlertToast({
+                        type: 'coin_load',
+                        title: '⚡ Forwarded to Coins Allotment!',
+                        message: `$${Number(data.creditedSC || scToCredit).toFixed(2)} SC load for ${data.gameTitle || 'Game'} (@${data.gameAccountUsername || data.username})`,
+                        subtext: 'Account already exists • Tap to allot coins in Coins Allotment',
+                        targetTab: 'coins_allotment',
+                        targetSubTab: 'loads',
+                      });
+                    }
+                    syncRequestsAndAlerts(true);
                   }
                 } catch (e) {
+                  unmarkAdminMutated(depositId);
                   console.error(e);
-                  syncRequestsAndAlerts();
+                  syncRequestsAndAlerts(true);
                 }
               }}
               onRejectDeposit={async (depositId, reason) => {
                 setActiveAlertToast((curr) => (curr?.type === 'deposit' ? null : curr));
-                // Optimistic UI update: immediately mark deposit as rejected (0ms)
+                // Optimistic UI update + mutation lock: immediately mark deposit as rejected (0ms, zero flicker)
+                markAdminMutated(depositId, { status: 'rejected', rejectReason: reason });
                 setDeposits((prev) =>
-                  prev.map((item) => (item.id === depositId ? { ...item, status: 'rejected' } : item))
+                  prev.map((item) => (item.id === depositId ? { ...item, status: 'rejected', rejectReason: reason } : item))
                 );
 
                 try {
@@ -3928,19 +4122,22 @@ export default function AdminPortal({ initialTab }) {
                   });
                   const data = await res.json();
                   if (!data.success) {
+                    unmarkAdminMutated(depositId);
                     alert(data.error || 'Failed to reject deposit');
-                    syncRequestsAndAlerts();
+                    syncRequestsAndAlerts(true);
                   } else {
-                    syncRequestsAndAlerts();
+                    syncRequestsAndAlerts(true);
                   }
                 } catch (e) {
+                  unmarkAdminMutated(depositId);
                   console.error(e);
-                  syncRequestsAndAlerts();
+                  syncRequestsAndAlerts(true);
                 }
               }}
               onApproveRedemption={async (redemptionId) => {
                 setActiveAlertToast((curr) => (curr?.type === 'redemption' ? null : curr));
-                // Optimistic UI update: immediately mark redemption as approved & dispatched (0ms)
+                // Optimistic UI update + mutation lock: immediately mark redemption as approved & dispatched (0ms, zero flicker)
+                markAdminMutated(redemptionId, { status: 'approved', stage: 'completed' });
                 setRedemptions((prev) =>
                   prev.map((item) =>
                     item.id === redemptionId ? { ...item, status: 'approved', stage: 'completed' } : item
@@ -3955,10 +4152,11 @@ export default function AdminPortal({ initialTab }) {
                   });
                   const data = await res.json();
                   if (!data.success) {
+                    unmarkAdminMutated(redemptionId);
                     alert(data.error || 'Failed to dispatch redemption');
-                    syncRequestsAndAlerts();
+                    syncRequestsAndAlerts(true);
                   } else {
-                    syncRequestsAndAlerts();
+                    syncRequestsAndAlerts(true);
                     // Broadcast instant balance deduction to player windows (Zero Page Refresh)
                     try {
                       const balanceChan = new BroadcastChannel('paradise_balance_sync');
@@ -3968,15 +4166,17 @@ export default function AdminPortal({ initialTab }) {
                     localStorage.setItem('paradise_user_balance_sync', String(Date.now()));
                   }
                 } catch (e) {
+                  unmarkAdminMutated(redemptionId);
                   console.error(e);
-                  syncRequestsAndAlerts();
+                  syncRequestsAndAlerts(true);
                 }
               }}
               onRejectRedemption={async (redemptionId, reason) => {
                 setActiveAlertToast((curr) => (curr?.type === 'redemption' ? null : curr));
-                // Optimistic UI update: immediately mark redemption as rejected (0ms)
+                // Optimistic UI update + mutation lock: immediately mark redemption as rejected (0ms, zero flicker)
+                markAdminMutated(redemptionId, { status: 'rejected', stage: 'rejected', rejectReason: reason });
                 setRedemptions((prev) =>
-                  prev.map((item) => (item.id === redemptionId ? { ...item, status: 'rejected', stage: 'rejected' } : item))
+                  prev.map((item) => (item.id === redemptionId ? { ...item, status: 'rejected', stage: 'rejected', rejectReason: reason } : item))
                 );
 
                 try {
@@ -3987,10 +4187,11 @@ export default function AdminPortal({ initialTab }) {
                   });
                   const data = await res.json();
                   if (!data.success) {
+                    unmarkAdminMutated(redemptionId);
                     alert(data.error || 'Failed to reject redemption');
-                    syncRequestsAndAlerts();
+                    syncRequestsAndAlerts(true);
                   } else {
-                    syncRequestsAndAlerts();
+                    syncRequestsAndAlerts(true);
                     // Broadcast instant unfreeze of balance to player windows (Zero Page Refresh)
                     try {
                       const balanceChan = new BroadcastChannel('paradise_balance_sync');
@@ -4000,8 +4201,9 @@ export default function AdminPortal({ initialTab }) {
                     localStorage.setItem('paradise_user_balance_sync', String(Date.now()));
                   }
                 } catch (e) {
+                  unmarkAdminMutated(redemptionId);
                   console.error(e);
-                  syncRequestsAndAlerts();
+                  syncRequestsAndAlerts(true);
                 }
               }}
             />

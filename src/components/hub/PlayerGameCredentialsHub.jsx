@@ -427,7 +427,10 @@ export default function PlayerGameAccountsHub({
               const matchedGame = games.find(
                 (g) => (g.title || g.name || '').toLowerCase().trim() === (acc.gameTitle || '').toLowerCase().trim()
               );
-              const thumb = getGameThumbnail(acc.gameTitle, matchedGame?.thumbnail);
+              const thumb = getGameThumbnail(
+                acc.gameTitle,
+                matchedGame?.thumbnail || matchedGame?.image || matchedGame?.imageUrl
+              );
               const isPasswordVisible = showPasswordMap[`acc_${index}`];
 
               return (
@@ -459,13 +462,15 @@ export default function PlayerGameAccountsHub({
                           flexShrink: 0,
                         }}
                       >
-                        <Image
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
                           src={thumb}
                           alt={acc.gameTitle || 'Game'}
-                          fill
-                          sizes="48px"
-                          priority={index < 4}
-                          style={{ objectFit: 'cover' }}
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/images/vegas-777.webp';
+                          }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                         />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>

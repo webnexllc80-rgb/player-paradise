@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/email';
 import { notifyPlayer, notifyStaff } from '@/lib/notify';
 import { findUserGameAccount } from '@/lib/gameAccounts';
 import { compressDataUrlIfNeeded } from '@/lib/serverImageCompress';
+import { cache } from '@/lib/cache';
 
 // GET: List Deposits (Admin / Financial Manager) or Player's own
 export async function GET(req) {
@@ -628,11 +629,18 @@ export async function PUT(req) {
         data: { amount: String(creditedSC) },
       });
 
-      // 5. Automatic Game Account Request Creation if Player Deposited without an Existing Account
+      // 5. Automatic Workflow Routing after Deposit Approval:
+      // - If player DOES NOT have an account for deposit.gameTitle -> Queue in Account Creation (with pendingCoinLoadAmount = creditedSC), which will then auto-queue into Coin Allotment once credentials are created!
+      // - If player ALREADY HAS an account for deposit.gameTitle -> Skip Account Creation completely and queue directly into Coin Allotment (with transferAmount = creditedSC)!
       let autoAccountRequestCreated = false;
+      let autoCoinLoadCreated = false;
+      let resolvedTargetGame = null;
+      let resolvedGameUsername = null;
+
       if (deposit.gameTitle) {
         const cleanEmail = (user.email || deposit.playerPaymentEmail || '').toLowerCase().trim();
         const cleanGameTitle = deposit.gameTitle.trim();
+        resolvedTargetGame = cleanGameTitle;
 
         const accCheck = await findUserGameAccount(
           db,
@@ -644,8 +652,21 @@ export async function PUT(req) {
           cleanGameTitle
         );
 
+        // Freeze creditedSC in escrow so it is reserved for loading into the target game platform
+        if (creditedSC > 0) {
+          await usersCol.updateOne(
+            { _id: user._id },
+            { $inc: { frozenBalance: creditedSC } }
+          );
+        }
+
+        const bonusPct = Number(deposit.bonusPercent || 0);
+        const breakdownNote = bonusAmount > 0
+          ? `Deposit $${baseDepositAmount.toFixed(2)} + Bonus $${bonusAmount.toFixed(2)} (${bonusPct}%) = $${creditedSC.toFixed(2)} SC`
+          : `Deposit $${baseDepositAmount.toFixed(2)} = $${creditedSC.toFixed(2)} SC`;
+
         if (!accCheck.exists) {
-          // Check if an account request is already pending
+          // Player does NOT have a game account yet -> Send to Stage 2: Account Creation first!
           const existingPending = await db.collection('accountRequests').findOne({
             userEmail: cleanEmail,
             gameTitle: cleanGameTitle,
@@ -653,8 +674,26 @@ export async function PUT(req) {
             requestType: { $ne: 'COIN_LOAD' },
           });
 
-          if (!existingPending) {
-            autoAccountRequestCreated = true;
+          autoAccountRequestCreated = true;
+
+          if (existingPending) {
+            await db.collection('accountRequests').updateOne(
+              { _id: existingPending._id },
+              {
+                $inc: {
+                  pendingCoinLoadAmount: creditedSC,
+                  depositAmount: baseDepositAmount,
+                  bonusSC: bonusAmount,
+                },
+                $set: {
+                  bonusPercent: bonusPct,
+                  sourceDepositId: deposit._id.toString(),
+                  notes: `${breakdownNote} • Auto-queues to Coin Allotment after ID creation`,
+                  updatedAt: new Date(),
+                },
+              }
+            );
+          } else {
             await db.collection('accountRequests').insertOne({
               userEmail: cleanEmail,
               userName: user.username,
@@ -662,28 +701,96 @@ export async function PUT(req) {
               gameId: deposit.gameId || cleanGameTitle.toLowerCase().replace(/\s+/g, '-'),
               requestType: 'ACCOUNT_CREATION',
               transferAmount: 0,
+              pendingCoinLoadAmount: creditedSC,
+              depositAmount: baseDepositAmount,
+              bonusSC: bonusAmount,
+              bonusPercent: bonusPct,
               status: 'PENDING',
               sourceDepositId: deposit._id.toString(),
-              depositAmount: deposit.amount,
-              notes: `Auto-generated from approved deposit of $${deposit.amount.toFixed(2)} via ${deposit.methodName || 'Payment'}`,
+              notes: `${breakdownNote} • Auto-queues to Coin Allotment after ID creation`,
               createdAt: new Date(),
             });
-
-            // Instant notification to player informing them their account request is now queued for staff
-            notifyPlayer({
-              userId: user._id,
-              userEmail: cleanEmail,
-              username: user.username,
-              title: `Game Account Request Queued: ${cleanGameTitle}! 🎮`,
-              message: `Deposit approved! Since you don't have a ${cleanGameTitle} account yet, an account creation request has been automatically sent to staff. Your login credentials will appear under My Game IDs shortly.`,
-              type: 'account_request_created',
-              data: { gameTitle: cleanGameTitle, depositId: deposit._id.toString() },
-            });
           }
+
+          cache.invalidatePrefix('account_requests');
+
+          notifyStaff({
+            title: '🎮 Account Creation Needed (Deposit Approved)',
+            message: `@${user.username}'s deposit ($${baseDepositAmount.toFixed(2)} → $${creditedSC.toFixed(2)} SC with bonus) was approved. Create their ${cleanGameTitle} ID so coins can be allotted!`,
+            type: 'account_request',
+            data: {
+              url: '/admin?tab=account_requests',
+            },
+          });
+
+          notifyPlayer({
+            userId: user._id,
+            userEmail: cleanEmail,
+            username: user.username,
+            title: `Step 2/3: Creating Your ${cleanGameTitle} ID! 🎮`,
+            message: `Deposit approved ($${creditedSC.toFixed(2)} SC total with bonus)! Since you don't have a ${cleanGameTitle} account yet, staff is creating your Game ID now, and then your $${creditedSC.toFixed(2)} SC will be loaded automatically.`,
+            type: 'account_request_created',
+            data: { gameTitle: cleanGameTitle, depositId: deposit._id.toString() },
+          });
+        } else {
+          // Player ALREADY HAS an active account -> Skip Account Requests completely and send straight to Coins Allotment!
+          autoCoinLoadCreated = true;
+          resolvedGameUsername = accCheck.username || deposit.gameAccountUsername || user.username;
+
+          await db.collection('accountRequests').insertOne({
+            userEmail: cleanEmail,
+            userName: user.username,
+            gameTitle: cleanGameTitle,
+            gameId: deposit.gameId || cleanGameTitle.toLowerCase().replace(/\s+/g, '-'),
+            gameAccountUsername: resolvedGameUsername,
+            requestType: 'COIN_LOAD',
+            transferAmount: creditedSC,
+            depositAmount: baseDepositAmount,
+            bonusSC: bonusAmount,
+            bonusPercent: bonusPct,
+            status: 'PENDING',
+            sourceDepositId: deposit._id.toString(),
+            notes: `${breakdownNote} • Account: @${resolvedGameUsername}`,
+            createdAt: new Date(),
+          });
+
+          cache.invalidatePrefix('account_requests');
+
+          notifyStaff({
+            title: '⚡ New Coin Load Request (Deposit Approved)',
+            message: `@${user.username} deposit approved! Load $${creditedSC.toFixed(2)} SC into ${cleanGameTitle} (@${resolvedGameUsername}).`,
+            type: 'coin_load',
+            data: {
+              url: '/admin?tab=coins_allotment',
+            },
+          });
+
+          notifyPlayer({
+            userId: user._id,
+            userEmail: cleanEmail,
+            username: user.username,
+            title: `Coins Queued for ${cleanGameTitle}! ⚡`,
+            message: `Your deposit was approved! $${creditedSC.toFixed(2)} SC (including bonus) has been sent to the Coins Allotment Desk for your ${cleanGameTitle} account (@${resolvedGameUsername}).`,
+            type: 'coin_load_queued',
+            data: { gameTitle: cleanGameTitle, depositId: deposit._id.toString() },
+          });
         }
       }
 
-      return NextResponse.json({ success: true, message: `Deposit approved! Credited ${creditedSC} SC to ${user.username}.` });
+      return NextResponse.json({
+        success: true,
+        autoAccountRequestCreated,
+        autoCoinLoadCreated,
+        gameTitle: resolvedTargetGame,
+        gameAccountUsername: resolvedGameUsername,
+        username: user.username,
+        creditedSC,
+        message: autoAccountRequestCreated
+          ? `Deposit approved! Player has no ${resolvedTargetGame} ID yet — forwarded to Account Requests (and will move to Coin Allotment for ${creditedSC} SC after ID creation).`
+          : autoCoinLoadCreated
+          ? `Deposit approved! Forwarded ${creditedSC} SC directly to Coins Allotment Desk for ${resolvedTargetGame} (@${resolvedGameUsername}).`
+          : `Deposit approved! Credited ${creditedSC} SC to ${user.username}.`,
+      });
     } else if (action === 'reject') {
       const finalRejectReason = rejectReason || 'Payment receipt unverified';
       await depositsCol.updateOne(

@@ -176,7 +176,7 @@ export default function HomePage({ initialTab = 'lobby' }) {
       if (searchTerm) params.append('search', searchTerm);
       if (params.toString()) url += `?${params.toString()}`;
 
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.games) {
         diffSet(setGames, data.games);
@@ -229,19 +229,41 @@ export default function HomePage({ initialTab = 'lobby' }) {
     const handleFocus = () => {
       if (!document.hidden) {
         loadUser();
+        loadGames();
       }
     };
+
+    const handleStorage = (e) => {
+      if (e.key === 'pp_games_updated_at') {
+        loadGames();
+      }
+    };
+
+    let bc = null;
+    try {
+      bc = new BroadcastChannel('admin_alerts_channel');
+      bc.onmessage = (event) => {
+        if (event?.data?.type === 'GAMES_UPDATED') {
+          loadGames();
+        }
+      };
+    } catch {}
 
     window.addEventListener('paradise-user-sync', handleUserSync);
     window.addEventListener('accountRequestUpdated', handleAccountSync);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleStorage);
     document.addEventListener('visibilitychange', handleFocus);
 
     return () => {
       window.removeEventListener('paradise-user-sync', handleUserSync);
       window.removeEventListener('accountRequestUpdated', handleAccountSync);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorage);
       document.removeEventListener('visibilitychange', handleFocus);
+      if (bc) {
+        try { bc.close(); } catch {}
+      }
     };
   }, []);
 

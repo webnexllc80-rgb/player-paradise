@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Coins,
   RefreshCw,
@@ -28,6 +28,7 @@ export default function CoinOperationsDesk({
   initialLoads = [],
   initialCashouts = [],
   initialSection = 'loads',
+  onMutateSuccess,
 }) {
   const [activeSection, setActiveSection] = useState(initialSection || 'loads');
   const [loading, setLoading] = useState(false);
@@ -64,21 +65,56 @@ export default function CoinOperationsDesk({
   // Status Alerts
   const [alert, setAlert] = useState(null);
 
+  // Optimistic mutation guard to prevent in-flight polls or parent props from reverting approved/rejected items
+  const recentlyMutatedRef = useRef(new Map());
+
+  const markMutated = (id, patch) => {
+    if (!id) return;
+    recentlyMutatedRef.current.set(String(id), {
+      patch,
+      expiresAt: Date.now() + 12000,
+    });
+  };
+
+  const unmarkMutated = (id) => {
+    if (!id) return;
+    recentlyMutatedRef.current.delete(String(id));
+  };
+
+  const applyMutations = (list = []) => {
+    const now = Date.now();
+    for (const [k, v] of recentlyMutatedRef.current.entries()) {
+      if (now > v.expiresAt) recentlyMutatedRef.current.delete(k);
+    }
+    if (recentlyMutatedRef.current.size === 0) return list;
+    return list.map((item) => {
+      const key = String(item.id || item._id || '');
+      const mut = recentlyMutatedRef.current.get(key);
+      if (!mut) return item;
+      return { ...item, ...mut.patch };
+    });
+  };
+
   const showAlert = (type, message) => {
     setAlert({ type, message });
     setTimeout(() => setAlert(null), 5000);
   };
 
-  // Sync with props whenever parent updates
+  // Sync with props whenever parent updates (guarded by applyMutations so stale parent props never flicker)
   useEffect(() => {
-    if (initialLoads && initialLoads.length > 0) {
-      diffSet(setLoadRequests, initialLoads);
+    if (Array.isArray(initialLoads)) {
+      diffSet(setLoadRequests, applyMutations(initialLoads));
     }
   }, [initialLoads]);
 
   useEffect(() => {
-    if (initialCashouts && initialCashouts.length > 0) {
-      diffSet(setCashoutRequests, initialCashouts);
+    if (Array.isArray(initialCashouts) && initialCashouts.length > 0) {
+      diffSet(setCashoutRequests, (prev) => {
+        const map = new Map();
+        (prev || []).forEach((c) => map.set(String(c.id || c._id), c));
+        initialCashouts.forEach((c) => map.set(String(c.id || c._id), c));
+        return applyMutations(Array.from(map.values()));
+      });
     }
   }, [initialCashouts]);
 
@@ -89,27 +125,40 @@ export default function CoinOperationsDesk({
   }, [initialSection]);
 
   // Fetch all data (silent background updates to prevent UI flicker)
-  const fetchData = async (isSilent = false) => {
+  const isFetchingDeskRef = useRef(false);
+  const pendingRefetchRef = useRef(false);
+
+  const fetchData = async (isSilent = false, force = false) => {
+    if (isFetchingDeskRef.current) {
+      if (force) pendingRefetchRef.current = true;
+      return;
+    }
+    isFetchingDeskRef.current = true;
     if (!isSilent && loadRequests.length === 0 && cashoutRequests.length === 0) setLoading(true);
     try {
       const [loadsRes, cashoutsRes] = await Promise.all([
-        fetch('/api/account-requests?type=COIN_LOAD&status=all'),
-        fetch('/api/payments/withdraw?status=all&lightweight=true'),
+        fetch('/api/account-requests?type=COIN_LOAD&status=all', { cache: 'no-store' }),
+        fetch('/api/payments/withdraw?status=all&lightweight=true', { cache: 'no-store' }),
       ]);
 
       const loadsData = await loadsRes.json();
       const cashoutsData = await cashoutsRes.json();
 
       if (loadsData.success) {
-        diffSet(setLoadRequests, loadsData.accountRequests || []);
+        diffSet(setLoadRequests, applyMutations(loadsData.accountRequests || []));
       }
       if (cashoutsData.success) {
-        diffSet(setCashoutRequests, cashoutsData.redemptions || []);
+        diffSet(setCashoutRequests, applyMutations(cashoutsData.redemptions || []));
       }
     } catch (err) {
       console.error('Error fetching coin desk data:', err);
     } finally {
+      isFetchingDeskRef.current = false;
       if (!isSilent) setLoading(false);
+      if (pendingRefetchRef.current) {
+        pendingRefetchRef.current = false;
+        fetchData(true, false);
+      }
     }
   };
 
@@ -118,15 +167,15 @@ export default function CoinOperationsDesk({
     // Silent polling for real-time live desk operations
     const interval = setInterval(() => {
       if (!document.hidden) fetchData(true);
-    }, 9000);
+    }, 4000);
 
-    // Cross-tab broadcast listener for instant (0ms) cashout detection
+    // Cross-tab broadcast listener for instant (0ms) load & cashout detection
     let channel = null;
     try {
       channel = new BroadcastChannel('paradise_staff_alerts');
       channel.onmessage = (event) => {
         if (event.data?.type === 'NEW_COIN_CASHOUT' || event.data?.type === 'NEW_COIN_LOAD') {
-          fetchData(true);
+          fetchData(true, true);
         }
       };
     } catch {}
@@ -136,7 +185,7 @@ export default function CoinOperationsDesk({
         try {
           const parsed = JSON.parse(e.newValue);
           if (parsed.type === 'NEW_COIN_CASHOUT' || parsed.type === 'NEW_COIN_LOAD') {
-            fetchData(true);
+            fetchData(true, true);
           }
         } catch {}
       }
@@ -248,9 +297,10 @@ export default function CoinOperationsDesk({
     const p = approveLoadModal.password.trim() || 'VegasWin777!';
     const amt = Number(approveLoadModal.transferAmount);
 
-    // 1. Optimistic state update (0ms)
+    // 1. Lock mutation & optimistic state update (0ms)
+    markMutated(targetItem.id, { status: 'READY', gameAccountUsername: u, transferAmount: amt });
     setLoadRequests((prev) =>
-      prev.map((r) => (r.id === targetItem.id ? { ...r, status: 'READY', gameAccountUsername: u } : r))
+      prev.map((r) => (r.id === targetItem.id ? { ...r, status: 'READY', gameAccountUsername: u, transferAmount: amt } : r))
     );
     // 2. Dismiss modal immediately (0ms)
     setApproveLoadModal({ open: false, item: null, username: '', password: '', transferAmount: 0 });
@@ -271,12 +321,17 @@ export default function CoinOperationsDesk({
 
       const data = await res.json();
       if (!data.success) {
+        unmarkMutated(targetItem.id);
         showAlert('error', data.message || 'Failed to approve load.');
-        fetchData();
+        fetchData(true, true);
+      } else {
+        if (onMutateSuccess) onMutateSuccess(true);
+        fetchData(true, true);
       }
     } catch {
+      unmarkMutated(targetItem.id);
       showAlert('error', 'Network error approving game load.');
-      fetchData();
+      fetchData(true, true);
     }
   };
 
@@ -292,7 +347,8 @@ export default function CoinOperationsDesk({
     const targetItem = rejectLoadModal.item;
     const reason = rejectLoadModal.reason.trim();
 
-    // 1. Optimistic state update (0ms)
+    // 1. Lock mutation & optimistic state update (0ms)
+    markMutated(targetItem.id, { status: 'REJECTED', rejectionReason: reason });
     setLoadRequests((prev) =>
       prev.map((r) => (r.id === targetItem.id ? { ...r, status: 'REJECTED', rejectionReason: reason } : r))
     );
@@ -313,12 +369,17 @@ export default function CoinOperationsDesk({
 
       const data = await res.json();
       if (!data.success) {
+        unmarkMutated(targetItem.id);
         showAlert('error', data.message || 'Failed to reject request.');
-        fetchData();
+        fetchData(true, true);
+      } else {
+        if (onMutateSuccess) onMutateSuccess(true);
+        fetchData(true, true);
       }
     } catch {
+      unmarkMutated(targetItem.id);
       showAlert('error', 'Network error rejecting request.');
-      fetchData();
+      fetchData(true, true);
     }
   };
 
@@ -326,9 +387,14 @@ export default function CoinOperationsDesk({
   const handleApproveCashout = async (redemptionId) => {
     const targetItem = cashoutRequests.find((c) => c.id === redemptionId);
 
-    // 1. Optimistic state update (0ms)
+    // 1. Lock mutation & optimistic state update (0ms) - MUST update both status ('pending') and stage ('finance_payout')!
+    markMutated(redemptionId, { status: 'pending', stage: 'finance_payout', coinApprovedBy: 'Coin Desk' });
     setCashoutRequests((prev) =>
-      prev.map((c) => (c.id === redemptionId ? { ...c, stage: 'finance_payout', coinApprovedBy: 'Coin Desk' } : c))
+      prev.map((c) =>
+        c.id === redemptionId
+          ? { ...c, status: 'pending', stage: 'finance_payout', coinApprovedBy: 'Coin Desk' }
+          : c
+      )
     );
     showAlert('success', '🏆 Game screenshot verified! Request forwarded to Finance Ledger for payout.');
 
@@ -344,9 +410,12 @@ export default function CoinOperationsDesk({
 
       const data = await res.json();
       if (!data.success) {
+        unmarkMutated(redemptionId);
         showAlert('error', data.error || 'Failed to verify cashout.');
-        fetchData();
+        fetchData(true, true);
       } else {
+        if (onMutateSuccess) onMutateSuccess(true);
+        fetchData(true, true);
         // Broadcast instant notification to Finance / Cashier desk (0ms sound + Chrome desktop notification)
         try {
           const staffChannel = new BroadcastChannel('paradise_staff_alerts');
@@ -373,8 +442,9 @@ export default function CoinOperationsDesk({
         );
       }
     } catch {
+      unmarkMutated(redemptionId);
       showAlert('error', 'Network error verifying cashout.');
-      fetchData();
+      fetchData(true, true);
     }
   };
 
@@ -390,7 +460,8 @@ export default function CoinOperationsDesk({
     const targetItem = rejectCashoutModal.item;
     const reason = rejectCashoutModal.reason.trim();
 
-    // 1. Optimistic state update (0ms)
+    // 1. Lock mutation & optimistic state update (0ms)
+    markMutated(targetItem.id, { status: 'rejected_by_coin', stage: 'rejected_coin', rejectReason: reason });
     setCashoutRequests((prev) =>
       prev.map((c) =>
         c.id === targetItem.id
@@ -415,9 +486,12 @@ export default function CoinOperationsDesk({
 
       const data = await res.json();
       if (!data.success) {
+        unmarkMutated(targetItem.id);
         showAlert('error', data.message || 'Failed to reject cashout.');
-        fetchData();
+        fetchData(true, true);
       } else {
+        if (onMutateSuccess) onMutateSuccess(true);
+        fetchData(true, true);
         // Unfreeze balance in player window in real time without refresh
         try {
           const syncChan = new BroadcastChannel('paradise_balance_sync');
@@ -427,8 +501,9 @@ export default function CoinOperationsDesk({
         localStorage.setItem('paradise_user_balance_sync', String(Date.now()));
       }
     } catch {
+      unmarkMutated(targetItem.id);
       showAlert('error', 'Network error rejecting cashout.');
-      fetchData();
+      fetchData(true, true);
     }
   };
 
@@ -835,7 +910,12 @@ export default function CoinOperationsDesk({
                           </span>
                           {item.gameAccountUsername && (
                             <span className="text-[10.5px] font-mono font-bold text-[#34D399] bg-emerald-950/70 border border-emerald-500/35 px-2 py-0.5 rounded-lg">
-                              @{item.gameAccountUsername}
+                              ID: @{item.gameAccountUsername}
+                            </span>
+                          )}
+                          {Number(item.depositAmount || 0) > 0 && (
+                            <span className="text-[10px] font-bold text-amber-300 bg-amber-950/70 border border-amber-500/35 px-2 py-0.5 rounded-lg">
+                              Dep ${Number(item.depositAmount).toFixed(0)} + Bonus ${Number(item.bonusSC || 0).toFixed(0)}
                             </span>
                           )}
                         </div>
@@ -937,42 +1017,77 @@ export default function CoinOperationsDesk({
                           </td>
 
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '5px 12px',
-                                borderRadius: '10px',
-                                backgroundColor: 'rgba(255, 255, 255, 0.06)',
-                                border: '1px solid rgba(255, 255, 255, 0.12)',
-                                color: '#FFFFFF',
-                                fontFamily: 'Lexend, sans-serif',
-                                fontSize: '12px',
-                                fontWeight: 800,
-                              }}
-                            >
-                              <Gamepad2 size={13} color="#00F0FF" />
-                              <span>{item.gameTitle}</span>
-                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '5px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  padding: '5px 12px',
+                                  borderRadius: '10px',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                                  color: '#FFFFFF',
+                                  fontFamily: 'Lexend, sans-serif',
+                                  fontSize: '12px',
+                                  fontWeight: 800,
+                                }}
+                              >
+                                <Gamepad2 size={13} color="#00F0FF" />
+                                <span>{item.gameTitle}</span>
+                              </span>
+                              {item.gameAccountUsername && (
+                                <span
+                                  style={{
+                                    fontSize: '10.5px',
+                                    fontFamily: 'monospace',
+                                    fontWeight: 800,
+                                    color: '#34D399',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                  }}
+                                >
+                                  Game ID: @{item.gameAccountUsername}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                padding: '4px 12px',
-                                borderRadius: '8px',
-                                backgroundColor: 'rgba(0, 240, 255, 0.15)',
-                                border: '1px solid rgba(0, 240, 255, 0.35)',
-                                color: '#00F0FF',
-                                fontFamily: 'Lexend, sans-serif',
-                                fontSize: '13px',
-                                fontWeight: 900,
-                              }}
-                            >
-                              ${Number(item.transferAmount || 0).toFixed(2)} SC
-                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '4px 12px',
+                                  borderRadius: '8px',
+                                  backgroundColor: 'rgba(0, 240, 255, 0.15)',
+                                  border: '1px solid rgba(0, 240, 255, 0.35)',
+                                  color: '#00F0FF',
+                                  fontFamily: 'Lexend, sans-serif',
+                                  fontSize: '13px',
+                                  fontWeight: 900,
+                                }}
+                              >
+                                ${Number(item.transferAmount || 0).toFixed(2)} SC
+                              </span>
+                              {Number(item.depositAmount || 0) > 0 && (
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 800,
+                                    color: '#FCD34D',
+                                    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                                    padding: '2px 7px',
+                                    borderRadius: '6px',
+                                  }}
+                                >
+                                  Dep ${Number(item.depositAmount).toFixed(2)} + Bonus ${Number(item.bonusSC || 0).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>

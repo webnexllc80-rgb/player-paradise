@@ -43,23 +43,12 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const allRequests = requests || [];
-
-  // Counts for tabs
-  const coinLoadsCount = allRequests.filter(
-    (r) => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
-  ).length;
-  const accountsCount = allRequests.filter(
-    (r) => r.requestType === 'ACCOUNT_CREATION' || (!r.requestType && (!r.transferAmount || Number(r.transferAmount) <= 0))
-  ).length;
+  // Strictly only show Game Account Creation requests here (Coin Loads belong strictly in Coins Allotment Desk)
+  const allRequests = (requests || []).filter(
+    (r) => r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
+  );
 
   const filtered = allRequests.filter((r) => {
-    const isCoinLoad = r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0;
-    
-    // Type filter
-    if (typeFilter === 'ACCOUNT_CREATION' && isCoinLoad) return false;
-    if (typeFilter === 'COIN_LOAD' && !isCoinLoad) return false;
-
     // Status filter
     const matchesFilter =
       filter === 'ALL' ? true : (r.status || '').toUpperCase() === filter.toUpperCase();
@@ -229,42 +218,6 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
             </button>
           </div>
         </div>
-
-        {/* Request Type Segment Filter (All vs Game Accounts vs Coin Loads) */}
-        <div className="flex items-center gap-2 pt-2 border-t border-white/5 overflow-x-auto">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider shrink-0 mr-1">
-            Request Type:
-          </span>
-          {[
-            { id: 'ALL', label: 'All Requests', count: allRequests.length, icon: null },
-            { id: 'ACCOUNT_CREATION', label: 'Game IDs', count: accountsCount, icon: Gamepad2 },
-            { id: 'COIN_LOAD', label: '⚡ Coin Loads', count: coinLoadsCount, icon: Coins },
-          ].map(({ id, label, count, icon: Icon }) => {
-            const isSel = typeFilter === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => handleTypeChangeWithReset(id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                  isSel
-                    ? 'bg-cyan-500/20 text-[#00F0FF] border border-cyan-500/50 shadow-[0_0_12px_rgba(0,240,255,0.25)]'
-                    : 'bg-white/5 text-gray-400 border border-transparent hover:text-white hover:bg-white/10'
-                }`}
-              >
-                {Icon && <Icon size={12} className={isSel ? 'text-[#00F0FF]' : 'text-gray-400'} />}
-                <span>{label}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                    isSel ? 'bg-cyan-400/30 text-white font-black' : 'bg-white/10 text-gray-400'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -398,6 +351,21 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                               >
                                 View Proof
                               </button>
+                            )}
+                          </div>
+                        )}
+                        {Boolean(req.pendingCoinLoadAmount && Number(req.pendingCoinLoadAmount) > 0) && (
+                          <div className="mt-1 flex flex-col gap-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 rounded-lg w-fit">
+                              💳 Deposit Approved: ${Number(req.pendingCoinLoadAmount).toFixed(2)} SC
+                              {Number(req.bonusSC || 0) > 0
+                                ? ` ($${Number(req.depositAmount || 0).toFixed(0)} + $${Number(req.bonusSC).toFixed(0)} Bonus)`
+                                : ''}
+                            </span>
+                            {isPending && (
+                              <span className="text-[10px] font-bold text-cyan-400">
+                                → Auto-moves to Coin Allotment after ID creation
+                              </span>
                             )}
                           </div>
                         )}
@@ -611,6 +579,22 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                             </button>
                           )}
                         </div>
+                      </div>
+                    )}
+
+                    {Boolean(req.pendingCoinLoadAmount && Number(req.pendingCoinLoadAmount) > 0) && (
+                      <div className="flex flex-col gap-1 pt-1 border-t border-white/5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-emerald-300 font-bold">Approved Deposit + Bonus:</span>
+                          <span className="text-xs font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded">
+                            ${Number(req.pendingCoinLoadAmount).toFixed(2)} SC
+                          </span>
+                        </div>
+                        {isPending && (
+                          <span className="text-[10px] font-bold text-cyan-400">
+                            → Auto-moves to Coin Allotment after ID creation
+                          </span>
+                        )}
                       </div>
                     )}
 
