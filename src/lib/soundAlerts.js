@@ -74,10 +74,17 @@ function playFallbackAudio(volume = 0.7) {
 
 export function getAudioContext() {
   if (typeof window === 'undefined') return null;
+  if (typeof navigator !== 'undefined' && navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+    return null;
+  }
   if (!audioCtx) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (AudioContextClass) {
-      audioCtx = new AudioContextClass();
+      try {
+        audioCtx = new AudioContextClass();
+      } catch {
+        return null;
+      }
     }
   }
   return audioCtx;
@@ -90,6 +97,9 @@ export function isAudioContextUnlocked() {
 
 export function unlockAudioContext() {
   if (typeof window === 'undefined') return;
+  if (typeof navigator !== 'undefined' && navigator.userActivation && !navigator.userActivation.hasBeenActive) {
+    return;
+  }
   const ctx = getAudioContext();
   if (ctx) {
     if (ctx.state === 'suspended') {
@@ -102,9 +112,9 @@ export function unlockAudioContext() {
   }
 }
 
-// Auto-register window listener to unlock on first click/touch/keydown/focus
+// Auto-register window listener to unlock on first actual user activation (click/touch/keydown)
 if (typeof window !== 'undefined') {
-  const events = ['click', 'touchstart', 'keydown', 'pointerdown', 'mousedown', 'focus'];
+  const events = ['click', 'touchstart', 'keydown'];
   const handleFirstInteraction = () => {
     unlockAudioContext();
   };

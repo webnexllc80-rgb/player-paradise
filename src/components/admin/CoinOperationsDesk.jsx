@@ -109,9 +109,10 @@ export default function CoinOperationsDesk({
 
   useEffect(() => {
     if (Array.isArray(initialCashouts) && initialCashouts.length > 0) {
-      diffSet(setCashoutRequests, (prev) => {
+      setCashoutRequests((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
         const map = new Map();
-        (prev || []).forEach((c) => map.set(String(c.id || c._id), c));
+        safePrev.forEach((c) => map.set(String(c.id || c._id), c));
         initialCashouts.forEach((c) => map.set(String(c.id || c._id), c));
         return applyMutations(Array.from(map.values()));
       });
@@ -201,7 +202,8 @@ export default function CoinOperationsDesk({
 
   // Filtered Load Requests (Strictly COIN_LOAD requests only)
   const pendingLoads = useMemo(() => {
-    return loadRequests.filter(
+    const safeLoads = Array.isArray(loadRequests) ? loadRequests : [];
+    return safeLoads.filter(
       (r) =>
         (r.status || '').toUpperCase() === 'PENDING' &&
         (r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0) &&
@@ -213,7 +215,8 @@ export default function CoinOperationsDesk({
   }, [loadRequests, loadSearch]);
 
   const historyLoads = useMemo(() => {
-    return loadRequests.filter((r) => {
+    const safeLoads = Array.isArray(loadRequests) ? loadRequests : [];
+    return safeLoads.filter((r) => {
       const statusUpper = (r.status || '').toUpperCase();
       if (statusUpper === 'PENDING') return false;
       if (r.requestType !== 'COIN_LOAD' && (!r.transferAmount || Number(r.transferAmount) <= 0)) return false;
@@ -234,7 +237,8 @@ export default function CoinOperationsDesk({
 
   // Filtered Cashouts for Coin Desk (Pending Coin Verification)
   const pendingCashouts = useMemo(() => {
-    return cashoutRequests.filter(
+    const safeCashouts = Array.isArray(cashoutRequests) ? cashoutRequests : [];
+    return safeCashouts.filter(
       (c) =>
         (c.status === 'pending_coin' || c.stage === 'coin_verification') &&
         (cashoutSearch === '' ||
@@ -245,7 +249,8 @@ export default function CoinOperationsDesk({
   }, [cashoutRequests, cashoutSearch]);
 
   const historyCashouts = useMemo(() => {
-    return cashoutRequests.filter((c) => {
+    const safeCashouts = Array.isArray(cashoutRequests) ? cashoutRequests : [];
+    return safeCashouts.filter((c) => {
       if (c.status === 'pending_coin' || c.stage === 'coin_verification') return false;
       if (cashoutFilter !== 'all') {
         if (cashoutFilter === 'verified' && !c.coinApprovedBy && c.status !== 'pending' && c.status !== 'approved') return false;

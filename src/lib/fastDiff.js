@@ -45,5 +45,8 @@ export function areEqual(a, b) {
  */
 export function diffSet(setter, nextVal) {
   if (typeof setter !== 'function') return;
-  setter((prev) => (areEqual(prev, nextVal) ? prev : nextVal));
+  setter((prev) => {
+    const resolved = typeof nextVal === 'function' ? nextVal(prev) : nextVal;
+    return areEqual(prev, resolved) ? prev : resolved;
+  });
 }

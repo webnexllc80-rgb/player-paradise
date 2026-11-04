@@ -714,7 +714,12 @@ export async function DELETE(req) {
 
     const target = await requestsCol.findOne(safeIdFilter(id));
     if (!target) {
-      return NextResponse.json({ success: false, message: 'Request not found.' }, { status: 404 });
+      cache.invalidatePrefix('account_requests');
+      return NextResponse.json({
+        success: true,
+        alreadyDeleted: true,
+        message: 'Request already removed.',
+      });
     }
 
     // Only allow player if it's their own request, or staff
