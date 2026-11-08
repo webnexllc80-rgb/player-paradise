@@ -102,6 +102,7 @@ export default function ChatPage() {
         params.set('guestId', activeGuestId);
       }
 
+      params.set('markRead', 'true');
       const endpoint = `/api/chat?${params.toString()}`;
       try {
         const res = await fetch(endpoint, { cache: 'no-store' });

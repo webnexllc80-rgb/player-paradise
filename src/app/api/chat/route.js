@@ -110,6 +110,7 @@ export async function GET(req) {
     const conversationId = (searchParams.get('conversationId') || '').trim();
     const guestId = (searchParams.get('guestId') || '').trim();
     const inbox = searchParams.get('inbox') === 'true';
+    const markRead = searchParams.get('markRead') === 'true';
 
     // Must have a session OR a guestId
     if (!session && !guestId) {
@@ -169,9 +170,12 @@ export async function GET(req) {
       .limit(200)
       .toArray();
 
-    // 4. Mark unread messages as read
-    if (isStaff) {
-      // Staff: mark read in background so inbox/thread loads stay snappy
+    // 4. Mark unread messages as read (only when the viewer is actually reading)
+    const staffViewingThread = isStaff && Boolean(conversationId && conversationId !== 'all');
+    const shouldMarkPlayerMsgsRead = staffViewingThread;
+    const shouldMarkStaffMsgsRead = !isStaff && markRead;
+
+    if (shouldMarkPlayerMsgsRead) {
       chatCol
         .updateMany(
           {
@@ -182,9 +186,8 @@ export async function GET(req) {
           { $set: { read: true } }
         )
         .catch(() => {});
-    } else {
-      // Player reading staff messages
-      await chatCol
+    } else if (shouldMarkStaffMsgsRead) {
+      chatCol
         .updateMany(
           {
             $or: [{ conversationId: { $in: targetConvIds } }, { customerUserId: { $in: targetConvIds } }],
@@ -196,24 +199,34 @@ export async function GET(req) {
         .catch(() => {});
     }
 
-    // 5. Unread count from staff for the player
+    // 5. Unread count from staff for the player (badge when chat is closed / not marked read)
     const unreadStaffCount = isStaff
       ? 0
-      : rawMessages.filter((m) => m.senderRole === 'staff' && !m.read).length;
+      : shouldMarkStaffMsgsRead
+        ? 0
+        : rawMessages.filter((m) => m.senderRole === 'staff' && !m.read).length;
 
     // 6. Format response
-    const formattedMessages = rawMessages.map((m) => ({
-      id: m._id ? m._id.toString() : m.id || Math.random().toString(36).substring(2, 10),
-      conversationId: m.conversationId || (targetConvIds[0] || ''),
-      userId: m.userId,
-      username: m.username,
-      senderRole: m.senderRole || 'player',
-      staffName: m.staffName || null,
-      text: m.text || '',
-      imageUrl: m.imageUrl || null,
-      read: !!m.read,
-      createdAt: m.createdAt,
-    }));
+    const formattedMessages = rawMessages.map((m) => {
+      const senderRole = m.senderRole || 'player';
+      const wasRead = !!m.read;
+      const effectiveRead =
+        wasRead ||
+        (shouldMarkStaffMsgsRead && senderRole === 'staff') ||
+        (shouldMarkPlayerMsgsRead && senderRole === 'player');
+      return {
+        id: m._id ? m._id.toString() : m.id || Math.random().toString(36).substring(2, 10),
+        conversationId: m.conversationId || (targetConvIds[0] || ''),
+        userId: m.userId,
+        username: m.username,
+        senderRole,
+        staffName: m.staffName || null,
+        text: m.text || '',
+        imageUrl: m.imageUrl || null,
+        read: effectiveRead,
+        createdAt: m.createdAt,
+      };
+    });
 
     return NextResponse.json({
       success: true,

@@ -334,6 +334,37 @@ export default function AdminPortal({ initialTab }) {
       })
       .catch(() => {});
   };
+
+  const chatInboxRefreshTimerRef = useRef(null);
+
+  const markAdminChatConvRead = (convId) => {
+    if (!convId) return;
+    setChatConversations((prev) =>
+      prev.map((c) =>
+        c._id === convId ? { ...c, unreadCount: 0, unreadStaff: false } : c
+      )
+    );
+  };
+
+  const scheduleChatInboxRefresh = () => {
+    if (chatInboxRefreshTimerRef.current) clearTimeout(chatInboxRefreshTimerRef.current);
+    chatInboxRefreshTimerRef.current = setTimeout(() => {
+      const activeId = lastChatConvIdRef.current;
+      fetch('/api/chat?inbox=true', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (!d.success) return;
+          let convs = d.conversations || [];
+          if (activeId) {
+            convs = convs.map((c) =>
+              c._id === activeId ? { ...c, unreadCount: 0, unreadStaff: false } : c
+            );
+          }
+          diffSet(setChatConversations, convs);
+        })
+        .catch(() => {});
+    }, 450);
+  };
   const [selectedChatImagePreview, setSelectedChatImagePreview] = useState(null);
 
   // Push Notifications & Omnichannel Broadcast state
@@ -1774,6 +1805,7 @@ export default function AdminPortal({ initialTab }) {
       lastChatMsgCountRef.current = 0;
       const cached = chatMessagesCacheRef.current.get(convId);
       setChatMessages(cached || []);
+      markAdminChatConvRead(convId);
     }
 
     const fetchGen = ++chatFetchGenRef.current;
@@ -1791,6 +1823,10 @@ export default function AdminPortal({ initialTab }) {
             if (chatThreadFingerprint(prev) === chatThreadFingerprint(next)) return prev;
             return next;
           });
+          if (lastChatConvIdRef.current === convId) {
+            markAdminChatConvRead(convId);
+            scheduleChatInboxRefresh();
+          }
         })
         .catch(() => {});
     };
@@ -1798,7 +1834,13 @@ export default function AdminPortal({ initialTab }) {
     const interval = setInterval(() => {
       if (!document.hidden) fetchChatMsgs();
     }, 2500);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (chatInboxRefreshTimerRef.current) {
+        clearTimeout(chatInboxRefreshTimerRef.current);
+        chatInboxRefreshTimerRef.current = null;
+      }
+    };
   }, [activeChatConv]);
 
   // Auto-scroll chat messages to bottom ONLY when count changes or on conversation switch
@@ -4797,7 +4839,10 @@ export default function AdminPortal({ initialTab }) {
                             <div
                               key={c._id}
                               onMouseEnter={() => prefetchChatThread(c._id)}
-                              onClick={() => setActiveChatConv(c)}
+                              onClick={() => {
+                                markAdminChatConvRead(c._id);
+                                setActiveChatConv(c);
+                              }}
                               className={`p-3 rounded-xl cursor-pointer transition-all duration-200 border ${isSelected
                                 ? 'bg-gradient-to-r from-cyan-950/60 via-[#191444] to-[#120f35] border-cyan-400/60 shadow-[0_0_15px_rgba(0,240,255,0.15)] ring-1 ring-cyan-400/30'
                                 : hasUnread

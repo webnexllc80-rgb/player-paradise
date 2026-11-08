@@ -172,6 +172,7 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
         params.set('guestId', activeGuestId);
       }
 
+      params.set('markRead', isOpen ? 'true' : 'false');
       const endpoint = `/api/chat?${params.toString()}`;
 
       try {
@@ -195,12 +196,16 @@ export default function LiveChatWidget({ user: initialUser, soundEnabled = true 
           return areEqual(prev, combined) ? prev : combined;
         });
 
-        // Calculate unread staff messages
+        // Unread badge: only while widget is closed (markRead=false on API)
         const staffMsgs = newMsgs.filter((m) => m.senderRole === 'staff');
         if (isOpen) {
           setUnreadStaffCount(0);
         } else {
-          setUnreadStaffCount(data.unreadCount || staffMsgs.filter((m) => !m.read).length);
+          const unread =
+            typeof data.unreadCount === 'number'
+              ? data.unreadCount
+              : staffMsgs.filter((m) => !m.read).length;
+          setUnreadStaffCount(unread);
         }
 
         // Optional sound alert on new incoming staff message
