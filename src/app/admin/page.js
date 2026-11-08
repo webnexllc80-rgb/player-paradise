@@ -4533,32 +4533,41 @@ export default function AdminPortal({ initialTab }) {
               setChatReplyText('');
               setChatAttachedImage(null);
 
+              const savedText = text;
+              const savedImage = imagePayload;
+              const convId = activeChatConv._id;
+              const tempId = optimisticMsg.id;
+
               try {
-                await fetch('/api/chat', {
+                const postRes = await fetch('/api/chat', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    conversationId: activeChatConv._id,
+                    conversationId: convId,
                     targetUserId: activeChatConv.userId,
                     targetUsername: activeChatConv.username,
-                    text: text,
-                    imageUrl: imagePayload || null,
+                    text: savedText,
+                    imageUrl: savedImage || null,
                     isStaffReply: true,
                   }),
                 });
-                const res = await fetch(`/api/chat?conversationId=${activeChatConv._id}`);
-                const d = await res.json();
-                if (d.success) setChatMessages(d.messages);
-                const cRes = await fetch('/api/chat?inbox=true');
-                const cD = await cRes.json();
-                if (cD.success) setChatConversations(cD.conversations);
+                const postData = await postRes.json();
+                if (!postRes.ok || !postData.success) {
+                  throw new Error(postData.error || 'Failed to send message.');
+                }
+
+                if (postData.message) {
+                  setChatMessages((prev) =>
+                    prev.map((m) => (m.id === tempId ? postData.message : m))
+                  );
+                }
 
                 // Instant cross-tab broadcast to player widget & /chat
                 try {
                   const pChannel = new BroadcastChannel('paradise_player_chat_sync');
                   pChannel.postMessage({
                     type: 'STAFF_CHAT_REPLY',
-                    conversationId: activeChatConv._id,
+                    conversationId: convId,
                     time: Date.now(),
                   });
                   pChannel.close();
@@ -4568,13 +4577,30 @@ export default function AdminPortal({ initialTab }) {
                     'paradise_player_chat_event',
                     JSON.stringify({
                       type: 'STAFF_CHAT_REPLY',
-                      conversationId: activeChatConv._id,
+                      conversationId: convId,
                       time: Date.now(),
                     })
                   );
                 } catch {}
+
+                // Refresh inbox/thread in background (do not block send button)
+                fetch(`/api/chat?conversationId=${convId}`)
+                  .then((r) => r.json())
+                  .then((d) => {
+                    if (d.success) setChatMessages(d.messages);
+                  })
+                  .catch(() => {});
+                fetch('/api/chat?inbox=true')
+                  .then((r) => r.json())
+                  .then((cD) => {
+                    if (cD.success) setChatConversations(cD.conversations);
+                  })
+                  .catch(() => {});
               } catch (err) {
                 console.error('Failed to send chat message:', err);
+                setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+                setChatReplyText(savedText);
+                setChatAttachedImage(savedImage);
               } finally {
                 setIsSendingChat(false);
               }
