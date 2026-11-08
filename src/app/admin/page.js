@@ -315,7 +315,25 @@ export default function AdminPortal({ initialTab }) {
   const chatMessagesEndRef = useRef(null);
   const lastChatMsgCountRef = useRef(0);
   const lastChatConvIdRef = useRef(null);
+  const chatMessagesCacheRef = useRef(new Map());
+  const chatFetchGenRef = useRef(0);
   const adminChatFileInputRef = useRef(null);
+
+  const chatThreadFingerprint = (msgs) => {
+    if (!Array.isArray(msgs) || msgs.length === 0) return '0';
+    const last = msgs[msgs.length - 1];
+    return `${msgs.length}:${last?.id}:${last?.read}:${Boolean(last?.imageUrl)}:${last?.createdAt}`;
+  };
+
+  const prefetchChatThread = (convId) => {
+    if (!convId || chatMessagesCacheRef.current.has(convId)) return;
+    fetch(`/api/chat?conversationId=${encodeURIComponent(convId)}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) chatMessagesCacheRef.current.set(convId, d.messages || []);
+      })
+      .catch(() => {});
+  };
   const [selectedChatImagePreview, setSelectedChatImagePreview] = useState(null);
 
   // Push Notifications & Omnichannel Broadcast state
@@ -1309,10 +1327,14 @@ export default function AdminPortal({ initialTab }) {
         });
 
         if (activeTab === 'chat' && activeChatConv?._id) {
-          fetch(`/api/chat?conversationId=${encodeURIComponent(activeChatConv._id)}`, { cache: 'no-store' })
+          const openCid = activeChatConv._id;
+          fetch(`/api/chat?conversationId=${encodeURIComponent(openCid)}`, { cache: 'no-store' })
             .then((r) => r.json())
             .then((d) => {
-              if (d.success) setChatMessages(d.messages);
+              if (!d.success) return;
+              const next = d.messages || [];
+              chatMessagesCacheRef.current.set(openCid, next);
+              setChatMessages((prev) => (lastChatConvIdRef.current === openCid ? next : prev));
             })
             .catch(() => {});
         }
@@ -1532,10 +1554,14 @@ export default function AdminPortal({ initialTab }) {
 
         // If conversation is currently open or matches payload, fetch its messages
         if (payload.conversationId) {
-          fetch(`/api/chat?conversationId=${encodeURIComponent(payload.conversationId)}`, { cache: 'no-store' })
+          const openCid = payload.conversationId;
+          fetch(`/api/chat?conversationId=${encodeURIComponent(openCid)}`, { cache: 'no-store' })
             .then((r) => r.json())
             .then((d) => {
-              if (d.success) setChatMessages(d.messages);
+              if (!d.success) return;
+              const next = d.messages || [];
+              chatMessagesCacheRef.current.set(openCid, next);
+              setChatMessages((prev) => (lastChatConvIdRef.current === openCid ? next : prev));
             })
             .catch(() => {});
         }
@@ -1736,21 +1762,37 @@ export default function AdminPortal({ initialTab }) {
 
   // Load chat messages when active conversation selected
   useEffect(() => {
-    if (!activeChatConv) return;
-    const isConvSwitch = lastChatConvIdRef.current !== activeChatConv._id;
-    lastChatConvIdRef.current = activeChatConv._id;
-    if (isConvSwitch) {
-      lastChatMsgCountRef.current = 0;
+    if (!activeChatConv) {
+      setChatMessages([]);
+      return;
     }
 
+    const convId = activeChatConv._id;
+    const isConvSwitch = lastChatConvIdRef.current !== convId;
+    lastChatConvIdRef.current = convId;
+    if (isConvSwitch) {
+      lastChatMsgCountRef.current = 0;
+      const cached = chatMessagesCacheRef.current.get(convId);
+      setChatMessages(cached || []);
+    }
+
+    const fetchGen = ++chatFetchGenRef.current;
+
     const fetchChatMsgs = () => {
-      fetch(`/api/chat?conversationId=${activeChatConv._id}`)
-        .then(r => r.json())
-        .then(d => {
-          if (d.success) {
-            diffSet(setChatMessages, d.messages || []);
-          }
-        });
+      fetch(`/api/chat?conversationId=${encodeURIComponent(convId)}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (fetchGen !== chatFetchGenRef.current) return;
+          if (!d.success) return;
+          const next = d.messages || [];
+          chatMessagesCacheRef.current.set(convId, next);
+          setChatMessages((prev) => {
+            if (lastChatConvIdRef.current !== convId) return prev;
+            if (chatThreadFingerprint(prev) === chatThreadFingerprint(next)) return prev;
+            return next;
+          });
+        })
+        .catch(() => {});
     };
     fetchChatMsgs();
     const interval = setInterval(() => {
@@ -4529,7 +4571,11 @@ export default function AdminPortal({ initialTab }) {
                 read: true,
                 createdAt: new Date().toISOString(),
               };
-              setChatMessages(prev => [...prev, optimisticMsg]);
+              setChatMessages((prev) => {
+                const next = [...prev, optimisticMsg];
+                chatMessagesCacheRef.current.set(activeChatConv._id, next);
+                return next;
+              });
               setChatReplyText('');
               setChatAttachedImage(null);
 
@@ -4557,9 +4603,11 @@ export default function AdminPortal({ initialTab }) {
                 }
 
                 if (postData.message) {
-                  setChatMessages((prev) =>
-                    prev.map((m) => (m.id === tempId ? postData.message : m))
-                  );
+                  setChatMessages((prev) => {
+                    const next = prev.map((m) => (m.id === tempId ? postData.message : m));
+                    chatMessagesCacheRef.current.set(convId, next);
+                    return next;
+                  });
                 }
 
                 // Instant cross-tab broadcast to player widget & /chat
@@ -4584,10 +4632,13 @@ export default function AdminPortal({ initialTab }) {
                 } catch {}
 
                 // Refresh inbox/thread in background (do not block send button)
-                fetch(`/api/chat?conversationId=${convId}`)
+                fetch(`/api/chat?conversationId=${encodeURIComponent(convId)}`)
                   .then((r) => r.json())
                   .then((d) => {
-                    if (d.success) setChatMessages(d.messages);
+                    if (!d.success) return;
+                    const next = d.messages || [];
+                    chatMessagesCacheRef.current.set(convId, next);
+                    if (lastChatConvIdRef.current === convId) setChatMessages(next);
                   })
                   .catch(() => {});
                 fetch('/api/chat?inbox=true')
@@ -4598,7 +4649,11 @@ export default function AdminPortal({ initialTab }) {
                   .catch(() => {});
               } catch (err) {
                 console.error('Failed to send chat message:', err);
-                setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+                setChatMessages((prev) => {
+                  const next = prev.filter((m) => m.id !== tempId);
+                  chatMessagesCacheRef.current.set(convId, next);
+                  return next;
+                });
                 setChatReplyText(savedText);
                 setChatAttachedImage(savedImage);
               } finally {
@@ -4741,6 +4796,7 @@ export default function AdminPortal({ initialTab }) {
                           return (
                             <div
                               key={c._id}
+                              onMouseEnter={() => prefetchChatThread(c._id)}
                               onClick={() => setActiveChatConv(c)}
                               className={`p-3 rounded-xl cursor-pointer transition-all duration-200 border ${isSelected
                                 ? 'bg-gradient-to-r from-cyan-950/60 via-[#191444] to-[#120f35] border-cyan-400/60 shadow-[0_0_15px_rgba(0,240,255,0.15)] ring-1 ring-cyan-400/30'

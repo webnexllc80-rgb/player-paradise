@@ -171,8 +171,8 @@ export async function GET(req) {
 
     // 4. Mark unread messages as read
     if (isStaff) {
-      // Staff reading player messages
-      await chatCol
+      // Staff: mark read in background so inbox/thread loads stay snappy
+      chatCol
         .updateMany(
           {
             $or: [{ conversationId: { $in: targetConvIds } }, { customerUserId: { $in: targetConvIds } }],
