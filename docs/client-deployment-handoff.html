@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Players Paradise — Live Server Update Guide (Client)</title>
+  <style>
+    :root {
+      --bg: #070518;
+      --card: #140e33;
+      --border: rgba(255, 255, 255, 0.12);
+      --cyan: #00f0ff;
+      --text: #e8e4f0;
+      --muted: #9a91a8;
+      --ok: #34d399;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(ellipse at top, #1a1040 0%, var(--bg) 55%);
+      color: var(--text);
+      padding: 24px 16px 56px;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    h1 {
+      font-size: 1.45rem;
+      margin: 0 0 8px;
+      background: linear-gradient(90deg, var(--cyan), #c4b5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .sub { color: var(--muted); font-size: 0.88rem; margin-bottom: 20px; line-height: 1.5; }
+    .step {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 18px 16px;
+      margin-bottom: 14px;
+    }
+    .step-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .step-num {
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: var(--cyan);
+      text-transform: uppercase;
+    }
+    .step-title { font-size: 1rem; font-weight: 700; margin: 4px 0 0; }
+    .step-desc {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.55;
+      margin: 0 0 12px;
+    }
+    .copy-step {
+      flex-shrink: 0;
+      background: rgba(0, 240, 255, 0.12);
+      border: 1px solid rgba(0, 240, 255, 0.35);
+      color: var(--cyan);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .copy-step:hover { background: rgba(0, 240, 255, 0.2); }
+    pre.cmd {
+      margin: 0;
+      padding: 12px 14px;
+      background: #0a071c;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #d4d0e0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    }
+    .hint {
+      font-size: 0.8rem;
+      color: #fbbf24;
+      margin-top: 10px;
+      line-height: 1.45;
+    }
+    .login-box {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(52, 211, 153, 0.08);
+      border: 1px solid rgba(52, 211, 153, 0.25);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #1e1638;
+      border: 1px solid var(--border);
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Live server update — step-by-step (copy each block)</h1>
+    <p class="sub">
+      Use this after the developer pushes the new code to <strong>main</strong>.
+      Open each step, click <strong>Copy</strong>, paste into your terminal (Mac Terminal or PuTTY on Windows).
+      Do the steps in order.
+    </p>
+
+    <!-- Step 1 -->
+    <article class="step" data-copy="step1">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 1</div>
+          <h2 class="step-title">Connect to the VPS (SSH)</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step1">Copy</button>
+      </div>
+      <p class="step-desc">On your computer, open Terminal and run this command. Press Enter.</p>
+      <pre class="cmd" id="step1">ssh root@2.24.94.60</pre>
+    </article>
+
+    <!-- Step 2 -->
+    <article class="step" data-copy="step2">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 2</div>
+          <h2 class="step-title">Enter VPS password</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step2">Copy password</button>
+      </div>
+      <p class="step-desc">
+        When asked for <strong>password</strong>, paste the password below (nothing will show while typing — that is normal). Press Enter.
+      </p>
+      <pre class="cmd" id="step2">12345678Na@#</pre>
+      <p class="hint">This is the Hostinger VPS root password, not the admin website login.</p>
+    </article>
+
+    <!-- Step 3 -->
+    <article class="step" data-copy="step3">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 3</div>
+          <h2 class="step-title">Go to the project folder</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step3">Copy</button>
+      </div>
+      <p class="step-desc">After login, you should see a server prompt. Run:</p>
+      <pre class="cmd" id="step3">cd /var/www/player-paradise</pre>
+    </article>
+
+    <!-- Step 4 -->
+    <article class="step" data-copy="step4">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 4</div>
+          <h2 class="step-title">Download latest code &amp; build (after developer push)</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step4">Copy</button>
+      </div>
+      <p class="step-desc">Run this one line. Wait until it finishes (may take a few minutes).</p>
+      <pre class="cmd" id="step4">git pull origin main &amp;&amp; npm install &amp;&amp; npm run build</pre>
+    </article>
+
+    <!-- Step 5 -->
+    <article class="step" data-copy="step5">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 5</div>
+          <h2 class="step-title">Open the .env file (nano editor)</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step5">Copy</button>
+      </div>
+      <p class="step-desc">To set or change the <strong>admin website password</strong>, open the environment file:</p>
+      <pre class="cmd" id="step5">nano .env</pre>
+    </article>
+
+    <!-- Step 6 -->
+    <article class="step" data-copy="step6">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 6</div>
+          <h2 class="step-title">Add or update admin lines in .env</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step6">Copy lines</button>
+      </div>
+      <p class="step-desc">
+        In nano, scroll with arrow keys. If these lines already exist, change only the values after <code>=</code>.
+        If they are missing, paste at the bottom of the file.
+        <strong>Current admin portal password</strong> (for https://playersparadisehub.com/admin) is in <code>ADMIN_PASSWORD</code> below.
+      </p>
+      <pre class="cmd" id="step6">ADMIN_EMAIL=admin@playersparadisehub.com
+ADMIN_USERNAME=superadmin
+ADMIN_USERNAME_ALIAS=admin
+ADMIN_PASSWORD=Paradise@2026!</pre>
+      <div class="login-box">
+        <strong>Admin login after restart:</strong><br />
+        URL: https://playersparadisehub.com/admin<br />
+        Username: <code>superadmin</code> or <code>admin</code><br />
+        Password: <code>Paradise@2026!</code> (or whatever you set in ADMIN_PASSWORD)
+      </div>
+    </article>
+
+    <!-- Step 7 -->
+    <article class="step" data-copy="step7">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 7</div>
+          <h2 class="step-title">Save and exit nano</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step7">Copy shortcuts</button>
+      </div>
+      <p class="step-desc">Do these keys in order (hold Control and press the letter):</p>
+      <pre class="cmd" id="step7">1) Press Ctrl+O  then Enter  (save file)
+2) Press Ctrl+X  (exit nano)</pre>
+      <p class="step-desc" style="margin-top:8px;margin-bottom:0">
+        On Mac: <kbd>Ctrl</kbd>+<kbd>O</kbd>, <kbd>Enter</kbd>, then <kbd>Ctrl</kbd>+<kbd>X</kbd>
+      </p>
+    </article>
+
+    <!-- Step 8 -->
+    <article class="step" data-copy="step8">
+      <div class="step-head">
+        <div>
+          <div class="step-num">Step 8</div>
+          <h2 class="step-title">Restart the live website</h2>
+        </div>
+        <button type="button" class="copy-step" data-target="step8">Copy</button>
+      </div>
+      <p class="step-desc">Back at the normal server prompt (not inside nano), run:</p>
+      <pre class="cmd" id="step8">pm2 restart all &amp;&amp; pm2 status</pre>
+      <p class="step-desc" style="margin-bottom:0">
+        When status shows <strong>online</strong>, open the site and test admin login.
+      </p>
+    </article>
+  </div>
+
+  <script>
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    }
+
+    function decodePre(id) {
+      const el = document.getElementById(id);
+      if (!el) return '';
+      const div = document.createElement('div');
+      div.innerHTML = el.innerHTML;
+      return (div.textContent || div.innerText || '').trim();
+    }
+
+    document.querySelectorAll('.copy-step').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-target');
+        const text = decodePre(id);
+        const old = btn.textContent;
+        await copyText(text);
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = old; }, 2000);
+      });
+    });
+  </script>
+</body>
+</html>

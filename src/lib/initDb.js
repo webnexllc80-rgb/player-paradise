@@ -2,10 +2,18 @@ import bcrypt from 'bcryptjs';
 import { getDb } from './mongodb';
 import { ROLES } from './auth';
 
-// Precomputed bcrypt hashes for cost factor 10 to prevent blocking Node.js event loop on cold starts
-const ADMIN_HASH = '$2b$10$kMTOYvdLQMycp/qtXOYGOOYdiR1JYASKQyD9ipinJFhxO7OewZ.YO';
-const STAFF_HASH = '$2b$10$PB5CCkqf6H/dsU/2vt2JveXRCoPyNSevGOku4YYXpdiarLNtFHtRK';
+// Legacy fallbacks when .env passwords are not set (existing deployments keep working)
+const LEGACY_ADMIN_HASH = '$2b$10$kMTOYvdLQMycp/qtXOYGOOYdiR1JYASKQyD9ipinJFhxO7OewZ.YO';
+const LEGACY_STAFF_HASH = '$2b$10$PB5CCkqf6H/dsU/2vt2JveXRCoPyNSevGOku4YYXpdiarLNtFHtRK';
 const PLAYER_HASH = '$2b$10$jhn/Xs3esCHQqehL0D4ygusJ9I51Rk5PlzYYYZUiV0lLXe2kCLY4i';
+
+async function passwordHashFromEnv(envPlain, legacyHash) {
+  const plain = typeof envPlain === 'string' ? envPlain.trim() : '';
+  if (plain) {
+    return bcrypt.hash(plain, 10);
+  }
+  return legacyHash;
+}
 
 export async function ensureDbInitialized() {
   if (global._ppDbInitialized) return true;
@@ -42,19 +50,27 @@ export async function ensureDbInitialized() {
         ]).catch((err) => console.warn('Background index note:', err?.message));
       }
 
-      // 1. Ensure Super Admin and Staff accounts
+      // 1. Ensure Super Admin and Staff accounts (credentials driven by .env)
       const usersCol = db.collection('users');
-      const adminPasswordHash = ADMIN_HASH;
-      const staffPasswordHash = STAFF_HASH;
+      const adminEmail = process.env.ADMIN_EMAIL?.trim() || 'admin@playersparadisehub.com';
+      const adminUsername = process.env.ADMIN_USERNAME?.trim() || 'superadmin';
+      const adminPasswordHash = await passwordHashFromEnv(
+        process.env.ADMIN_PASSWORD,
+        LEGACY_ADMIN_HASH
+      );
+      const staffPasswordHash = await passwordHashFromEnv(
+        process.env.STAFF_DEFAULT_PASSWORD,
+        LEGACY_STAFF_HASH
+      );
       const playerPasswordHash = PLAYER_HASH;
 
-    // 1. Always ensure 'superadmin' exists and has active credentials
+    // 1. Always ensure primary super admin exists and has active credentials
     await usersCol.updateOne(
-      { username: 'superadmin' },
+      { username: adminUsername },
       {
         $set: {
-          username: 'superadmin',
-          email: 'admin@playersparadisehub.com',
+          username: adminUsername,
+          email: adminEmail,
           passwordHash: adminPasswordHash,
           role: ROLES.SUPER_ADMIN,
           balanceSC: 50000.0,
@@ -69,13 +85,14 @@ export async function ensureDbInitialized() {
       { upsert: true }
     );
 
-    // 2. Also ensure 'admin' username works with identical Super Admin access
+    // 2. Also ensure 'admin' username alias works with identical Super Admin access
+    const adminAlias = process.env.ADMIN_USERNAME_ALIAS?.trim() || 'admin';
     await usersCol.updateOne(
-      { username: 'admin' },
+      { username: adminAlias },
       {
         $set: {
-          username: 'admin',
-          email: 'admin@playersparadisehub.com',
+          username: adminAlias,
+          email: adminEmail,
           passwordHash: adminPasswordHash,
           role: ROLES.SUPER_ADMIN,
           balanceSC: 50000.0,
