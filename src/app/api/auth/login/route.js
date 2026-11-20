@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDb } from '@/lib/mongodb';
 import { signToken, ROLES } from '@/lib/auth';
+import { getStaffSessionEpochForLogin } from '@/lib/staffSessionEpoch';
 import { ensureDbInitialized } from '@/lib/initDb';
 import { getDeviceIdFromRequest } from '@/lib/deviceServer';
 
@@ -138,12 +139,15 @@ export async function POST(req) {
     }
     await usersCol.updateOne({ _id: user._id }, updateOps);
 
+    const staffSessionEpoch = isStaff ? await getStaffSessionEpochForLogin(db) : undefined;
+
     const token = signToken({
       userId,
       username: user.username,
       email: user.email,
       role: user.role,
       sessionVersion,
+      ...(isStaff ? { staffSessionEpoch } : {}),
     });
 
     const response = NextResponse.json({

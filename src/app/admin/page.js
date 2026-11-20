@@ -1053,6 +1053,10 @@ export default function AdminPortal({ initialTab }) {
           setActiveTab('overview');
         }
       } else {
+        if (user) {
+          setLoginPassword('');
+          setLoginId('');
+        }
         setUser(null);
       }
     } catch {
@@ -1080,6 +1084,14 @@ export default function AdminPortal({ initialTab }) {
       );
     }
   };
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const sessionGuard = setInterval(() => {
+      fetchSession();
+    }, 15000);
+    return () => clearInterval(sessionGuard);
+  }, [user]);
 
   useEffect(() => {
     fetchSession();

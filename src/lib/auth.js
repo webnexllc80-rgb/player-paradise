@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
+import { isStaffRole, staffSessionMatchesToken } from './staffSessionEpoch';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'players_paradise_cyber_secret_key_2026_panda_gaming_hub';
 
@@ -100,6 +101,13 @@ export function verifyToken(token) {
   }
 }
 
+async function acceptStaffSession(verified) {
+  if (!verified) return null;
+  if (!isStaffRole(verified.role)) return verified;
+  const valid = await staffSessionMatchesToken(verified);
+  return valid ? verified : null;
+}
+
 export async function getSessionUser(preferredType = null) {
   try {
     const cookieStore = await cookies();
@@ -107,7 +115,8 @@ export async function getSessionUser(preferredType = null) {
     const playerToken = cookieStore.get('players_session')?.value || cookieStore.get('vegas_session')?.value;
 
     if (preferredType === 'admin') {
-      return adminToken ? verifyToken(adminToken) : null;
+      if (!adminToken) return null;
+      return acceptStaffSession(verifyToken(adminToken));
     }
     if (preferredType === 'player') {
       return playerToken ? verifyToken(playerToken) : null;
@@ -120,7 +129,7 @@ export async function getSessionUser(preferredType = null) {
       const referer = reqHeaders.get('referer') || '';
       if (referer.includes('/admin')) {
         if (adminToken) {
-          const verifiedAdmin = verifyToken(adminToken);
+          const verifiedAdmin = await acceptStaffSession(verifyToken(adminToken));
           if (verifiedAdmin) return verifiedAdmin;
         }
       }
@@ -134,7 +143,7 @@ export async function getSessionUser(preferredType = null) {
 
     // Fallback to admin session if present
     if (adminToken) {
-      return verifyToken(adminToken);
+      return acceptStaffSession(verifyToken(adminToken));
     }
 
     return null;

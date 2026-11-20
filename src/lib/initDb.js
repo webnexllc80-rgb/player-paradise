@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { getDb } from './mongodb';
 import { ROLES } from './auth';
+import { loadStaffSessionEpoch, syncAdminEnvPasswordRotation } from './staffSessionEpoch';
 
 // Legacy fallbacks when .env passwords are not set (existing deployments keep working)
 const LEGACY_ADMIN_HASH = '$2b$10$kMTOYvdLQMycp/qtXOYGOOYdiR1JYASKQyD9ipinJFhxO7OewZ.YO';
@@ -106,6 +107,9 @@ export async function ensureDbInitialized() {
       },
       { upsert: true }
     );
+
+    await syncAdminEnvPasswordRotation(db);
+    await loadStaffSessionEpoch(db);
 
     // 3. Ensure staff roles exist
     await usersCol.updateOne(

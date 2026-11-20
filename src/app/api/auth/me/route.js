@@ -15,7 +15,11 @@ export async function GET(req) {
 
     const session = await getSessionUser(isAdminQuery ? 'admin' : 'player');
     if (!session || !session.userId) {
-      return NextResponse.json({ authenticated: false, user: null });
+      const resp = NextResponse.json({ authenticated: false, user: null, sessionExpired: isAdminQuery });
+      if (isAdminQuery) {
+        resp.cookies.delete('admin_session');
+      }
+      return resp;
     }
 
     // 3-second in-memory burst cache to protect Atlas from rapid client refreshes
