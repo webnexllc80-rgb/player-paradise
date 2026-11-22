@@ -719,7 +719,7 @@ export default function AdminPortal({ initialTab }) {
       return;
     }
     isFetchingReqsRef.current = true;
-    fetch('/api/account-requests?status=all&lightweight=true', { cache: 'no-store' })
+    fetch(`/api/account-requests?status=all&lightweight=true&fresh=1&_=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (d.success && Array.isArray(d.accountRequests)) {
@@ -1088,11 +1088,15 @@ export default function AdminPortal({ initialTab }) {
       const data = await res.json();
       if (data.authenticated && data.user && data.user.role !== 'player') {
         setUser(data.user);
+        try {
+          window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
+        } catch {}
         // Only pick default tab once per login — do not reset tab on 15s session polls
         if (!sessionTabBootstrappedRef.current) {
           sessionTabBootstrappedRef.current = true;
           bootstrapStaffActiveTab(data.user);
         }
+        syncAdminQueueFast(true);
       } else {
         if (user) {
           setLoginPassword('');
@@ -1172,20 +1176,72 @@ export default function AdminPortal({ initialTab }) {
   const isInitialLoadRef = React.useRef(true);
   const isSyncingRef = React.useRef(false);
   const pendingForceSyncRef = React.useRef(false);
+  const isFastQueueSyncRef = React.useRef(false);
+  const lastFastQueueSyncRef = React.useRef(0);
+
+  const applyAccountAndChatPayload = (reqData, chatData) => {
+    if (reqData?.success && Array.isArray(reqData.accountRequests)) {
+      const allMutated = applyAdminMutations(reqData.accountRequests);
+      const creationReqs = allMutated.filter(
+        (r) => r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
+      );
+      const loads = allMutated.filter(
+        (r) => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
+      );
+      diffSet(setAccountRequests, creationReqs);
+      try {
+        sessionStorage.setItem('pp_admin_account_requests', JSON.stringify(creationReqs));
+      } catch {}
+      diffSet(setCoinLoadRequests, loads);
+      try {
+        sessionStorage.setItem('pp_admin_coin_load_requests', JSON.stringify(loads));
+      } catch {}
+    }
+    if (chatData?.success && Array.isArray(chatData.conversations)) {
+      diffSet(setChatConversations, chatData.conversations);
+    }
+  };
+
+  const syncAdminQueueFast = (force = false) => {
+    if (!user) return;
+    const now = Date.now();
+    if (!force && now - lastFastQueueSyncRef.current < 350) return;
+    if (isFastQueueSyncRef.current) return;
+    isFastQueueSyncRef.current = true;
+    lastFastQueueSyncRef.current = now;
+    const bust = `_=${now}`;
+    Promise.all([
+      fetch(`/api/account-requests?status=all&lightweight=true&fresh=1&${bust}`, { cache: 'no-store' }).then((r) =>
+        r.json()
+      ),
+      fetch(`/api/chat?inbox=true&${bust}`, { cache: 'no-store' }).then((r) => r.json()),
+    ])
+      .then(([reqData, chatData]) => {
+        applyAccountAndChatPayload(reqData, chatData);
+      })
+      .catch(() => {})
+      .finally(() => {
+        isFastQueueSyncRef.current = false;
+      });
+  };
 
   const syncRequestsAndAlerts = async (force = false) => {
     if (!user) return;
     if (isSyncingRef.current) {
-      if (force) pendingForceSyncRef.current = true;
+      if (force) {
+        pendingForceSyncRef.current = true;
+        syncAdminQueueFast(true);
+      }
       return;
     }
     isSyncingRef.current = true;
     try {
+      const bust = `fresh=1&_=${Date.now()}`;
       const [depRes, withRes, reqRes, chatRes] = await Promise.allSettled([
-        fetch('/api/payments/deposit?status=all&lightweight=true', { cache: 'no-store' }),
-        fetch('/api/payments/withdraw?status=all&lightweight=true', { cache: 'no-store' }),
-        fetch('/api/account-requests?status=all&lightweight=true', { cache: 'no-store' }),
-        fetch('/api/chat?inbox=true', { cache: 'no-store' }),
+        fetch(`/api/payments/deposit?status=all&lightweight=true&${bust}`, { cache: 'no-store' }),
+        fetch(`/api/payments/withdraw?status=all&lightweight=true&${bust}`, { cache: 'no-store' }),
+        fetch(`/api/account-requests?status=all&lightweight=true&${bust}`, { cache: 'no-store' }),
+        fetch(`/api/chat?inbox=true&${bust}`, { cache: 'no-store' }),
       ]);
 
       const depData = depRes.status === 'fulfilled' ? await depRes.value.json().catch(() => ({})) : {};
@@ -1205,20 +1261,7 @@ export default function AdminPortal({ initialTab }) {
       if (withData.success) {
         diffSet(setRedemptions, resolvedRedemptions);
       }
-      if (reqData.success && Array.isArray(reqData.accountRequests)) {
-        // Strictly separate Game ID creation requests from Coin Load requests!
-        const creationReqs = allReqs.filter(
-          (r) => r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
-        );
-        const loads = allReqs.filter(
-          (r) => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
-        );
-        diffSet(setAccountRequests, creationReqs);
-        diffSet(setCoinLoadRequests, loads);
-      }
-      if (chatData.success && Array.isArray(chatData.conversations)) {
-        diffSet(setChatConversations, chatData.conversations);
-      }
+      applyAccountAndChatPayload(reqData, chatData);
 
       const pendingDeps = resolvedDeposits.filter((d) => d.status === 'pending');
       const pendingWith = resolvedRedemptions.filter((r) => r.status === 'pending');
@@ -1446,6 +1489,20 @@ export default function AdminPortal({ initialTab }) {
     }
   };
 
+  // FCM / service worker → wake admin tabs instantly (even in background)
+  useEffect(() => {
+    if (!user || typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+    const onSwMessage = (event) => {
+      if (!event?.data || event.data.type !== 'STAFF_PUSH_ALERT') return;
+      unlockAudioContext();
+      playAdminChime();
+      syncAdminQueueFast(true);
+      syncRequestsAndAlerts(true);
+    };
+    navigator.serviceWorker.addEventListener('message', onSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onSwMessage);
+  }, [user]);
+
   // Real-time zero-delay cross-tab listener for instant admin chime & Chrome alerts!
   useEffect(() => {
     if (!user) return;
@@ -1494,14 +1551,29 @@ export default function AdminPortal({ initialTab }) {
         });
         setAccountReqFilter('PENDING');
 
+        const instantTitle = '🎯 New Game ID Request!';
+        const instantBody = `${gTitle} requested by ${uName}`;
+        sendDesktopNotification(instantTitle, instantBody, '/admin/account_requests');
         setActiveAlertToast({
           type: 'account',
-          title: '🎯 New Game ID Request!',
-          message: `${gTitle} requested by ${uName}`,
+          title: instantTitle,
+          message: instantBody,
           subtext: 'Tap to review & issue credentials',
           targetTab: 'account_requests',
         });
-        fetchAccountRequests(true);
+        try {
+          sessionStorage.setItem(
+            'pp_admin_account_requests',
+            JSON.stringify(
+              (() => {
+                const safePrev = Array.isArray(accountRequests) ? accountRequests : [];
+                const filteredPrev = safePrev.filter((r) => (r.id || r._id) !== reqId);
+                return [optimisticReq, ...filteredPrev];
+              })()
+            )
+          );
+        } catch {}
+        syncAdminQueueFast(true);
         syncRequestsAndAlerts(true);
       } else if (payload.type === 'NEW_DEPOSIT') {
         unlockAudioContext();
@@ -1650,7 +1722,7 @@ export default function AdminPortal({ initialTab }) {
             })
             .catch(() => {});
         }
-        syncRequestsAndAlerts();
+        syncAdminQueueFast(true);
       }
     };
 
@@ -1678,20 +1750,20 @@ export default function AdminPortal({ initialTab }) {
     };
   }, [user]);
 
-  // Run persistent poller every 3.5 seconds for active tab (BroadcastChannel handles 0ms instant cross-tab alerts)
+  // Persistent poller — runs even when tab is in background (sound + badge stay live)
   useEffect(() => {
     if (!user) return;
-    syncRequestsAndAlerts();
+    syncRequestsAndAlerts(true);
     const interval = setInterval(() => {
-      if (!document.hidden) {
+      if (document.hidden) {
+        syncAdminQueueFast();
+      } else {
         syncRequestsAndAlerts();
       }
-    }, 3500);
+    }, 1200);
 
     const handleFocus = () => {
-      if (!document.hidden) {
-        syncRequestsAndAlerts();
-      }
+      syncRequestsAndAlerts(true);
     };
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
@@ -1925,10 +1997,14 @@ export default function AdminPortal({ initialTab }) {
       const data = await res.json();
       if (data.success && data.user.role !== 'player') {
         setUser(data.user);
+        try {
+          window.dispatchEvent(new CustomEvent('paradise-user-sync', { detail: data.user }));
+        } catch {}
         if (!sessionTabBootstrappedRef.current) {
           sessionTabBootstrappedRef.current = true;
           bootstrapStaffActiveTab(data.user);
         }
+        syncRequestsAndAlerts(true);
       } else {
         setLoginError(data.error || 'Access Denied: Not authorized for administration.');
       }

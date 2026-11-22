@@ -61,6 +61,7 @@ export async function GET(req) {
     const status = searchParams.get('status');
     const type = searchParams.get('type'); // 'ACCOUNT_CREATION' | 'COIN_LOAD' | 'all'
     const lightweight = searchParams.get('lightweight') === 'true';
+    const skipCache = searchParams.get('fresh') === 'true' || searchParams.get('fresh') === '1';
     const singleId = (searchParams.get('id') || '').trim();
 
     const db = await getDb();
@@ -150,7 +151,7 @@ export async function GET(req) {
       lightweight && !email && (!status || status === 'all')
         ? `account_requests_list_all_${type || 'all'}_lw`
         : null;
-    if (cacheKey) {
+    if (cacheKey && !skipCache) {
       const cached = cache.get(cacheKey);
       if (cached) {
         return NextResponse.json(cached);
@@ -192,8 +193,8 @@ export async function GET(req) {
       accountRequests: requests.map((r) => formatAccountRequestRow(r, { lightweight })),
     };
 
-    if (cacheKey) {
-      cache.set(cacheKey, responsePayload, 2);
+    if (cacheKey && !skipCache) {
+      cache.set(cacheKey, responsePayload, 1);
     }
 
     return NextResponse.json(responsePayload);

@@ -39,7 +39,18 @@ self.addEventListener('push', (event) => {
     ],
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => {
+          try {
+            client.postMessage({ type: 'STAFF_PUSH_ALERT', payload: data });
+          } catch {}
+        });
+      }),
+    ])
+  );
 });
 
 // Message listener (Foreground Trigger from Web Page)
