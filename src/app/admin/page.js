@@ -97,6 +97,38 @@ export default function AdminPortal({ initialTab }) {
     return tab;
   };
 
+  const readTabFromBrowserUrl = () => {
+    if (typeof window === 'undefined') return null;
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    if (parts[0] === 'admin' && parts[1]) {
+      return normalizeTab(parts[1]);
+    }
+    const tabParam = new URLSearchParams(window.location.search).get('tab');
+    return tabParam ? normalizeTab(tabParam) : null;
+  };
+
+  const sessionTabBootstrappedRef = useRef(false);
+
+  const bootstrapStaffActiveTab = (staffUser) => {
+    const fromUrl = readTabFromBrowserUrl();
+    if (fromUrl) {
+      setActiveTab(fromUrl);
+      return;
+    }
+    if (initialTab) {
+      setActiveTab(normalizeTab(initialTab));
+      return;
+    }
+    const role = (staffUser?.role || '').toLowerCase();
+    if (role === 'coin_manager' || role === 'coins_admin') {
+      setActiveTab('coins_allotment');
+    } else if (role === 'chat_support' || role === 'support_admin') {
+      setActiveTab('chat');
+    } else {
+      setActiveTab('overview');
+    }
+  };
+
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined') {
       const parts = window.location.pathname.split('/').filter(Boolean);
@@ -1056,21 +1088,17 @@ export default function AdminPortal({ initialTab }) {
       const data = await res.json();
       if (data.authenticated && data.user && data.user.role !== 'player') {
         setUser(data.user);
-        // Default starting tab based on role or URL initialTab
-        if (initialTab) {
-          setActiveTab(normalizeTab(initialTab));
-        } else if (data.user.role === 'coin_manager') {
-          setActiveTab('coins_allotment');
-        } else if (data.user.role === 'chat_support') {
-          setActiveTab('chat');
-        } else {
-          setActiveTab('overview');
+        // Only pick default tab once per login — do not reset tab on 15s session polls
+        if (!sessionTabBootstrappedRef.current) {
+          sessionTabBootstrappedRef.current = true;
+          bootstrapStaffActiveTab(data.user);
         }
       } else {
         if (user) {
           setLoginPassword('');
           setLoginId('');
         }
+        sessionTabBootstrappedRef.current = false;
         setUser(null);
       }
     } catch {
@@ -1897,6 +1925,10 @@ export default function AdminPortal({ initialTab }) {
       const data = await res.json();
       if (data.success && data.user.role !== 'player') {
         setUser(data.user);
+        if (!sessionTabBootstrappedRef.current) {
+          sessionTabBootstrappedRef.current = true;
+          bootstrapStaffActiveTab(data.user);
+        }
       } else {
         setLoginError(data.error || 'Access Denied: Not authorized for administration.');
       }
@@ -1911,6 +1943,7 @@ export default function AdminPortal({ initialTab }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isAdminLogout: true }),
     });
+    sessionTabBootstrappedRef.current = false;
     setUser(null);
   };
 
