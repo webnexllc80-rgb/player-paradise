@@ -617,7 +617,15 @@ export default function AdminPortal({ initialTab }) {
   };
 
   // Account Requests & Coin Load Requests state
-  const [accountRequests, setAccountRequests] = useState([]);
+  const [accountRequests, setAccountRequests] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const cached = sessionStorage.getItem('pp_admin_account_requests');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [accountReqFilter, setAccountReqFilter] = useState('PENDING');
   const [approvalModal, setApprovalModal] = useState({ open: false, request: null, username: '', password: '' });
   const [submittingApproval, setSubmittingApproval] = useState(false);
@@ -679,7 +687,7 @@ export default function AdminPortal({ initialTab }) {
       return;
     }
     isFetchingReqsRef.current = true;
-    fetch('/api/account-requests?status=all', { cache: 'no-store' })
+    fetch('/api/account-requests?status=all&lightweight=true', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         if (d.success && Array.isArray(d.accountRequests)) {
@@ -691,7 +699,13 @@ export default function AdminPortal({ initialTab }) {
             r => r.requestType === 'COIN_LOAD' || Number(r.transferAmount || 0) > 0
           );
           diffSet(setAccountRequests, creationReqs);
+          try {
+            sessionStorage.setItem('pp_admin_account_requests', JSON.stringify(creationReqs));
+          } catch {}
           diffSet(setCoinLoadRequests, loads);
+          try {
+            sessionStorage.setItem('pp_admin_coin_load_requests', JSON.stringify(loads));
+          } catch {}
         }
       })
       .catch(() => { })
@@ -1142,7 +1156,7 @@ export default function AdminPortal({ initialTab }) {
       const [depRes, withRes, reqRes, chatRes] = await Promise.allSettled([
         fetch('/api/payments/deposit?status=all&lightweight=true', { cache: 'no-store' }),
         fetch('/api/payments/withdraw?status=all&lightweight=true', { cache: 'no-store' }),
-        fetch('/api/account-requests?status=all', { cache: 'no-store' }),
+        fetch('/api/account-requests?status=all&lightweight=true', { cache: 'no-store' }),
         fetch('/api/chat?inbox=true', { cache: 'no-store' }),
       ]);
 
@@ -1664,8 +1678,8 @@ export default function AdminPortal({ initialTab }) {
   // Proactive background prefetch warm-up on mount for INSTANT tab switching (0ms)
   useEffect(() => {
     if (!user) return;
+    fetchAccountRequests(true);
     const prefetchTimer = setTimeout(() => {
-      fetchAccountRequests();
       fetch('/api/games?all=true', { cache: 'no-store' })
         .then(r => r.json())
         .then(d => { if (d.success && d.games) diffSet(setGames, d.games); })
@@ -1686,6 +1700,11 @@ export default function AdminPortal({ initialTab }) {
 
     return () => clearTimeout(prefetchTimer);
   }, [user]);
+
+  useEffect(() => {
+    if (!user || activeTab !== 'account_requests') return;
+    fetchAccountRequests(true);
+  }, [user, activeTab]);
 
   // Fetch data for specific active tabs
   useEffect(() => {
@@ -2961,7 +2980,6 @@ export default function AdminPortal({ initialTab }) {
                 filter={accountReqFilter}
                 onFilterChange={(f) => {
                   setAccountReqFilter(f);
-                  fetchAccountRequests();
                 }}
                 onOpenApproveModal={handleOpenApproveModal}
                 onApproveCoinLoad={handleApproveCoinLoad}

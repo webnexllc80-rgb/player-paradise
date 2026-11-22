@@ -21,6 +21,38 @@ const STAFF_ROLES = [
   'chat_support',
 ];
 
+function formatAccountRequestRow(r, { lightweight = false } = {}) {
+  const screenshot = r.freeplayScreenshot || r.screenshot || '';
+  return {
+    id: r._id.toString(),
+    userEmail: r.userEmail,
+    userName: r.userName || r.userEmail?.split('@')[0],
+    gameTitle: r.gameTitle,
+    gameId: r.gameId || '',
+    requestType: r.requestType || (Number(r.transferAmount || 0) > 0 ? 'COIN_LOAD' : 'ACCOUNT_CREATION'),
+    status: r.status || 'PENDING',
+    gameAccountUsername: r.gameAccountUsername || '',
+    gameAccountPassword: r.gameAccountPassword || '',
+    transferAmount: Number(r.transferAmount || 0),
+    pendingCoinLoadAmount: Number(r.pendingCoinLoadAmount || 0),
+    depositAmount: Number(r.depositAmount || 0),
+    bonusSC: Number(r.bonusSC || 0),
+    bonusPercent: Number(r.bonusPercent || 0),
+    sourceDepositId: r.sourceDepositId || '',
+    coinLoadQueued: Boolean(r.coinLoadQueued),
+    rejectionReason: r.rejectionReason || r.rejectReason || '',
+    freeplayPending: Boolean(r.freeplayPending),
+    freeplayAmount: Number(r.freeplayAmount || 0),
+    freeplayScreenshot: lightweight ? '' : screenshot,
+    hasFreeplayScreenshot: lightweight
+      ? Boolean(r.hasFreeplayScreenshot)
+      : Boolean(screenshot),
+    freeplayTaskId: r.freeplayTaskId || '',
+    notes: r.notes || '',
+    createdAt: r.createdAt || new Date(),
+  };
+}
+
 // GET Account Requests
 export async function GET(req) {
   try {
@@ -28,8 +60,36 @@ export async function GET(req) {
     const email = searchParams.get('email');
     const status = searchParams.get('status');
     const type = searchParams.get('type'); // 'ACCOUNT_CREATION' | 'COIN_LOAD' | 'all'
+    const lightweight = searchParams.get('lightweight') === 'true';
+    const singleId = (searchParams.get('id') || '').trim();
 
     const db = await getDb();
+
+  // Staff-only: fetch one row with screenshot payload on demand
+    if (singleId) {
+      const session = (await getAdminSessionUser()) || (await getSessionUser());
+      if (!session || !STAFF_ROLES.includes(session.role)) {
+        return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+      }
+      const requestsCol = db.collection('accountRequests');
+      let doc = null;
+      try {
+        if (ObjectId.isValid(singleId)) {
+          doc = await requestsCol.findOne({ _id: new ObjectId(singleId) });
+        }
+      } catch {}
+      if (!doc) {
+        doc = await requestsCol.findOne({ id: singleId });
+      }
+      if (!doc) {
+        return NextResponse.json({ success: false, message: 'Request not found.' }, { status: 404 });
+      }
+      return NextResponse.json({
+        success: true,
+        accountRequest: formatAccountRequestRow(doc, { lightweight: false }),
+      });
+    }
+
     const query = {};
 
     if (email) {
@@ -86,41 +146,55 @@ export async function GET(req) {
       ];
     }
 
-    const requests = await db
-      .collection('accountRequests')
-      .find(query)
-      .sort({ createdAt: -1 })
-      .limit(200)
-      .toArray();
+    const cacheKey =
+      lightweight && !email && (!status || status === 'all')
+        ? `account_requests_list_all_${type || 'all'}_lw`
+        : null;
+    if (cacheKey) {
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        return NextResponse.json(cached);
+      }
+    }
+
+    let requests;
+    const col = db.collection('accountRequests');
+
+    if (lightweight) {
+      requests = await col
+        .aggregate([
+          { $match: query },
+          { $sort: { createdAt: -1 } },
+          { $limit: 200 },
+          {
+            $addFields: {
+              hasFreeplayScreenshot: {
+                $gt: [
+                  {
+                    $strLenCP: {
+                      $ifNull: ['$freeplayScreenshot', { $ifNull: ['$screenshot', ''] }],
+                    },
+                  },
+                  0,
+                ],
+              },
+            },
+          },
+          { $project: { freeplayScreenshot: 0, screenshot: 0 } },
+        ])
+        .toArray();
+    } else {
+      requests = await col.find(query).sort({ createdAt: -1 }).limit(200).toArray();
+    }
 
     const responsePayload = {
       success: true,
-      accountRequests: requests.map(r => ({
-        id: r._id.toString(),
-        userEmail: r.userEmail,
-        userName: r.userName || r.userEmail?.split('@')[0],
-        gameTitle: r.gameTitle,
-        gameId: r.gameId || '',
-        requestType: r.requestType || (Number(r.transferAmount || 0) > 0 ? 'COIN_LOAD' : 'ACCOUNT_CREATION'),
-        status: r.status || 'PENDING',
-        gameAccountUsername: r.gameAccountUsername || '',
-        gameAccountPassword: r.gameAccountPassword || '',
-        transferAmount: Number(r.transferAmount || 0),
-        pendingCoinLoadAmount: Number(r.pendingCoinLoadAmount || 0),
-        depositAmount: Number(r.depositAmount || 0),
-        bonusSC: Number(r.bonusSC || 0),
-        bonusPercent: Number(r.bonusPercent || 0),
-        sourceDepositId: r.sourceDepositId || '',
-        coinLoadQueued: Boolean(r.coinLoadQueued),
-        rejectionReason: r.rejectionReason || r.rejectReason || '',
-        freeplayPending: Boolean(r.freeplayPending),
-        freeplayAmount: Number(r.freeplayAmount || 0),
-        freeplayScreenshot: r.freeplayScreenshot || r.screenshot || '',
-        freeplayTaskId: r.freeplayTaskId || '',
-        notes: r.notes || '',
-        createdAt: r.createdAt || new Date(),
-      })),
+      accountRequests: requests.map((r) => formatAccountRequestRow(r, { lightweight })),
     };
+
+    if (cacheKey) {
+      cache.set(cacheKey, responsePayload, 2);
+    }
 
     return NextResponse.json(responsePayload);
   } catch (err) {

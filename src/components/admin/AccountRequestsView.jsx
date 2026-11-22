@@ -43,6 +43,24 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const openScreenshotPreview = async (req) => {
+    const inline = req.freeplayScreenshot || req.screenshot;
+    if (inline) {
+      setPreviewScreenshot(inline);
+      return;
+    }
+  if (!req?.id || !req?.hasFreeplayScreenshot) return;
+    try {
+      const res = await fetch(`/api/account-requests?id=${encodeURIComponent(req.id)}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      const shot =
+        data?.accountRequest?.freeplayScreenshot || data?.accountRequest?.screenshot || '';
+      if (shot) setPreviewScreenshot(shot);
+    } catch {}
+  };
+
   // Strictly only show Game Account Creation requests here (Coin Loads belong strictly in Coins Allotment Desk)
   const allRequests = (requests || []).filter(
     (r) => r.requestType !== 'COIN_LOAD' && Number(r.transferAmount || 0) <= 0
@@ -343,10 +361,10 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                             <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-lg shadow-sm">
                               🎁 Freeplay: ${Number(req.freeplayAmount || 3).toFixed(2)} SC
                             </span>
-                            {(req.freeplayScreenshot || req.screenshot) && (
+                            {(req.freeplayScreenshot || req.screenshot || req.hasFreeplayScreenshot) && (
                               <button
                                 type="button"
-                                onClick={() => setPreviewScreenshot(req.freeplayScreenshot || req.screenshot)}
+                                onClick={() => openScreenshotPreview(req)}
                                 className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
                               >
                                 View Proof
@@ -569,7 +587,7 @@ const AccountRequestsView = React.memo(function AccountRequestsView({
                           <span className="text-xs font-black text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded">
                             ${Number(req.freeplayAmount || 3).toFixed(2)} SC
                           </span>
-                          {(req.freeplayScreenshot || req.screenshot) && (
+                          {(req.freeplayScreenshot || req.screenshot || req.hasFreeplayScreenshot) && (
                             <button
                               type="button"
                               onClick={() => setPreviewScreenshot(req.freeplayScreenshot || req.screenshot)}
