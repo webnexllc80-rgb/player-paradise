@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser, getAdminSessionUser, ROLES, safeIdFilter } from '@/lib/auth';
 import { notifyPlayer, notifyStaff } from '@/lib/notify';
+import { broadcastStaffEvent } from '@/lib/staffStream';
 import { findUserGameAccount } from '@/lib/gameAccounts';
 import { cache } from '@/lib/cache';
 
@@ -403,6 +404,26 @@ export async function POST(req) {
 
     const res = await requestsCol.insertOne(newRequest);
     cache.invalidatePrefix('account_requests');
+    const insertedIdStr = res.insertedId.toString();
+
+    const createdReq = {
+      id: insertedIdStr,
+      _id: insertedIdStr,
+      ...newRequest,
+    };
+
+    // 0ms Real-time SSE push to all admin consoles across devices
+    broadcastStaffEvent({
+      type: requestType === 'COIN_LOAD' ? 'NEW_COIN_LOAD' : 'NEW_REQUEST',
+      category: requestType,
+      requestId: insertedIdStr,
+      request: createdReq,
+      gameTitle,
+      userName,
+      userEmail,
+      transferAmount,
+      timestamp: Date.now(),
+    });
 
     // Notify staff desk immediately (Never sent to players)
     notifyStaff({
@@ -410,20 +431,15 @@ export async function POST(req) {
       message: `@${userName} requested ${requestType === 'COIN_LOAD' ? `$${transferAmount.toFixed(2)} SC loaded into ${gameTitle}` : `credentials for ${gameTitle}`}.`,
       type: requestType === 'COIN_LOAD' ? 'coin_load' : 'account_request',
       data: {
-        requestId: res.insertedId.toString(),
+        requestId: insertedIdStr,
         url: requestType === 'COIN_LOAD' ? '/admin?tab=coins_allotment' : '/admin?tab=account_requests',
       },
     });
 
-    const insertedIdStr = res.insertedId.toString();
     return NextResponse.json({
       success: true,
       requestId: insertedIdStr,
-      request: {
-        id: insertedIdStr,
-        _id: insertedIdStr,
-        ...newRequest,
-      },
+      request: createdReq,
       message: requestType === 'COIN_LOAD'
         ? `Load request for ${gameTitle} submitted! $${transferAmount.toFixed(2)} SC is frozen in escrow until staff approves or rejects.`
         : `Account request for ${gameTitle} submitted! Staff will issue your credentials shortly.`,
@@ -599,6 +615,18 @@ export async function PUT(req) {
           data: {
             url: '/admin?tab=coins_allotment',
           },
+        });
+
+        broadcastStaffEvent({
+          type: 'NEW_COIN_LOAD',
+          category: 'COIN_LOAD',
+          requestId: autoCreatedCoinLoad.id,
+          request: autoCreatedCoinLoad,
+          gameTitle: cleanTitle,
+          userName: targetRequest.userName || cleanEmail.split('@')[0],
+          userEmail: cleanEmail,
+          transferAmount: pendingDepositLoad,
+          timestamp: Date.now(),
         });
       }
 

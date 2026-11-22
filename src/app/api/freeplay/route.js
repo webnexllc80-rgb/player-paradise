@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '@/lib/mongodb';
 import { getSessionUser } from '@/lib/auth';
 import { notifyStaff } from '@/lib/notify';
+import { broadcastStaffEvent } from '@/lib/staffStream';
 
 // GET - Check Freeplay eligibility, configured amount, and task status
 export async function GET(req) {
@@ -229,6 +230,26 @@ export async function POST(req) {
         requestId: reqIdStr,
         url: '/admin?tab=account_requests',
       },
+    });
+
+    broadcastStaffEvent({
+      type: 'NEW_REQUEST',
+      category: 'ACCOUNT_CREATION',
+      requestId: reqIdStr,
+      request: {
+        id: reqIdStr,
+        _id: reqIdStr,
+        ...reqDoc,
+        status: 'PENDING',
+        requestType: 'ACCOUNT_CREATION',
+        transferAmount: 0,
+      },
+      gameTitle,
+      userName: user.username,
+      userEmail: user.email,
+      freeplayPending: true,
+      freeplayAmount: configuredAmount,
+      timestamp: Date.now(),
     });
 
     return NextResponse.json({

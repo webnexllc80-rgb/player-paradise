@@ -1,5 +1,6 @@
 import { getDb } from './mongodb';
 import { sendPushNotification } from './fcm';
+import { broadcastStaffEvent } from './staffStream';
 
 /**
  * Dispatches an instant in-app notification & push notification strictly to ONE targeted player.
@@ -94,6 +95,30 @@ export function notifyPlayer({ userId, userEmail, username, title, message, type
  * NEVER sends to player device tokens or player broadcast topics!
  */
 export function notifyStaff({ title, message, type = 'staff_alert', data = {} }) {
+  // 0ms Real-Time Push to all connected Admin Consoles via SSE
+  try {
+    let sseType = null;
+    if (type === 'account_request' || data.type === 'NEW_REQUEST') sseType = 'NEW_REQUEST';
+    else if (type === 'coin_load' || data.type === 'NEW_COIN_LOAD') sseType = 'NEW_COIN_LOAD';
+    else if (type === 'deposit' || type === 'deposit_proof' || data.type === 'NEW_DEPOSIT') sseType = 'NEW_DEPOSIT';
+    else if (type === 'coin_cashout' || data.type === 'NEW_COIN_CASHOUT') sseType = 'NEW_COIN_CASHOUT';
+    else if (type === 'finance_redemption' || data.type === 'NEW_FINANCE_REDEMPTION') sseType = 'NEW_FINANCE_REDEMPTION';
+    else if (type === 'chat_message' || data.type === 'NEW_CHAT_MESSAGE') sseType = 'NEW_CHAT_MESSAGE';
+    else if (type === 'freeplay_task_submitted') sseType = 'NEW_REQUEST';
+
+    if (sseType) {
+      broadcastStaffEvent({
+        type: sseType,
+        ...data,
+        title,
+        message,
+        timestamp: Date.now(),
+      });
+    }
+  } catch (sseErr) {
+    console.warn('[notifyStaff SSE broadcast note]:', sseErr?.message);
+  }
+
   (async () => {
     try {
       const db = await getDb();

@@ -1740,8 +1740,47 @@ export default function AdminPortal({ initialTab }) {
     };
     window.addEventListener('storage', handleStorage);
 
+    // Cross-Device 0ms Server-Sent Events (SSE) Stream
+    let eventSource = null;
+    let sseRetryTimer = null;
+
+    const setupSSE = () => {
+      try {
+        if (eventSource) {
+          eventSource.close();
+        }
+        eventSource = new EventSource('/api/admin/stream');
+        eventSource.addEventListener('staff_alert', (evt) => {
+          try {
+            const parsed = JSON.parse(evt.data);
+            handleIncomingAlert(parsed);
+            try {
+              if (channel) channel.postMessage(parsed);
+            } catch {}
+          } catch (err) {
+            console.warn('[SSE Parse Error]:', err);
+          }
+        });
+        eventSource.onerror = () => {
+          if (eventSource) {
+            try { eventSource.close(); } catch {}
+          }
+          clearTimeout(sseRetryTimer);
+          sseRetryTimer = setTimeout(setupSSE, 4000);
+        };
+      } catch (err) {
+        console.warn('[SSE Init Error]:', err);
+      }
+    };
+
+    setupSSE();
+
     return () => {
       if (channel) channel.close();
+      if (eventSource) {
+        try { eventSource.close(); } catch {}
+      }
+      clearTimeout(sseRetryTimer);
       window.removeEventListener('storage', handleStorage);
     };
   }, [user]);
@@ -1752,7 +1791,7 @@ export default function AdminPortal({ initialTab }) {
     syncRequestsAndAlerts(true);
     const interval = setInterval(() => {
       syncRequestsAndAlerts();
-    }, 650);
+    }, 3000);
 
     const handleFocus = () => {
       syncRequestsAndAlerts(true);
