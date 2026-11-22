@@ -2,7 +2,50 @@ import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { isStaffRole, staffSessionMatchesToken } from './staffSessionEpoch';
 
+export { isStaffRole } from './staffSessionEpoch';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'players_paradise_cyber_secret_key_2026_panda_gaming_hub';
+
+const SESSION_DAYS = Math.min(
+  365,
+  Math.max(7, parseInt(process.env.SESSION_DAYS || '90', 10) || 90)
+);
+export const SESSION_JWT_EXPIRY = `${SESSION_DAYS}d`;
+export const SESSION_COOKIE_MAX_AGE = SESSION_DAYS * 24 * 3600;
+
+export function getSessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SESSION_COOKIE_MAX_AGE,
+  };
+}
+
+/** Re-issue JWT cookies so active users stay signed in without re-login. */
+export function attachSessionCookies(response, session, { scope = 'player' } = {}) {
+  if (!session?.userId) return;
+  const payload = {
+    userId: session.userId,
+    username: session.username,
+    email: session.email,
+    role: session.role,
+    sessionVersion: session.sessionVersion,
+  };
+  if (session.staffSessionEpoch !== undefined && session.staffSessionEpoch !== null) {
+    payload.staffSessionEpoch = session.staffSessionEpoch;
+  }
+  const token = signToken(payload, SESSION_JWT_EXPIRY);
+  const opts = getSessionCookieOptions();
+  if (scope === 'admin' || scope === 'both') {
+    response.cookies.set('admin_session', token, opts);
+  }
+  if (scope === 'player' || scope === 'both') {
+    response.cookies.set('players_session', token, opts);
+    response.cookies.set('vegas_session', token, opts);
+  }
+}
 
 export const ROLES = {
   SUPER_ADMIN: 'super_admin',
@@ -89,7 +132,7 @@ export const ROLE_PERMISSIONS = {
   ],
 };
 
-export function signToken(payload, expiresIn = '7d') {
+export function signToken(payload, expiresIn = SESSION_JWT_EXPIRY) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }
 

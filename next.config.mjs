@@ -11,6 +11,10 @@ const nextConfig = {
   },
   async headers() {
     return [
+      {
+        source: '/api/:path*',
+        headers: [{ key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate' }],
+      },
       // 1. Prevent Hostinger CDN / Nginx / Cloudflare edge from hanging on stale dynamic HTML pages
       {
         source: '/:path*',

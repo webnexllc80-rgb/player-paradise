@@ -196,7 +196,7 @@ export default function CyberNavbar({
               })
               .catch(() => {});
           }
-        } else {
+        } else if (data?.sessionExpired) {
           setLiveUser(null);
           setLiveUnreadCount(0);
           if (typeof window !== 'undefined') {
@@ -212,7 +212,7 @@ export default function CyberNavbar({
     syncUserData();
 
     // 10-second polling loop with instant event triggers
-    const syncInterval = setInterval(syncUserData, 10000);
+    const syncInterval = setInterval(syncUserData, 4000);
 
     // Event-based triggers: tab focus, visibility change, and custom in-app balance events
     const handleFocus = () => syncUserData();

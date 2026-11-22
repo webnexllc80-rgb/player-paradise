@@ -155,15 +155,17 @@ export default function HomePage({ initialTab = 'lobby' }) {
       if (data?.authenticated && data?.user) {
         diffSet(setUser, data.user);
         loadUserGameAccounts(data.user.email);
-      } else {
+      } else if (data?.sessionExpired) {
         setUser(null);
         diffSet(setUserGameAccounts, []);
         diffSet(setPendingAccountRequests, []);
+      } else {
+        const cached = getCachedUser();
+        if (cached) diffSet(setUser, cached);
       }
     } catch {
-      setUser(null);
-      diffSet(setUserGameAccounts, []);
-      diffSet(setPendingAccountRequests, []);
+      const cached = getCachedUser();
+      if (cached) diffSet(setUser, cached);
     }
   };
 

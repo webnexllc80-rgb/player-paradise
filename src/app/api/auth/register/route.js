@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDb } from '@/lib/mongodb';
-import { signToken, ROLES } from '@/lib/auth';
+import { signToken, ROLES, getSessionCookieOptions } from '@/lib/auth';
 import { sendEmail, getWelcomeEmailTemplate } from '@/lib/email';
 import { ensureDbInitialized } from '@/lib/initDb';
 import { getDeviceIdFromRequest } from '@/lib/deviceServer';
@@ -243,20 +243,9 @@ export async function POST(req) {
       },
     });
 
-    response.cookies.set('vegas_session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 3600,
-    });
-    response.cookies.set('players_session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 3600,
-    });
+    const sessionCookieOpts = getSessionCookieOptions();
+    response.cookies.set('vegas_session', token, sessionCookieOpts);
+    response.cookies.set('players_session', token, sessionCookieOpts);
 
     if (deviceId) {
       response.cookies.set('v1_device_id', deviceId, {

@@ -3,6 +3,7 @@
  * 1. Deduplicates simultaneous calls to /api/auth/me (3 calls become 1 call).
  * 2. Caches session in localStorage for 0ms instant page loads without UI flicker.
  * 3. Throttles rapid focus/sync triggers.
+ * 4. Keeps cached session on transient network/server errors (user stays "logged in").
  */
 
 let inFlightAuthPromise = null;
@@ -34,25 +35,34 @@ export function setCachedUser(user) {
   } catch {}
 }
 
+function staleAuthFromCache() {
+  const cached = getCachedUser();
+  if (!cached) return { authenticated: false, user: null };
+  return { authenticated: true, user: cached, stale: true };
+}
+
 export async function fetchCurrentUser({ force = false } = {}) {
   const now = Date.now();
 
-  // Return recent in-memory result if called within 3 seconds
   if (!force && lastAuthResult && now - lastAuthResponseTime < 3000) {
     return lastAuthResult;
   }
 
-  // Deduplicate in-flight requests: share single fetch promise among all callers
   if (inFlightAuthPromise) {
     return inFlightAuthPromise;
   }
 
   inFlightAuthPromise = (async () => {
     try {
-      const res = await fetch('/api/auth/me', { cache: 'no-store' });
+      const res = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' });
+
       if (!res.ok) {
-        setCachedUser(null);
-        lastAuthResult = { authenticated: false, user: null };
+        if (res.status === 401 || res.status === 403) {
+          setCachedUser(null);
+          lastAuthResult = { authenticated: false, user: null, sessionExpired: true };
+        } else {
+          lastAuthResult = staleAuthFromCache();
+        }
         lastAuthResponseTime = Date.now();
         return lastAuthResult;
       }
@@ -61,14 +71,18 @@ export async function fetchCurrentUser({ force = false } = {}) {
       if (data?.authenticated && data?.user) {
         setCachedUser(data.user);
         lastAuthResult = data;
-      } else {
+      } else if (data?.sessionExpired) {
         setCachedUser(null);
-        lastAuthResult = { authenticated: false, user: null };
+        lastAuthResult = { authenticated: false, user: null, sessionExpired: true };
+      } else {
+        lastAuthResult = staleAuthFromCache();
       }
       lastAuthResponseTime = Date.now();
       return lastAuthResult;
     } catch {
-      return { authenticated: false, user: null };
+      lastAuthResult = staleAuthFromCache();
+      lastAuthResponseTime = Date.now();
+      return lastAuthResult;
     } finally {
       inFlightAuthPromise = null;
     }

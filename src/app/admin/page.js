@@ -1097,7 +1097,7 @@ export default function AdminPortal({ initialTab }) {
           bootstrapStaffActiveTab(data.user);
         }
         syncAdminQueueFast(true);
-      } else {
+      } else if (data?.sessionExpired) {
         if (user) {
           setLoginPassword('');
           setLoginId('');
@@ -1106,7 +1106,7 @@ export default function AdminPortal({ initialTab }) {
         setUser(null);
       }
     } catch {
-      setUser(null);
+      /* keep admin session on transient network errors */
     } finally {
       setLoading(false);
     }
@@ -1205,19 +1205,19 @@ export default function AdminPortal({ initialTab }) {
   const syncAdminQueueFast = (force = false) => {
     if (!user) return;
     const now = Date.now();
-    if (!force && now - lastFastQueueSyncRef.current < 350) return;
+    if (!force && now - lastFastQueueSyncRef.current < 120) return;
     if (isFastQueueSyncRef.current) return;
     isFastQueueSyncRef.current = true;
     lastFastQueueSyncRef.current = now;
     const bust = `_=${now}`;
-    Promise.all([
-      fetch(`/api/account-requests?status=all&lightweight=true&fresh=1&${bust}`, { cache: 'no-store' }).then((r) =>
-        r.json()
-      ),
-      fetch(`/api/chat?inbox=true&${bust}`, { cache: 'no-store' }).then((r) => r.json()),
-    ])
-      .then(([reqData, chatData]) => {
-        applyAccountAndChatPayload(reqData, chatData);
+    fetch(`/api/admin/live-desk?fresh=1&${bust}`, { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((desk) => {
+        if (!desk?.success) return;
+        applyAccountAndChatPayload(
+          { success: true, accountRequests: desk.accountRequests },
+          { success: true, conversations: desk.conversations }
+        );
       })
       .catch(() => {})
       .finally(() => {
@@ -1237,17 +1237,13 @@ export default function AdminPortal({ initialTab }) {
     isSyncingRef.current = true;
     try {
       const bust = `fresh=1&_=${Date.now()}`;
-      const [depRes, withRes, reqRes, chatRes] = await Promise.allSettled([
-        fetch(`/api/payments/deposit?status=all&lightweight=true&${bust}`, { cache: 'no-store' }),
-        fetch(`/api/payments/withdraw?status=all&lightweight=true&${bust}`, { cache: 'no-store' }),
-        fetch(`/api/account-requests?status=all&lightweight=true&${bust}`, { cache: 'no-store' }),
-        fetch(`/api/chat?inbox=true&${bust}`, { cache: 'no-store' }),
-      ]);
+      const deskRes = await fetch(`/api/admin/live-desk?${bust}`, { cache: 'no-store' });
+      const desk = await deskRes.json().catch(() => ({}));
 
-      const depData = depRes.status === 'fulfilled' ? await depRes.value.json().catch(() => ({})) : {};
-      const withData = withRes.status === 'fulfilled' ? await withRes.value.json().catch(() => ({})) : {};
-      const reqData = reqRes.status === 'fulfilled' ? await reqRes.value.json().catch(() => ({})) : {};
-      const chatData = chatRes.status === 'fulfilled' ? await chatRes.value.json().catch(() => ({})) : {};
+      const depData = desk?.success ? { success: true, deposits: desk.deposits || [] } : {};
+      const withData = desk?.success ? { success: true, redemptions: desk.redemptions || [] } : {};
+      const reqData = desk?.success ? { success: true, accountRequests: desk.accountRequests || [] } : {};
+      const chatData = desk?.success ? { success: true, conversations: desk.conversations || [] } : {};
 
       const resolvedDeposits = depData.success ? applyAdminMutations(depData.deposits || []) : [];
       const resolvedRedemptions = withData.success ? applyAdminMutations(withData.redemptions || []) : [];
@@ -1755,12 +1751,8 @@ export default function AdminPortal({ initialTab }) {
     if (!user) return;
     syncRequestsAndAlerts(true);
     const interval = setInterval(() => {
-      if (document.hidden) {
-        syncAdminQueueFast();
-      } else {
-        syncRequestsAndAlerts();
-      }
-    }, 1200);
+      syncRequestsAndAlerts();
+    }, 650);
 
     const handleFocus = () => {
       syncRequestsAndAlerts(true);

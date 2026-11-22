@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDb } from '@/lib/mongodb';
-import { signToken, ROLES } from '@/lib/auth';
+import { signToken, ROLES, SESSION_COOKIE_MAX_AGE, getSessionCookieOptions } from '@/lib/auth';
 import { getStaffSessionEpochForLogin } from '@/lib/staffSessionEpoch';
 import { ensureDbInitialized } from '@/lib/initDb';
 import { getDeviceIdFromRequest } from '@/lib/deviceServer';
@@ -167,31 +167,13 @@ export async function POST(req) {
       },
     });
 
+    const sessionCookieOpts = { ...getSessionCookieOptions(), maxAge: SESSION_COOKIE_MAX_AGE };
+
     if (isStaff || isExplicitAdminPortal) {
-      // Independent cookie for admin portal: does NOT overwrite player session
-      response.cookies.set('admin_session', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 3600,
-      });
+      response.cookies.set('admin_session', token, sessionCookieOpts);
     } else {
-      // Independent cookie for player: does NOT overwrite admin session
-      response.cookies.set('players_session', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 3600,
-      });
-      response.cookies.set('vegas_session', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 3600,
-      });
+      response.cookies.set('players_session', token, sessionCookieOpts);
+      response.cookies.set('vegas_session', token, sessionCookieOpts);
     }
 
     if (deviceId) {
